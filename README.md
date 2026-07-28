@@ -13,7 +13,7 @@ through the proxy, they just won't be themed.
 |:--:|:--:|
 | ![Home](docs/main.png) | ![Book details](docs/book.png) |
 | ![Series](docs/series.png) | ![Collections](docs/collections.png) |
-| ![Narrators](docs/narrators.png) | ![Settings panel](docs/settings.png) |
+| ![Narrators](docs/narrators.png) | ![Settings panel](docs/settings2.png) |
 
 ## What it changes
 
