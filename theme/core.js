@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.114.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.115.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1408,7 +1408,11 @@ body.nh-global-search #appbar .globalSearchMenu { display: none !important; }
 #nh-gs-panel .nh-gs-head { padding: 8px 10px 4px; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--nh-amber, #e0c27a); opacity: 0.85; }
 #nh-gs-panel .nh-gs-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 9px; cursor: pointer; }
 #nh-gs-panel .nh-gs-row.nh-gs-sel { background: rgba(255,255,255,0.07); }
-#nh-gs-panel .nh-gs-cover { width: 40px; height: 60px; min-width: 40px; object-fit: cover; border-radius: 5px; background: rgba(0,0,0,0.3); }
+/* Follows the library's cover aspect like every other cover in the theme —
+   square by default, 1:1.6 only when the standard-covers mode is on. It was
+   hardcoded portrait, so square art came out letterboxed in search results. */
+#nh-gs-panel .nh-gs-cover { width: 40px; height: 40px; min-width: 40px; object-fit: cover; border-radius: 5px; background: rgba(0,0,0,0.3); }
+html.nh-covers-std #nh-gs-panel .nh-gs-cover { height: 64px; }
 #nh-gs-panel .nh-gs-icon { width: 40px; min-width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 9px; background: rgba(255,255,255,0.06); color: var(--nh-muted-2, #9a9085); font-size: 22px; }
 #nh-gs-panel .nh-gs-text { flex: 1 1 auto; min-width: 0; }
 #nh-gs-panel .nh-gs-title { margin: 0; font-size: 0.9rem; color: var(--nh-text-1, #f2ecdf); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
