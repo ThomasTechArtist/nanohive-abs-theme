@@ -35,8 +35,42 @@ through the proxy, they just won't be themed.
 - Ebooks in progress can join the hero carousel (default), stay a separate shelf, or be
   hidden — per-user choice in the customization panel
 - Covers follow your library's aspect setting everywhere, including the details page
-- **Server-wide book ratings** (v1.9.1+): Goodreads-style stars, score, and short
+- **Server-wide book ratings**: Goodreads-style stars, score, and short
   reviews on every book page, shared between all users of the server — see below
+- Rating **stars on every card** (library grid, home shelves, series, collections)
+- A **multi-level sort** built into ABS's own Sort menu: author, then series, then
+  title — up to 8 dimensions, each direction chosen, precedence numbered as you pick
+- **Stackable filters** in ABS's Filter menu: genre, author, narrator, language,
+  decade, progress and rating combined, each value listed with its count
+- **Search across every library at once**, with a library badge on each hit
+- A per-user **start page** (home, library, series, collections, authors)
+- Whole **series** can be rated too, with a books-average line beside the series rating
+- Rebuilt **Collections**: an instant icon-emblem grid instead of slow cover cards,
+  curated starter templates with pre-written descriptions, and editable descriptions
+- Rebuilt **Narrators** and **Authors** pages: cards with cover collages, book counts,
+  a filter box and sorting
+- Custom **series covers** and **series descriptions** that admins upload from the app
+- **Profile photos** for users (admin-managed), shown in the top bar and the ranking
+- A **Server Ranking** page: everyone on the server ranked by listening time with
+  gold/silver/bronze medals, week/month/year/all-time, and a per-user drill-down.
+  Non-admins can see it too via opt-in **family stats** sharing — see below
+- A **Server statistics** page for admins: what the whole server listens to — most
+  played books, best rated, top genres and authors, filterable per library
+- **Your listening** insights on the stats page: current and longest streak, weekly pace
+  against the week before, which weekday you actually listen on, and your most-listened
+  books, authors and narrators
+- A **Year in Review** summary, and a **Rate what you finished** row on the home page
+- **Autoplay the next book in a series** when one finishes (off by default), with a
+  notice naming what started
+- **Finished-book tools** in your stats: recently finished with an editable finished date,
+  and a list of books stuck at 97-99% with one tap to mark them done
+- **Report a problem** on any book page (missing content, bad audio, will not play, wrong
+  metadata, bad chapters, other) — admins see the queue in the settings panel and clear it
+- **Started and finished dates** on the book page, with the finished date editable
+- An admin **"Tidy authors"** action that removes authors left behind with no books
+- **Reorderable home sections**, so you decide what sits at the top
+- **Book lookup links** on the book page (Goodreads plus your language's biggest local
+  site, with 25 bundled logos)
 - Panel and carousel fully translated into all 40 languages ABS ships
 
 
@@ -169,7 +203,40 @@ How it works and what to know:
 - Admins can remove any user's rating (a small *remove* link in the reviews popup) —
   handy moderation for family servers.
 - The API is served by nginx's built-in njs engine (`/_nh/api/ratings`); no extra
-  container or database is involved.
+  container or database is involved. Moderation goes through an admin-gated twin route
+  (`/_nh/api/ratings-admin`), because current ABS tokens no longer say whether the
+  caller is an admin — nginx proves it by replaying the token against an admin-only
+  ABS endpoint instead of trusting the token's contents.
+
+### Family listening stats
+
+The Server Ranking on **Settings → Your Stats** is built from real listening data when an
+admin views it. So that everyone else can see a board too, each browser can publish a
+small summary of its own listening (totals and per-day minutes) to the proxy.
+
+- Sharing is **on by default**. Turn it off in Settings → Theme → *Family stats* and your
+  shared summary is deleted, you disappear from the ranking, and you stop counting toward
+  its totals — for everyone, admins included.
+- The summary lives at `/data/nh/stats.json` on the proxy (`/_nh/api/stats`). It holds
+  totals, per-day minutes and your top few titles. Never anything ABS doesn't already know.
+- Only your own record can be written: the user id comes from your verified login token,
+  never from the request body.
+
+### What else lands in `/data/nh`
+
+Mount this volume or you lose all of it on container recreation:
+
+| File / folder | What it holds |
+|---|---|
+| `server-config.json` | UI-saved server defaults |
+| `ratings.json` | book and series ratings + reviews |
+| `stats.json` | opt-in shared listening summaries |
+| `collection-art.json` | per-collection icon and accent overrides |
+| `reports.json` | problem reports users filed from a book page |
+| `series-covers/` | uploaded series cover images |
+| `series-desc/` | series description overrides |
+| `user-avatars/` | user profile photos |
+| `logo.*` | uploaded custom logo |
 
 ### Where settings live
 
@@ -223,8 +290,8 @@ upgrades are passed through for ABS's Socket.IO progress sync.
 ## Caveat: it tracks ABS releases
 
 The theme targets ABS's current DOM. When Audiobookshelf ships a UI change, some selectors
-may break until the theme files are updated. Tested against Audiobookshelf 2.x. Open an
-issue with your ABS version if something looks wrong.
+may break until the theme files are updated. Verified against Audiobookshelf **2.35.1** and
+**2.36.0**. Open an issue with your ABS version if something looks wrong.
 
 Not affiliated with the Audiobookshelf project.
 
@@ -240,7 +307,14 @@ docker build -t nanohive-abs-theme .
 # multi-arch (amd64 + arm64 for Pi/NAS):
 docker buildx build --platform linux/amd64,linux/arm64 \
   -t ghcr.io/rodzalendo/nanohive-abs-theme:latest --push .
+
+# keep the theme readable inside the image (default is minified):
+docker build --build-arg NH_MINIFY=false -t nanohive-abs-theme .
 ```
+
+The theme payload is minified at build time (`NH_MINIFY=true` by default), which is worth
+about a third of its size. Set it to `false` when you want to read or patch the injected
+JS inside a running container.
 
 ## License
 

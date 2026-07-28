@@ -1,4 +1,4 @@
-/* NanoHive ABS — Early Boot Shim  v1.3.0
+/* NanoHive ABS — Early Boot Shim  v1.6.0
    Runs inline in <head>, right after core.js. Applies the resolved theme
    (baked defaults merged with the user's saved overrides) before first paint,
    and paints the cached home cinematic background as soon as <body> exists,
@@ -9,7 +9,7 @@
   'use strict';
 
   // Neutral defaults. Must mirror defaultSettings in enhancements.js (visual subset).
-  var DEFAULTS = { accentColor: '#e0c27a', mainFont: 'Merriweather', fontScale: 1.0, baseTheme: 'warm', logoUrl: '', colorizeLogo: false, customSeriesCards: true };
+  var DEFAULTS = { accentColor: '#e0c27a', mainFont: 'Merriweather', fontScale: 1.0, baseTheme: 'warm', logoUrl: '', colorizeLogo: false, customSeriesCards: true, cinematicBg: true };
 
   // Operator defaults, injected by nginx from env vars. Precedence:
   // saved user settings > NH_CONFIG > DEFAULTS.
@@ -35,6 +35,17 @@
 
   var saved = {};
   try { saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {}; } catch (e) {}
+  // One-time migration: pre-diff-era saves dumped EVERY setting (~25+ keys) into the
+  // browser, pinning the then-current server defaults forever — admins could change
+  // server defaults and pinned browsers (including their login pages) never followed.
+  // A legacy dump is unmistakable: dozens of keys and no _v marker. Drop it; genuine
+  // per-user tweaks are the rare few-key saves and survive.
+  try {
+    if (saved && !saved._v && Object.keys(saved).length >= 20) {
+      localStorage.removeItem('nh-settings');
+      saved = {};
+    }
+  } catch (e) {}
 
   // `||` would discard legitimate falsy values (fontScale 0, colorizeLogo false).
   var pick = function (key) {
@@ -102,9 +113,36 @@
     if (logoUrl) document.documentElement.style.setProperty('--nh-logo-url', 'url("' + logoUrl + '")');
   } catch (e) {}
 
+  // Tab icon, as early as possible. enhancements.js also owns this (and can
+  // apply the accent tint, which needs a canvas), but by the time it runs the
+  // browser has usually committed ABS's stock icon and a plain refresh kept
+  // showing it. Disabling the stock links and inserting ours here — still
+  // inside <head>, before first paint — is what makes the custom logo stick.
+  try {
+    if (logoUrl) {
+      var head = document.head || document.documentElement;
+      // REMOVE the stock icon links rather than renaming their rel: Firefox
+      // keeps painting a renamed one, so a refresh landed back on the default.
+      var links = document.querySelectorAll('link[rel*="icon"]');
+      for (var li = links.length - 1; li >= 0; li--) {
+        if (links[li].id === 'nh-favicon') continue;
+        if (links[li].parentNode) links[li].parentNode.removeChild(links[li]);
+      }
+      if (!document.getElementById('nh-favicon')) {
+        var fl2 = document.createElement('link');
+        fl2.id = 'nh-favicon';
+        fl2.rel = 'icon';
+        fl2.href = logoUrl;
+        head.appendChild(fl2);
+      }
+    }
+  } catch (e) {}
+
   // Cached home cinematic background, painted as soon as <body> exists.
   try {
-    var isHome = /\/library\/[^/]+\/?$/.test(location.pathname);
+    // Respect the cinematic-background switch here too, or the cached backdrop
+    // is painted before enhancements.js can tell us it is turned off.
+    var isHome = /\/library\/[^/]+\/?$/.test(location.pathname) && pick('cinematicBg') !== false;
     var url = '';
     try { url = localStorage.getItem('nh-home-bg') || ''; } catch (e) {}
     if (isHome && url) {

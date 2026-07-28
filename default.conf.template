@@ -59,6 +59,29 @@ server {
         access_log off;
     }
 
+    # Per-collection icon + accent overrides, chosen in the theme's collection UI.
+    # GET is public for the same reason server-config.json is: every visitor renders
+    # the same tiles, so there is nothing to protect. Writes go through the
+    # admin-gated /_nh/data/ DAV location below, exactly like the logo and the
+    # series covers. Kept OUT of server-config.json on purpose: the settings panel
+    # PUTs that file wholesale, so anything else stored there gets erased on the
+    # next "save server defaults".
+    location = /_nh/collection-art.json {
+        alias /data/nh/collection-art.json;
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        access_log off;
+        # Before the first icon is ever chosen the file does not exist. Serve an
+        # empty store rather than a 404, so a fresh install does not log a console
+        # error on every page load.
+        error_page 404 = @nh_empty_art;
+    }
+    location @nh_empty_art {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 200 '{"v":1,"cols":{}}';
+    }
+
     # Self-hosted custom logo — works with NO internet access. Drop an image into the
     # nh_theme_data volume as /data/nh/logo.<ext> (via a bind-mount, `docker cp`, or the
     # admin settings panel's PUT to /_nh/data/logo.<ext>), then set the logo to
@@ -69,6 +92,57 @@ server {
         alias /data/nh/$1;
         add_header Cache-Control "public, max-age=300";
         access_log off;
+    }
+
+    # Custom series covers (A1) — admin-uploaded images that replace the stacked-books
+    # tile. Files live in the nh_theme_data volume as /data/nh/series-covers/<seriesId>.<ext>
+    # (written via the admin DAV path below). Public read like the logo: a cover is not
+    # secret, and cards need it without an Authorization header.
+    location ~ "^/_nh/series-covers/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif|avif))$" {
+        alias /data/nh/series-covers/$1;
+        add_header Cache-Control "public, max-age=300";
+        access_log off;
+    }
+
+    # Admin-written series description overrides, served as plain text (public
+    # read, same reasoning as covers — the text is shown to every user anyway).
+    location ~ "^/_nh/series-desc/([A-Za-z0-9_-]{4,64}\.txt)$" {
+        alias /data/nh/series-desc/$1;
+        default_type "text/plain; charset=utf-8";
+        add_header Cache-Control "public, max-age=300";
+        access_log off;
+    }
+
+    # User profile photos (avatars), shown in the server ranking. Public read
+    # like series covers — an avatar is not secret and <img> tags carry no
+    # Authorization header. Regex QUOTED (brace quantifier breaks nginx parse).
+    location ~ "^/_nh/user-avatars/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif))$" {
+        alias /data/nh/user-avatars/$1;
+        add_header Cache-Control "public, max-age=300";
+        access_log off;
+    }
+
+    # Avatar write API (njs): POST raw image bytes (type sniffed from magic
+    # bytes), DELETE = remove; ?forUser=<id> targets a user. ADMIN-ONLY by
+    # design (Pawel: users don't set their own) — gated by admincheck at the
+    # nginx layer, because newer ABS JWTs have no `type` claim and admin-ness
+    # canNOT be read from the token payload. Body must be buffered in MEMORY
+    # (buffer >= max size) or njs r.requestBuffer is empty (temp-file bodies
+    # are invisible to js_content).
+    location = /_nh/api/avatar-admin {
+        auth_request /_nh/admincheck;
+        set $nh_avatar_admin 1;
+        client_max_body_size 2m;
+        client_body_buffer_size 2m;
+        js_content nh_ratings.avatar;
+    }
+
+    # Which series have a custom cover / description (+ which users have an
+    # avatar): njs lists the folders and returns { covers: {id: ext}, descs:
+    # {id: 1}, avatars: {userId: ext} } — one call, no per-card probes.
+    location = /_nh/api/series-meta {
+        auth_request /_nh/api/whoami;
+        js_content nh_ratings.meta;
     }
 
     # Server-wide ratings (njs JSON API). GET returns the shared ratings store,
@@ -89,6 +163,70 @@ server {
         js_content nh_ratings.handle;
     }
 
+    # MODERATION path: same handler, but admin-gated by nginx so an admin can
+    # remove SOMEONE ELSE's rating. It needs its own location because admin-ness
+    # canNOT be read from the token — newer ABS JWTs carry no `type` claim, so
+    # the payload check inside the handler silently refused every admin. Exactly
+    # the same reasoning (and shape) as /_nh/api/avatar-admin above.
+    location = /_nh/api/ratings-admin {
+        auth_request /_nh/admincheck;
+        set $nh_ratings_admin 1;
+        client_max_body_size 64k;
+        client_body_buffer_size 64k;
+        js_content nh_ratings.handle;
+    }
+
+    # Problem reports. Any signed-in user may POST one from a book page; the
+    # queue itself carries other people's names, so READING and CLEARING it are
+    # admin-only and go through the gated twin below.
+    location = /_nh/api/reports {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 16k;
+        client_body_buffer_size 16k;
+        js_content nh_ratings.reports;
+    }
+
+    # Started-date overrides (ABS refuses to store a client startedAt — see the
+    # njs note). Per-user, readable and writable only by the owner.
+    location = /_nh/api/dates {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 8k;
+        client_body_buffer_size 8k;
+        js_content nh_ratings.dates;
+    }
+
+    location = /_nh/api/reports-admin {
+        auth_request /_nh/admincheck;
+        set $nh_reports_admin 1;
+        client_max_body_size 16k;
+        client_body_buffer_size 16k;
+        js_content nh_ratings.reports;
+    }
+
+    # Shared listening summaries (A5). Each participating browser POSTs a summary
+    # of its OWN /api/me/listening-stats; any authenticated user may GET the store
+    # to render the family board. DELETE removes the caller's record (opt-out).
+    # Identity is the JWT's userId — the body can never name another user.
+    location = /_nh/api/stats {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 64k;
+        client_body_buffer_size 64k;   # njs r.requestText is empty for temp-file bodies
+        js_content nh_ratings.stats;
+    }
+
+    # Admin seeding twin (round 11): an admin's browser posts EVERY user's
+    # summary here (?forUser=<id>) so the family board is complete even for
+    # people who never open the web app. Same nginx admin gate as the other
+    # -admin twins (JWTs carry no type claim); the handler itself refuses to
+    # overwrite an opt-out tombstone.
+    location = /_nh/api/stats-admin {
+        auth_request /_nh/admincheck;
+        set $nh_stats_admin 1;
+        client_max_body_size 64k;
+        client_body_buffer_size 64k;
+        js_content nh_ratings.stats;
+    }
+
     location = /_nh/api/whoami {
         internal;
         proxy_pass ${ABS_UPSTREAM}/api/me;
@@ -102,8 +240,9 @@ server {
     # (/api/users answers 200 only for admins). DAV then writes the file.
     location /_nh/data/ {
         auth_request /_nh/admincheck;
-        client_max_body_size 4m;   # JSON config is tiny; also allows an uploaded logo image
-        dav_methods PUT;
+        client_max_body_size 4m;   # JSON config is tiny; also allows uploaded logo/cover images
+        dav_methods PUT DELETE;    # DELETE so admins can remove a series cover again
+        create_full_put_path on;   # series-covers/ subdirectory is created on first PUT
         alias /data/nh/;
     }
 
@@ -145,7 +284,7 @@ server {
         # window.NH_CONFIG carries the operator's defaults and must be defined before
         # nh-early.js reads it. core.js patches fetch/XHR, so it runs before the ABS bundle.
         sub_filter '</head>'
-            '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><style id="nh-fouc-blocker">html{background:${NH_FOUC_BG} !important;}html:not(.nh-ready) body{opacity:0 !important;}html.nh-ready body{opacity:1;transition:opacity .25s ease;}</style><script>setTimeout(function(){document.documentElement.classList.add("nh-ready");},4000);</script><script>window.NH_CONFIG={"appName":"${NH_APP_NAME}","showLogoText":${NH_SHOW_LOGO_TEXT},"colorizeLogo":${NH_COLORIZE_LOGO},"logoUrl":"${NH_LOGO_URL}","accentColor":"${NH_ACCENT_COLOR}","baseTheme":"${NH_BASE_THEME}","mainFont":"${NH_MAIN_FONT}","fontScale":${NH_FONT_SCALE},"carouselTiming":${NH_CAROUSEL_TIMING},"showCustomRecentSeries":${NH_SHOW_RECENT_SERIES},"recentSeriesCount":${NH_RECENT_SERIES_COUNT},"customSeriesCards":${NH_CUSTOM_SERIES_CARDS},"showHeroCarousel":${NH_SHOW_HERO_CAROUSEL},"showRatings":${NH_SHOW_RATINGS},"themeVersion":"${THEME_VERSION}"};</script><script>window.NH_SERVER_CONFIG=<!--# include virtual="/_nh/server-config.json" -->;</script><script><!--# include virtual="/_nh/core.js" --></script><script><!--# include virtual="/_nh/nh-early.js" --></script><script>document.documentElement.classList.add("nh-ready");</script></head>';
+            '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><style id="nh-fouc-blocker">html{background:${NH_FOUC_BG} !important;}body::after{content:"";position:fixed;inset:0;z-index:2147483000;background:radial-gradient(circle at 80% 0%,var(--nh-amber-shadow,rgba(224,194,122,0.30)) 0%,transparent 60%),radial-gradient(circle at 15% 100%,var(--nh-amber-tint,rgba(224,194,122,0.12)) 0%,transparent 55%),var(--nh-canvas,${NH_FOUC_BG});opacity:1;transition:opacity .45s ease;}html.nh-ready body::after{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .45s ease,visibility 0s linear .5s;}body::before{content:"";position:fixed;top:50%;left:50%;width:38px;height:38px;margin:-19px 0 0 -19px;z-index:2147483001;border-radius:50%;border:3px solid var(--nh-amber-tint,rgba(224,194,122,0.14));border-top-color:var(--nh-amber,#e0c27a);box-shadow:0 0 28px var(--nh-amber-shadow,rgba(224,194,122,0.30));animation:nh-spin .9s linear infinite;transition:opacity .3s ease;}html.nh-ready body::before{opacity:0;visibility:hidden;animation:none;transition:opacity .3s ease,visibility 0s linear .35s;}@keyframes nh-spin{to{transform:rotate(360deg)}}</style><script>setTimeout(function(){document.documentElement.classList.add("nh-ready");},4000);</script><script>window.NH_CONFIG={"appName":"${NH_APP_NAME}","showLogoText":${NH_SHOW_LOGO_TEXT},"colorizeLogo":${NH_COLORIZE_LOGO},"logoUrl":"${NH_LOGO_URL}","accentColor":"${NH_ACCENT_COLOR}","baseTheme":"${NH_BASE_THEME}","mainFont":"${NH_MAIN_FONT}","fontScale":${NH_FONT_SCALE},"carouselTiming":${NH_CAROUSEL_TIMING},"showCustomRecentSeries":${NH_SHOW_RECENT_SERIES},"recentSeriesCount":${NH_RECENT_SERIES_COUNT},"customSeriesCards":${NH_CUSTOM_SERIES_CARDS},"showHeroCarousel":${NH_SHOW_HERO_CAROUSEL},"showRatings":${NH_SHOW_RATINGS},"globalSearch":${NH_GLOBAL_SEARCH},"themeVersion":"${THEME_VERSION}"};</script><script>window.NH_SERVER_CONFIG=<!--# include virtual="/_nh/server-config.json" -->;</script><script><!--# include virtual="/_nh/core.js" --></script><script><!--# include virtual="/_nh/nh-early.js" --></script></head>';
 
         sub_filter '</body>'
             '<script><!--# include virtual="/_nh/enhancements.js" --></script><script><!--# include virtual="/_nh/book-details.js" --></script></body>';

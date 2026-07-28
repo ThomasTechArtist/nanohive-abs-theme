@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.65.3  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.167.0  (injected build) */
 
 (function () {
   'use strict';
@@ -49,21 +49,61 @@
     recentSeriesCount: 12,
     customSeriesCards: true,
     showHeroCarousel: true,
+    usersSort: 'time', // Settings -> Users card grid: 'time' | 'name'
+    familyStats: true,  // A5: share a summary of your listening with this server
+    narratorsCards: true,    // redesigned narrators grid (A9)
+    collectionsPages: true,  // collections landing + detail redesign (A10)
+    usersCards: true,        // Settings -> Users card grid
+    statsRanking: true,      // Server Ranking / family board on the stats page
+    accountPhoto: true,      // profile photo in the appbar
+    cinematicBg: true,       // blurred cover backdrop on home/series/author pages
+    pageTransitions: true,   // masked page transitions + boot veil
     continueReadingMode: 'combine',
-    showRatings: true
+    showRateFinished: true,   // home row: finished books you have not rated
+    // OFF by default, unlike the other two: this one changes what comes out of
+    // your speakers without being asked. Display features can default on; a
+    // playback behaviour should be chosen.
+    autoplaySeries: false,   // when a book ends, start the next one in its series
+    finishedTools: true,     // "recently finished" + "almost done" cards in your stats
+    homeOrder: [],           // home section order; empty = ABS order
+    showRatings: true,
+    showCardRatings: true,
+    globalSearch: true,
+    startPage: '',
+    seriesCoverMode: 'grid' // series header fallback when no cover was uploaded (Pawel: grid is the default)
   };
 
   const serverSettings = (window.NH_CONFIG && typeof window.NH_CONFIG === 'object') ? window.NH_CONFIG : {};
   // UI-saved server defaults (see the Server Defaults card): sit between env vars
   // and the user's own saved settings.
-  const uiServerSettings = (window.NH_SERVER_CONFIG && typeof window.NH_SERVER_CONFIG === 'object') ? window.NH_SERVER_CONFIG : {};
+  const uiServerSettings = (window.NH_SERVER_CONFIG && typeof window.NH_SERVER_CONFIG === 'object') ? { ...window.NH_SERVER_CONFIG } : {};
+  // runtime-only key: pre-r19 saves wrote the whole config INCLUDING the then-
+  // current themeVersion into server-config.json, and that fossil then shadowed
+  // the REAL build stamp on every later deploy (staging reported the v1.9.1
+  // stamp under an r18 container). Never accept it from the stored file.
+  delete uiServerSettings.themeVersion;
 
   let nhLastCrMode;
   let nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings };
   try {
-    const saved = localStorage.getItem('nh-settings');
-    if (saved) nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings, ...JSON.parse(saved) };
+    let saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {};
+    // Legacy full-dump migration — mirror of the identical check in nh-early.js
+    // (which normally runs first; this covers builds where it didn't).
+    if (saved && !saved._v && Object.keys(saved).length >= 20) {
+      localStorage.removeItem('nh-settings');
+      saved = {};
+    }
+    delete saved._v;
+    nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings, ...saved };
   } catch (e) {}
+
+  // Admin kill-switches (B6): lock* keys in the UI server config hard-disable a
+  // feature for EVERY user — they win over personal settings unconditionally.
+  const NH_LOCKS = { lockRatings: 'showRatings', lockCardRatings: 'showCardRatings', lockGlobalSearch: 'globalSearch', lockHeroCarousel: 'showHeroCarousel' };
+  Object.keys(NH_LOCKS).forEach((lk) => { if (uiServerSettings[lk]) nhSettings[NH_LOCKS[lk]] = false; });
+  function nhIsLocked(settingKey) {
+    return Object.keys(NH_LOCKS).some((lk) => NH_LOCKS[lk] === settingKey && uiServerSettings[lk]);
+  }
 
   const baseThemes = {
     warm:  { name: 'Warm Dark', canvas: '#181512', rail: '#120f0d', raised: '#221e1a', rgb: '24, 21, 18', appbar: 'rgba(24, 21, 18, 0.70)' },
@@ -95,8 +135,151 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
+  // Browser tab identity: title + favicon follow the customizations. Called
+  // from applySettings AND from the tick — Nuxt re-renders <head> on route
+  // changes, so a one-shot swap silently reverts to ABS's stock icon.
+  const nhFavStock = []; // stock icon links we removed, so they can be put back
+  // Nuxt re-inserts its own <link rel=icon> when it re-renders <head>, and the
+  // ~80ms reactive tick was slow enough that the browser sometimes latched onto
+  // the stock icon first — which is why the custom one appeared only sometimes.
+  // A head observer re-asserts in the SAME frame as the insertion. Guarded so a
+  // storm of head writes cannot loop: the callback is coalesced per frame, and
+  // our own link edits are ignored while we are inside the function.
+  let nhFavBusy = false, nhFavQueued = false;
+  function nhFavWatchHead() {
+    if (!document.head || document.head.dataset.nhFavWatch) return;
+    document.head.dataset.nhFavWatch = '1';
+    try {
+      new MutationObserver(() => {
+        if (nhFavBusy || nhFavQueued) return;
+        nhFavQueued = true;
+        requestAnimationFrame(() => { nhFavQueued = false; try { nhApplyTabIdentity(); } catch (e) {} });
+      }).observe(document.head, { childList: true });
+    } catch (e) {}
+  }
+
+  function nhApplyTabIdentity() {
+    nhFavBusy = true;
+    try { nhApplyTabIdentityInner(); } finally { nhFavBusy = false; }
+    nhFavWatchHead();
+  }
+  // Firefox restores tabs from the bfcache without re-running the tick fast
+  // enough for the tab strip's first paint — re-assert the moment the page is
+  // shown or refocused.
+  window.addEventListener('pageshow', () => { try { nhApplyTabIdentity(); } catch (e) {} });
+  window.addEventListener('focus', () => { try { nhApplyTabIdentity(); } catch (e) {} });
+
+  function nhApplyTabIdentityInner() {
+  // Tab identity follows the customizations (user request): the browser
+  // title carries the custom app name, the favicon follows the custom logo.
+  // Nuxt rewrites the title on route changes — the tick re-brands it within
+  // ~80ms; the replace is a no-op once done.
+  try {
+    const appName = (nhSettings.appName || '').trim();
+    if (appName && /audiobookshelf/i.test(document.title)) {
+      document.title = document.title.replace(/audiobookshelf/ig, appName);
+    }
+    const fav = (nhSettings.logoUrl || '').trim();
+    let favHref = fav;
+    if (fav && nhSettings.colorizeLogo) {
+      // match the colorized appbar logo: same accent tint, done on canvas
+      const tinted = nhFavTint(fav, nhSettings.accentColor || '#e0c27a');
+      if (tinted) favHref = tinted;
+    }
+    // Chrome won't reliably refresh the tab icon when an EXISTING link's
+    // href changes (a refresh falls back to the cached default) — the
+    // stock icon links are disabled and OUR link node is re-created fresh
+    // whenever the target changes.
+    let favLink = document.getElementById('nh-favicon');
+    if (favHref) {
+      // Firefox keeps painting a stock icon link whose rel we merely renamed
+      // (Pawel: correct until a refresh, then the default is back), so remove
+      // them outright — remembered so they can be restored if the custom logo
+      // is cleared.
+      document.querySelectorAll('link[rel*="icon"]:not(#nh-favicon)').forEach((l) => {
+        if (l.rel !== 'nh-icon-disabled') {
+          nhFavStock.push({ rel: l.dataset.nhOff || l.rel, href: l.getAttribute('href'), type: l.getAttribute('type'), sizes: l.getAttribute('sizes') });
+        }
+        l.remove();
+      });
+      if (!favLink || favLink.dataset.src !== favHref) {
+        if (favLink) favLink.remove();
+        favLink = document.createElement('link');
+        favLink.id = 'nh-favicon';
+        favLink.rel = 'icon';
+        // Firefox repaints the tab icon far more reliably for a URL it has never
+        // used for a favicon before — reusing one it already resolved (even via
+        // a fresh <link>) is the remaining "sometimes it's the old icon" case.
+        // A marker query makes ours distinct from any stock use of the file.
+        // Never on data: URLs (the tinted canvas) — a query would corrupt them.
+        favLink.href = /^data:/i.test(favHref) ? favHref
+          : favHref + (favHref.indexOf('?') < 0 ? '?' : '&') + 'nhfav=1';
+        favLink.dataset.src = favHref;
+        document.head.appendChild(favLink);
+      }
+    } else {
+      if (favLink) favLink.remove();
+      document.querySelectorAll('link[data-nh-off]').forEach((l) => {
+        l.rel = l.dataset.nhOff;
+        delete l.dataset.nhOff;
+      });
+      while (nhFavStock.length) { // restore the ones we removed
+        const o = nhFavStock.shift();
+        const l = document.createElement('link');
+        l.rel = o.rel;
+        if (o.href) l.href = o.href;
+        if (o.type) l.type = o.type;
+        if (o.sizes) l.setAttribute('sizes', o.sizes);
+        document.head.appendChild(l);
+      }
+    }
+  } catch (e) {}
+  }
+
   function saveSettings() {
-    localStorage.setItem('nh-settings', JSON.stringify(nhSettings));
+    // Store only the keys that actually DIFFER from the operator/server defaults.
+    // The old full-object dump pinned EVERY value the moment a user touched ONE
+    // toggle — after which admin changes to the server defaults never reached that
+    // browser again (and the README's "only touched keys are stored" was a lie).
+    // Equal-to-default keys are dropped, so they keep tracking future defaults.
+    const base = { ...defaultSettings, ...serverSettings, ...uiServerSettings };
+    const diff = { _v: 2 }; // marks post-diff-era saves for the legacy migration
+    Object.keys(nhSettings).forEach((k) => {
+      if (JSON.stringify(nhSettings[k]) !== JSON.stringify(base[k])) diff[k] = nhSettings[k];
+    });
+    localStorage.setItem('nh-settings', JSON.stringify(diff));
+  }
+
+  // Accent-tinted favicon (colorizeLogo): the logo's alpha is kept, every
+  // opaque pixel becomes the accent colour — the canvas twin of the CSS
+  // mask the appbar uses. Async; the tick swaps the favicon in once the
+  // dataURL is cached. Remote logos that taint the canvas fall back to the
+  // untinted file.
+  const nhFav = { key: '', url: '', pending: false };
+  function nhFavTint(src, accent) {
+    const key = src + '|' + accent;
+    if (nhFav.key === key) return nhFav.url || null;
+    if (nhFav.pending) return null;
+    nhFav.pending = true;
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = im.naturalWidth || 64;
+        cv.height = im.naturalHeight || 64;
+        const ctx = cv.getContext('2d');
+        ctx.drawImage(im, 0, 0);
+        ctx.globalCompositeOperation = 'source-in';
+        ctx.fillStyle = accent;
+        ctx.fillRect(0, 0, cv.width, cv.height);
+        nhFav.url = cv.toDataURL('image/png');
+      } catch (e) { nhFav.url = ''; }
+      nhFav.key = key;
+      nhFav.pending = false;
+    };
+    im.onerror = () => { nhFav.url = ''; nhFav.key = key; nhFav.pending = false; };
+    im.src = src;
+    return null;
   }
 
   function applySettings() {
@@ -152,12 +335,33 @@
         }
       }
 
+      // Card hover polish: softer dim, accent play control, stars fade in with
+      // the hover overlay. This used to be a toggle; it is now unconditional
+      // (Pawel: "it should be always on and that's it"). Deliberately NOT gated
+      // on nhSettings.cardHoverPolish any more -- anyone who had switched it off
+      // has that false persisted in their browser, and reading the key would pin
+      // them to the stock look forever with no UI left to change it back.
+      {
+        css += `[id^="cover-area-"] div[class*="bg-black/40"] { background-color: rgba(0,0,0,0.22) !important; }
+        [id^="cover-area-"] div[class*="hover:scale-110"] { color: var(--nh-amber, #e0c27a) !important; filter: drop-shadow(0 2px 5px rgba(0,0,0,0.4)); opacity: 0.72; transition: opacity 0.15s ease; }
+        [id^="cover-area-"] div[class*="hover:scale-110"]:hover { opacity: 1; }
+        [id^="cover-area-"] div[class*="hover:scale-110"] .material-symbols { font-size: 2.4rem !important; }
+        `;
+        /* The rating badge used to fade in with this hover overlay, with a
+           (hover: none) escape hatch for touch. That was two designs -- Pawel
+           asked for one -- and on a laptop with a touchscreen the escape hatch
+           does not fire at all, so the badge stayed hover-only there. It now
+           lives in the card caption and is always visible; see the A7 block in
+           core.js. Nothing to gate here any more. */
+      }
       if (!nhSettings.showLogoText) css += `#appbar h1 { display: none !important; } #page-wrapper img[alt="Audiobookshelf Logo"] + h1 { display: none !important; } `;
       if (nhSettings.hideRailSeries) css += `[aria-label="Library Sidebar"] a[href$="/bookshelf/series"] { display: none !important; } `;
       if (nhSettings.hideRailCollections) css += `[aria-label="Library Sidebar"] a[href$="/bookshelf/collections"] { display: none !important; } `;
       if (nhSettings.hideRailAuthors) css += `[aria-label="Library Sidebar"] a[href$="/bookshelf/authors"] { display: none !important; } `;
       if (nhSettings.hideRailNarrators) css += `[aria-label="Library Sidebar"] a[href$="/narrators"] { display: none !important; } `;
       if (nhSettings.hideRailStats) css += `[aria-label="Library Sidebar"] a[href$="/stats"] { display: none !important; } `;
+
+      nhApplyTabIdentity();
 
       // CSS-only Logo Colorization via Safe DOM Insertion
       // Appbar logo + the login page header (no #appbar there; anchored on its alt text)
@@ -223,6 +427,13 @@
 
   function createToggle(labelText, settingKey) {
     const wrapper = document.createElement('div');
+    // admin-locked feature: show a static note instead of a dead toggle
+    if (nhIsLocked(settingKey)) {
+      wrapper.className = 'flex items-center py-2';
+      const T2 = nhGsT();
+      wrapper.innerHTML = '<span class="nh-lock-chip">🔒</span><p class="pl-3 text-gray-500 text-sm">' + labelText + ' — ' + (T2.lockedNote || PANEL_T.en.lockedNote) + '</p>';
+      return wrapper;
+    }
     wrapper.className = 'flex items-center py-2 cursor-pointer group';
 
     const renderBtnClass = (checked) =>
@@ -306,6 +517,53 @@
 
   const NH_HASH = '#nh-customizations';
 
+  // Per-language additions merged into PANEL_T after its definition (keeps the
+  // giant one-line dicts untouched). Word-form arrays follow nhWordForm's
+  // 2-or-3 form convention; Polish masculine-personal nouns take the genitive
+  // for every count but 1 ("1162 Lektorów").
+  const NH_T_EXTRA = {
+    en: { rpBadge: 'Open problem reports', wkTitle: 'Minutes listening — last 7 days', wkAvg: 'Daily average', wkRow: 'Days in a row', lsTitle: 'Server statistics', lsAll: 'All libraries', lsPlayed: 'Books played', lsBest: 'Best rated', lsGenres: 'Top genres', srvPick: 'What to include:', srvGRest: 'Features & behaviour', aeBtn: 'Tidy authors', aeTitle: 'Authors with no books', aeNone: 'Every author here has at least one book.', aeRemove: 'Remove', aeDone: 'Removed', aeWorking: 'Removing…', rpMenu: 'Report a problem', rpTitle: 'Report a problem', rpWhat: 'What is wrong?', rpNote: 'Anything else the admin should know? (optional)', rpSend: 'Send report', rpSent: 'Sent. Thanks.', rpFail: 'Could not send', rpMissing: 'Missing or incomplete content', rpQuality: 'Bad audio quality', rpPlay: 'Will not play', rpWrong: 'Wrong book, cover or metadata', rpChapters: 'Chapters are wrong', rpOther: 'Something else', rpCard: 'Reported problems', rpHint: 'Problems users reported from a book page. Resolving one removes it from this list.', rpEmpty: 'Nothing reported.', rpResolve: 'Resolve', rpOpen: 'Open book', apCard: 'Playback', apToggle: 'Autoplay next book in a series', apHint: 'When a book finishes, start the next one in the same series automatically. Only books already in your library, and only ones you have not finished.', apNext: 'Next in series', fdToggle: 'Finished-book tools in your stats', ysFinished: 'Recently finished', ysAlmost: 'Almost done', ysMarkDone: 'Mark as finished', ysEditDate: 'Change the finished date', ysNoDate: 'no date', hmShowing: 'chart shows', ysTitle: 'Your listening', ysStreak: 'Streak', ysCurrent: 'Current', ysLongest: 'Longest', ysDaysTotal: 'Days total', ysPace: 'Pace', ysThisWeek: 'This week', ysPerDay: 'Per listening day', ysBestDay: 'Best day', ysWhen: 'When you listen', ysTopBooks: 'Most listened books', ysTopAuthors: 'Most listened authors', ysTopNarrators: 'Most listened narrators', rfRate: 'Rate', rfSheet: 'Rate this book', rfOpen: 'Open book page', rfPickHint: 'Pick a rating', rfTitle: 'Rate what you finished', rfToggle: 'Rate finished row on home', hoTitle: 'Home section order', hoEmpty: 'Open the home page once, then come back here.', hoReset: 'Reset to default order', ctIcon: 'Icon', ctColour: 'Accent', ctNeedBook: 'Audiobookshelf cannot store an empty collection, so pick at least one book. You can add or remove books later.', colEditIcon: 'Change icon', ciTitle: 'Collection icon', ciReset: 'Match the name automatically', nrForms: ['Narrator', 'Narrators'], auForms: ['Author', 'Authors'], auSearch: 'Filter authors…', colEditDesc: 'Edit description', colBookForms: ['book', 'books'], colForms: ['Collection', 'Collections'], ctTitle: 'Start a collection', ctBlank: 'Blank collection', ctNew: 'New collection', ctNewHint: 'from a template', ctNamePh: 'Collection name', ctSearch: 'Search books or authors to add…', ctCreate: 'Create', ctBack: '‹ Back', ctAddAll: 'Add all books', abTitle: 'Add books', abAdd: 'Add', sbTitle: 'Server Ranking', sbWeek: 'Week', sbMonth: 'Month', sbYear: 'Year', sbAll: 'All time', sbBooks: 'Books', sbTopBooks: 'Most listened', sbTotal: 'Total', sbListeners: 'Listeners', sbAvg: 'Average', avRemove: 'Remove photo', avSet: 'Set photo…', ugListened: 'Listened', ugPhoto: 'Profile picture', ugNever: 'Never', ugSeen: 'Last seen', ugEdit: 'Edit user', ugDelete: 'Delete user', ugAdd: 'Add photo', ugChange: 'Change photo', ugSortName: 'A–Z', ugSortTime: 'Most listened', ugSortSeen: 'Recently active', fsTitle: 'Server ranking', fsJoin: 'Turn on “Share my listening stats” in the customization panel to appear in the server ranking.', fsWaiting: 'Sharing is on — your summary joins the server ranking shortly, along with everyone else on this server.', fsToggle: 'Share my listening stats', fsCard: 'Server ranking', fsHint: 'Share a summary of your listening (totals and per-day minutes) with the other people on this server — it powers the server ranking. On by default. Turn it off and you are removed from the ranking and its totals, and everything you shared is deleted.', yirBtn: 'Year in review', yirTitle: 'Your year in listening', yirYear: 'Last 12 months', yirDays: 'Days with listening', yirBest: 'Best day', yirMonths: 'By month', yirNone: 'No listening data yet.', bsCard: 'Book links', bsHint: 'Buttons on the book page for looking a title up elsewhere. Goodreads and your language\u2019s biggest local site are on by default.', bsFind: 'Find on', bsGlobal: 'Everywhere', bsLocal: 'For your language', bsOther: 'Other countries', pgCard: 'Redesigned pages', pgHint: 'Each of these replaces an Audiobookshelf page with the NanoHive version. Turn one off to get the stock page back.', pgNarrators: 'Narrator cards', pgCollections: 'Collection pages', pgUsers: 'User cards (settings)', pgStats: 'Listening ranking', pgPhoto: 'Profile photo in the top bar', pgCinematic: 'Cinematic background', pgTransitions: 'Page transitions', pSearch: 'Search settings…', pSearchNone: 'Nothing matches that.' , erTypeface: "Typeface", erPage: "Page theme", erText: "Text colour", erBg: "Background", erDefault: "Default (ABS)", erAuto: "Auto" , lfByAuthor: "Author › series order", lfBySeries: "Series › order" , lfSecFilters: "More filters", lfSecSort: "Multi-sort", lfAuthor: "Author", lfSeries: "Series", lfTitle: "Title", lfYear: "Year", lfAdded: "Added", lfDuration: "Duration", lfNarrator: "Narrator", lfGenre: "Genre", lfLanguage: "Language", lfProgress: "Progress", lfPgFinished: "Finished", lfPgInProgress: "In progress", lfPgNot: "Not started" },
+    pl: { rpBadge: 'Otwarte zgłoszenia problemów', wkTitle: 'Minuty słuchania — ostatnie 7 dni', wkAvg: 'Średnia dzienna', wkRow: 'Dni z rzędu', lsTitle: 'Statystyki serwera', lsAll: 'Wszystkie biblioteki', lsPlayed: 'Odtworzone książki', lsBest: 'Najlepiej oceniane', lsGenres: 'Najczęstsze gatunki', srvPick: 'Co zapisać:', srvGRest: 'Funkcje i zachowanie', aeBtn: 'Uporządkuj autorów', aeTitle: 'Autorzy bez książek', aeNone: 'Każdy autor ma tu co najmniej jedną książkę.', aeRemove: 'Usuń', aeDone: 'Usunięto', aeWorking: 'Usuwanie…', rpMenu: 'Zgłoś problem', rpTitle: 'Zgłoś problem', rpWhat: 'Co jest nie tak?', rpNote: 'Coś jeszcze, co powinien wiedzieć administrator? (opcjonalnie)', rpSend: 'Wyślij zgłoszenie', rpSent: 'Wysłano. Dzięki.', rpFail: 'Nie udało się wysłać', rpMissing: 'Brakująca lub niepełna treść', rpQuality: 'Zła jakość dźwięku', rpPlay: 'Nie odtwarza się', rpWrong: 'Zła książka, okładka lub metadane', rpChapters: 'Błędne rozdziały', rpOther: 'Coś innego', rpCard: 'Zgłoszone problemy', rpHint: 'Problemy zgłoszone przez użytkowników ze strony książki. Rozwiązanie usuwa zgłoszenie z listy.', rpEmpty: 'Brak zgłoszeń.', rpResolve: 'Rozwiąż', rpOpen: 'Otwórz książkę', apCard: 'Odtwarzanie', apToggle: 'Automatycznie odtwarzaj kolejną książkę z serii', apHint: 'Gdy książka się skończy, automatycznie zacznij następną z tej samej serii. Tylko książki już w Twojej bibliotece i tylko nieukończone.', apNext: 'Następna w serii', fdToggle: 'Narzędzia ukończonych książek w statystykach', ysFinished: 'Ostatnio ukończone', ysAlmost: 'Prawie ukończone', ysMarkDone: 'Oznacz jako ukończone', ysEditDate: 'Zmień datę ukończenia', ysNoDate: 'brak daty', hmShowing: 'wykres pokazuje', ysTitle: 'Twoje słuchanie', ysStreak: 'Passa', ysCurrent: 'Obecna', ysLongest: 'Najdłuższa', ysDaysTotal: 'Dni łącznie', ysPace: 'Tempo', ysThisWeek: 'W tym tygodniu', ysPerDay: 'Na dzień słuchania', ysBestDay: 'Najlepszy dzień', ysWhen: 'Kiedy słuchasz', ysTopBooks: 'Najczęściej słuchane książki', ysTopAuthors: 'Najczęściej słuchani autorzy', ysTopNarrators: 'Najczęściej słuchani lektorzy', rfRate: 'Oceń', rfSheet: 'Oceń tę książkę', rfOpen: 'Otwórz stronę książki', rfPickHint: 'Wybierz ocenę', rfTitle: 'Oceń przeczytane', rfToggle: 'Sekcja „Oceń przeczytane” na stronie głównej', hoTitle: 'Kolejność sekcji na stronie głównej', hoEmpty: 'Otwórz stronę główną, a potem wróć tutaj.', hoReset: 'Przywróć domyślną kolejność', ctIcon: 'Ikona', ctColour: 'Kolor', ctNeedBook: 'Audiobookshelf nie potrafi zapisać pustej kolekcji, więc wybierz co najmniej jedną książkę. Później możesz dodawać i usuwać dowolne.', colEditIcon: 'Zmień ikonę', ciTitle: 'Ikona kolekcji', ciReset: 'Dopasuj automatycznie do nazwy', nrForms: ['Lektor', 'Lektorów', 'Lektorów'], auForms: ['Autor', 'Autorów', 'Autorów'], auSearch: 'Filtruj autorów…', colEditDesc: 'Edytuj opis', colBookForms: ['książka', 'książki', 'książek'], colForms: ['Kolekcja', 'Kolekcje', 'Kolekcji'], ctTitle: 'Utwórz kolekcję', ctBlank: 'Pusta kolekcja', ctNew: 'Nowa kolekcja', ctNewHint: 'z szablonu', ctNamePh: 'Nazwa kolekcji', ctSearch: 'Szukaj książek lub autorów…', ctCreate: 'Utwórz', ctBack: '‹ Wstecz', ctAddAll: 'Dodaj wszystkie', abTitle: 'Dodaj książki', abAdd: 'Dodaj', sbTitle: 'Ranking serwera', sbWeek: 'Tydzień', sbMonth: 'Miesiąc', sbYear: 'Rok', sbAll: 'Całość', sbBooks: 'Książki', sbTopBooks: 'Najczęściej słuchane', sbTotal: 'Razem', sbListeners: 'Słuchacze', sbAvg: 'Średnia', avRemove: 'Usuń zdjęcie', avSet: 'Ustaw zdjęcie…', ugListened: 'Odsłuchano', ugPhoto: 'Zdjęcie profilowe', ugNever: 'Nigdy', ugSeen: 'Ostatnio', ugEdit: 'Edytuj użytkownika', ugDelete: 'Usuń użytkownika', ugAdd: 'Dodaj zdjęcie', ugChange: 'Zmień zdjęcie', ugSortName: 'A–Z', ugSortTime: 'Najwięcej odsłuchane', ugSortSeen: 'Ostatnio aktywni', fsTitle: 'Ranking serwera', fsJoin: 'Włącz „Udostępniaj moje statystyki” w panelu personalizacji, aby pojawić się w rankingu serwera.', fsWaiting: 'Udostępnianie włączone — Twoje podsumowanie za chwilę dołączy do rankingu serwera, razem z pozostałymi osobami.', fsToggle: 'Udostępniaj moje statystyki', fsCard: 'Ranking serwera', fsHint: 'Udostępnij podsumowanie swojego słuchania (sumy i minuty dzienne) pozostałym osobom na tym serwerze, to one zasilają ranking serwera. Domyślnie włączone. Po wyłączeniu znikasz z rankingu serwera i nie liczysz się do jego sum, a udostępnione dane zostają usunięte.', yirBtn: 'Rok w podsumowaniu', yirTitle: 'Twój rok ze słuchaniem', yirYear: 'Ostatnie 12 miesięcy', yirDays: 'Dni ze słuchaniem', yirBest: 'Najlepszy dzień', yirMonths: 'Wg miesięcy', yirNone: 'Brak danych o słuchaniu.', bsCard: 'Linki do książki', bsHint: 'Przyciski na stronie książki do wyszukania tytułu w innych serwisach. Domyślnie Goodreads i największy serwis w Twoim języku.', bsFind: 'Szukaj w', bsGlobal: 'Wszędzie', bsLocal: 'Dla Twojego języka', bsOther: 'Inne kraje', pgCard: 'Przeprojektowane strony', pgHint: 'Każda z tych opcji zastępuje stronę Audiobookshelf wersją NanoHive. Wyłącz, aby wrócić do oryginalnej.', pgNarrators: 'Karty lektorów', pgCollections: 'Strony kolekcji', pgUsers: 'Karty użytkowników (ustawienia)', pgStats: 'Ranking słuchania', pgPhoto: 'Zdjęcie profilowe na górnym pasku', pgCinematic: 'Tło kinowe', pgTransitions: 'Przejścia między stronami', pSearch: 'Szukaj ustawień…', pSearchNone: 'Brak pasujących ustawień.' , erTypeface: "Krój pisma", erPage: "Motyw strony", erText: "Kolor tekstu", erBg: "Tło", erDefault: "Domyślny (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › kolejność serii", lfBySeries: "Seria › kolejność" , lfSecFilters: "Więcej filtrów", lfSecSort: "Sortowanie wielopoziomowe", lfAuthor: "Autor", lfSeries: "Seria", lfTitle: "Tytuł", lfYear: "Rok", lfAdded: "Dodano", lfDuration: "Długość", lfNarrator: "Lektor", lfGenre: "Gatunek", lfLanguage: "Język", lfProgress: "Postęp", lfPgFinished: "Ukończone", lfPgInProgress: "W trakcie", lfPgNot: "Nierozpoczęte" },
+    de: { sbTitle: 'Server-Rangliste', rpBadge: 'Offene Problemmeldungen', wkTitle: 'Hörminuten — letzte 7 Tage', wkAvg: 'Tagesdurchschnitt', wkRow: 'Tage in Folge', lsTitle: 'Server-Statistiken', lsAll: 'Alle Bibliotheken', lsPlayed: 'Gespielte Bücher', lsBest: 'Am besten bewertet', lsGenres: 'Top-Genres', srvPick: 'Was speichern:', srvGRest: 'Funktionen & Verhalten', aeBtn: 'Autoren aufräumen', aeTitle: 'Autoren ohne Bücher', aeNone: 'Jeder Autor hier hat mindestens ein Buch.', aeRemove: 'Entfernen', aeDone: 'Entfernt', aeWorking: 'Wird entfernt…', rpMenu: 'Problem melden', rpTitle: 'Problem melden', rpWhat: 'Was stimmt nicht?', rpNote: 'Sonst noch etwas für die Administration? (optional)', rpSend: 'Meldung senden', rpSent: 'Gesendet. Danke.', rpFail: 'Senden fehlgeschlagen', rpMissing: 'Fehlender oder unvollständiger Inhalt', rpQuality: 'Schlechte Tonqualität', rpPlay: 'Spielt nicht ab', rpWrong: 'Falsches Buch, Cover oder Metadaten', rpChapters: 'Kapitel stimmen nicht', rpOther: 'Etwas anderes', rpCard: 'Gemeldete Probleme', rpHint: 'Von Nutzern auf einer Buchseite gemeldete Probleme. Erledigen entfernt die Meldung.', rpEmpty: 'Nichts gemeldet.', rpResolve: 'Erledigt', rpOpen: 'Buch öffnen', apCard: 'Wiedergabe', apToggle: 'Nächstes Buch einer Reihe automatisch abspielen', apHint: 'Wenn ein Buch endet, startet automatisch das nächste derselben Reihe. Nur Bücher aus deiner Bibliothek, und nur noch nicht beendete.', apNext: 'Nächstes der Reihe', fdToggle: 'Werkzeuge für beendete Bücher in den Statistiken', ysFinished: 'Zuletzt beendet', ysAlmost: 'Fast fertig', ysMarkDone: 'Als beendet markieren', ysEditDate: 'Abschlussdatum ändern', ysNoDate: 'kein Datum', hmShowing: 'Diagramm zeigt', ysTitle: 'Dein Hören', ysStreak: 'Serie', ysCurrent: 'Aktuell', ysLongest: 'Längste', ysDaysTotal: 'Tage gesamt', ysPace: 'Tempo', ysThisWeek: 'Diese Woche', ysPerDay: 'Pro Hörtag', ysBestDay: 'Bester Tag', ysWhen: 'Wann du hörst', ysTopBooks: 'Meistgehörte Bücher', ysTopAuthors: 'Meistgehörte Autoren', ysTopNarrators: 'Meistgehörte Sprecher', rfRate: 'Bewerten', rfSheet: 'Dieses Buch bewerten', rfOpen: 'Buchseite öffnen', rfPickHint: 'Bewertung wählen', rfTitle: 'Bewerte, was du beendet hast', rfToggle: 'Bereich ‚Bewerten‘ auf der Startseite', hoTitle: 'Reihenfolge der Startseite', hoEmpty: 'Öffne einmal die Startseite und komm dann zurück.', hoReset: 'Standardreihenfolge', nrSearch: 'Sprecher filtern…', nrSortName: 'Name', nrSortBooks: 'Meiste Bücher', nrForms: ['Sprecher', 'Sprecher'], nrBooksForms: ['Buch', 'Bücher'], auForms: ['Autor', 'Autoren'], auSearch: 'Autoren filtern…' , lsTitle: "Server-Statistiken", lsAll: "Alle Bibliotheken", lsPlayed: "Gespielte Bücher", lsBest: "Am besten bewertet", lsGenres: "Top-Genres", rpCard: "Gemeldete Probleme", rpHint: "Von Nutzern auf einer Buchseite gemeldete Probleme. Erledigen entfernt die Meldung.", rpEmpty: "Nichts gemeldet.", rpResolve: "Erledigt", rpOpen: "Buch öffnen", ctIcon: "Symbol", ctColour: "Akzent", ctNeedBook: "Audiobookshelf kann keine leere Sammlung speichern — wähle mindestens ein Buch. Später kannst du beliebig hinzufügen oder entfernen.", colEditIcon: "Symbol ändern", ciTitle: "Sammlungs-Symbol", ciReset: "Automatisch am Namen ausrichten", colEditDesc: "Beschreibung bearbeiten", colBookForms: ["Buch","Bücher"], colForms: ["Sammlung","Sammlungen"], ctTitle: "Sammlung anlegen", ctBlank: "Leere Sammlung", ctNew: "Neue Sammlung", ctNewHint: "aus einer Vorlage", ctNamePh: "Name der Sammlung", ctSearch: "Bücher oder Autoren suchen…", ctCreate: "Anlegen", ctBack: "‹ Zurück", ctAddAll: "Alle Bücher hinzufügen", abTitle: "Bücher hinzufügen", abAdd: "Hinzufügen", sbWeek: "Woche", sbMonth: "Monat", sbYear: "Jahr", sbAll: "Gesamt", sbBooks: "Bücher", sbTopBooks: "Meistgehört", sbTotal: "Gesamt", sbListeners: "Hörer", sbAvg: "Durchschnitt", avRemove: "Foto entfernen", avSet: "Foto wählen…", ugListened: "Gehört", ugPhoto: "Profilbild", ugNever: "Nie", ugSeen: "Zuletzt aktiv", ugEdit: "Nutzer bearbeiten", ugDelete: "Nutzer löschen", ugAdd: "Foto hinzufügen", ugChange: "Foto ändern", ugSortName: "A–Z", ugSortTime: "Meistgehört", ugSortSeen: "Zuletzt aktiv", fsTitle: "Server-Rangliste", fsCard: "Server-Rangliste", fsToggle: "Meine Hörstatistiken teilen", fsJoin: "Aktiviere „Meine Hörstatistiken teilen“ im Anpassungs-Panel, um in der Server-Rangliste zu erscheinen.", fsWaiting: "Teilen ist aktiv — deine Zusammenfassung erscheint gleich in der Server-Rangliste, zusammen mit allen anderen.", fsHint: "Teile eine Zusammenfassung deines Hörens (Summen und Minuten pro Tag) mit den anderen auf diesem Server — sie speist die Server-Rangliste. Standardmäßig aktiv. Beim Ausschalten wirst du aus der Rangliste und ihren Summen entfernt, und alles Geteilte wird gelöscht.", yirBtn: "Jahresrückblick", yirTitle: "Dein Hörjahr", yirYear: "Letzte 12 Monate", yirDays: "Tage mit Hören", yirBest: "Bester Tag", yirMonths: "Nach Monat", yirNone: "Noch keine Hördaten.", bsCard: "Buch-Links", bsHint: "Buttons auf der Buchseite, um einen Titel anderswo nachzuschlagen. Goodreads und die größte Seite deiner Sprache sind vorab aktiv.", bsFind: "Suchen auf", bsGlobal: "Überall", bsLocal: "Für deine Sprache", bsOther: "Andere Länder", pgCard: "Neu gestaltete Seiten", pgHint: "Jede Option ersetzt eine Audiobookshelf-Seite durch die NanoHive-Version. Ausschalten bringt die Originalseite zurück.", pgNarrators: "Sprecher-Karten", pgCollections: "Sammlungs-Seiten", pgUsers: "Nutzer-Karten (Einstellungen)", pgStats: "Hör-Rangliste", pgPhoto: "Profilbild in der Kopfleiste", pgCinematic: "Kino-Hintergrund", pgTransitions: "Seitenübergänge", pSearch: "Einstellungen durchsuchen…", pSearchNone: "Nichts gefunden.", srvPick: "Was speichern:", srvGRest: "Funktionen & Verhalten", apCard: "Wiedergabe", fdToggle: "Werkzeuge für beendete Bücher in den Statistiken", ysNoDate: "kein Datum", hmShowing: "Diagramm zeigt", ysStreak: "Serie", ysCurrent: "Aktuell", ysLongest: "Längste", ysDaysTotal: "Tage gesamt", ysPace: "Tempo", ysPerDay: "Pro Hörtag", ysWhen: "Wann du hörst", ysTopBooks: "Meistgehörte Bücher", ysTopAuthors: "Meistgehörte Autoren", ysTopNarrators: "Meistgehörte Sprecher", rfToggle: "Bereich ‚Bewerten‘ auf der Startseite", hoTitle: "Reihenfolge der Startseite", hoEmpty: "Öffne einmal die Startseite und komm dann zurück.", hoReset: "Standardreihenfolge", scmTitle: "Serien-Seite", scmHint: "So sieht die erzeugte Titelgrafik einer Serie aus, wenn kein eigenes Cover hochgeladen wurde (nur dieser Browser).", scmDeck: "Gestapeltes Deck", scmFirst: "Cover des ersten Buchs", scmGrid: "Cover-Raster (Standard)", scmOff: "Ausgeblendet" , erTypeface: "Schriftart", erPage: "Seitenthema", erText: "Textfarbe", erBg: "Hintergrund", erDefault: "Standard (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › Serienfolge", lfBySeries: "Serie › Reihenfolge" , lfSecFilters: "Mehr Filter", lfSecSort: "Mehrfach-Sortierung", lfAuthor: "Autor", lfSeries: "Serie", lfTitle: "Titel", lfYear: "Jahr", lfAdded: "Hinzugefügt", lfDuration: "Dauer", lfNarrator: "Sprecher", lfGenre: "Genre", lfLanguage: "Sprache", lfProgress: "Fortschritt", lfPgFinished: "Beendet", lfPgInProgress: "Laufend", lfPgNot: "Nicht begonnen" },
+    fr: { sbTitle: 'Classement du serveur', rpBadge: 'Signalements ouverts', wkTitle: 'Minutes d\u2019écoute — 7 derniers jours', wkAvg: 'Moyenne quotidienne', wkRow: 'Jours d\u2019affilée', lsTitle: 'Statistiques du serveur', lsAll: 'Toutes les bibliothèques', lsPlayed: 'Livres écoutés', lsBest: 'Les mieux notés', lsGenres: 'Genres principaux', srvPick: 'Quoi inclure :', srvGRest: 'Fonctions et comportement', aeBtn: 'Ranger les auteurs', aeTitle: 'Auteurs sans livre', aeNone: 'Chaque auteur ici a au moins un livre.', aeRemove: 'Supprimer', aeDone: 'Supprimés', aeWorking: 'Suppression…', rpMenu: 'Signaler un problème', rpTitle: 'Signaler un problème', rpWhat: 'Quel est le problème ?', rpNote: 'Autre chose à signaler à l\u2019administrateur ? (facultatif)', rpSend: 'Envoyer', rpSent: 'Envoyé. Merci.', rpFail: 'Envoi impossible', rpMissing: 'Contenu manquant ou incomplet', rpQuality: 'Mauvaise qualité audio', rpPlay: 'Ne se lit pas', rpWrong: 'Mauvais livre, couverture ou métadonnées', rpChapters: 'Chapitres incorrects', rpOther: 'Autre chose', rpCard: 'Problèmes signalés', rpHint: 'Problèmes signalés par les utilisateurs depuis une page de livre. Résoudre retire le signalement.', rpEmpty: 'Aucun signalement.', rpResolve: 'Résoudre', rpOpen: 'Ouvrir le livre', apCard: 'Lecture', apToggle: 'Lire automatiquement le livre suivant d\u2019une série', apHint: 'À la fin d\u2019un livre, démarre automatiquement le suivant de la même série. Uniquement les livres déjà dans votre bibliothèque, et non terminés.', apNext: 'Suivant de la série', fdToggle: 'Outils des livres terminés dans vos statistiques', ysFinished: 'Terminés récemment', ysAlmost: 'Presque fini', ysMarkDone: 'Marquer comme terminé', ysEditDate: 'Modifier la date de fin', ysNoDate: 'sans date', hmShowing: 'le graphique affiche', ysTitle: 'Votre écoute', ysStreak: 'Série', ysCurrent: 'Actuelle', ysLongest: 'Plus longue', ysDaysTotal: 'Jours au total', ysPace: 'Rythme', ysThisWeek: 'Cette semaine', ysPerDay: 'Par jour d\u2019écoute', ysBestDay: 'Meilleur jour', ysWhen: 'Quand vous écoutez', ysTopBooks: 'Livres les plus écoutés', ysTopAuthors: 'Auteurs les plus écoutés', ysTopNarrators: 'Narrateurs les plus écoutés', rfRate: 'Noter', rfSheet: 'Noter ce livre', rfOpen: 'Ouvrir la page du livre', rfPickHint: 'Choisissez une note', rfTitle: 'Notez vos livres terminés', rfToggle: 'Section « À noter » sur l’accueil', hoTitle: 'Ordre des sections d’accueil', hoEmpty: 'Ouvrez la page d’accueil une fois, puis revenez ici.', hoReset: 'Rétablir l’ordre par défaut', nrSearch: 'Filtrer les narrateurs…', nrSortName: 'Nom', nrSortBooks: 'Plus de livres', nrForms: ['Narrateur', 'Narrateurs'], nrBooksForms: ['livre', 'livres'], auForms: ['Auteur', 'Auteurs'], auSearch: 'Filtrer les auteurs…' , lsTitle: "Statistiques du serveur", lsAll: "Toutes les bibliothèques", lsPlayed: "Livres écoutés", lsBest: "Les mieux notés", lsGenres: "Genres principaux", rpCard: "Problèmes signalés", rpHint: "Problèmes signalés par les utilisateurs depuis une page de livre. Résoudre retire le signalement.", rpEmpty: "Aucun signalement.", rpResolve: "Résoudre", rpOpen: "Ouvrir le livre", ctIcon: "Icône", ctColour: "Accent", ctNeedBook: "Audiobookshelf ne peut pas enregistrer une collection vide — choisissez au moins un livre. Vous pourrez en ajouter ou retirer ensuite.", colEditIcon: "Changer l’icône", ciTitle: "Icône de la collection", ciReset: "Faire correspondre au nom automatiquement", colEditDesc: "Modifier la description", colBookForms: ["livre","livres"], colForms: ["Collection","Collections"], ctTitle: "Créer une collection", ctBlank: "Collection vide", ctNew: "Nouvelle collection", ctNewHint: "depuis un modèle", ctNamePh: "Nom de la collection", ctSearch: "Chercher des livres ou des auteurs…", ctCreate: "Créer", ctBack: "‹ Retour", ctAddAll: "Ajouter tous les livres", abTitle: "Ajouter des livres", abAdd: "Ajouter", sbWeek: "Semaine", sbMonth: "Mois", sbYear: "Année", sbAll: "Depuis toujours", sbBooks: "Livres", sbTopBooks: "Les plus écoutés", sbTotal: "Total", sbListeners: "Auditeurs", sbAvg: "Moyenne", avRemove: "Retirer la photo", avSet: "Choisir une photo…", ugListened: "Écouté", ugPhoto: "Photo de profil", ugNever: "Jamais", ugSeen: "Vu récemment", ugEdit: "Modifier l’utilisateur", ugDelete: "Supprimer l’utilisateur", ugAdd: "Ajouter une photo", ugChange: "Changer la photo", ugSortName: "A–Z", ugSortTime: "Les plus écoutés", ugSortSeen: "Actifs récemment", fsTitle: "Classement du serveur", fsCard: "Classement du serveur", fsToggle: "Partager mes statistiques d’écoute", fsJoin: "Activez « Partager mes statistiques d’écoute » dans le panneau de personnalisation pour apparaître dans le classement du serveur.", fsWaiting: "Partage activé — votre résumé rejoint bientôt le classement du serveur, avec tous les autres.", fsHint: "Partagez un résumé de votre écoute (totaux et minutes par jour) avec les autres personnes de ce serveur — il alimente le classement. Activé par défaut. En le désactivant, vous quittez le classement et ses totaux, et tout ce qui a été partagé est supprimé.", yirBtn: "Rétrospective de l’année", yirTitle: "Votre année d’écoute", yirYear: "12 derniers mois", yirDays: "Jours avec écoute", yirBest: "Meilleur jour", yirMonths: "Par mois", yirNone: "Pas encore de données d’écoute.", bsCard: "Liens du livre", bsHint: "Boutons sur la page du livre pour chercher un titre ailleurs. Goodreads et le plus grand site de votre langue sont activés par défaut.", bsFind: "Chercher sur", bsGlobal: "Partout", bsLocal: "Pour votre langue", bsOther: "Autres pays", pgCard: "Pages repensées", pgHint: "Chaque option remplace une page Audiobookshelf par la version NanoHive. Désactivez pour retrouver la page d’origine.", pgNarrators: "Cartes des narrateurs", pgCollections: "Pages des collections", pgUsers: "Cartes des utilisateurs (réglages)", pgStats: "Classement d’écoute", pgPhoto: "Photo de profil dans la barre du haut", pgCinematic: "Arrière-plan cinéma", pgTransitions: "Transitions de pages", pSearch: "Rechercher un réglage…", pSearchNone: "Rien ne correspond.", srvPick: "Quoi inclure :", srvGRest: "Fonctions et comportement", apCard: "Lecture", fdToggle: "Outils des livres terminés dans vos statistiques", ysNoDate: "sans date", hmShowing: "le graphique affiche", ysStreak: "Série", ysCurrent: "Actuelle", ysLongest: "Plus longue", ysDaysTotal: "Jours au total", ysPace: "Rythme", ysPerDay: "Par jour d’écoute", ysWhen: "Quand vous écoutez", ysTopBooks: "Livres les plus écoutés", ysTopAuthors: "Auteurs les plus écoutés", ysTopNarrators: "Narrateurs les plus écoutés", rfToggle: "Section « À noter » sur l’accueil", hoTitle: "Ordre des sections d’accueil", hoEmpty: "Ouvrez la page d’accueil une fois, puis revenez ici.", hoReset: "Rétablir l’ordre par défaut", scmTitle: "Page de série", scmHint: "Apparence de la couverture générée au-dessus du titre d’une série quand aucune couverture n’a été téléversée (ce navigateur uniquement).", scmDeck: "Pile en éventail", scmFirst: "Couverture du premier livre", scmGrid: "Grille de couvertures (par défaut)", scmOff: "Masquée" , erTypeface: "Police", erPage: "Thème de page", erText: "Couleur du texte", erBg: "Arrière-plan", erDefault: "Par défaut (ABS)", erAuto: "Auto" , lfByAuthor: "Auteur › ordre de série", lfBySeries: "Série › ordre" , lfSecFilters: "Plus de filtres", lfSecSort: "Tri multiple", lfAuthor: "Auteur", lfSeries: "Série", lfTitle: "Titre", lfYear: "Année", lfAdded: "Ajouté", lfDuration: "Durée", lfNarrator: "Narrateur", lfGenre: "Genre", lfLanguage: "Langue", lfProgress: "Progression", lfPgFinished: "Terminés", lfPgInProgress: "En cours", lfPgNot: "Non commencés" },
+    es: { sbTitle: 'Clasificación del servidor', rpBadge: 'Informes de problemas abiertos', wkTitle: 'Minutos de escucha — últimos 7 días', wkAvg: 'Media diaria', wkRow: 'Días seguidos', lsTitle: 'Estadísticas del servidor', lsAll: 'Todas las bibliotecas', lsPlayed: 'Libros reproducidos', lsBest: 'Mejor valorados', lsGenres: 'Géneros principales', srvPick: 'Qué incluir:', srvGRest: 'Funciones y comportamiento', aeBtn: 'Ordenar autores', aeTitle: 'Autores sin libros', aeNone: 'Todos los autores aquí tienen al menos un libro.', aeRemove: 'Eliminar', aeDone: 'Eliminados', aeWorking: 'Eliminando…', rpMenu: 'Informar de un problema', rpTitle: 'Informar de un problema', rpWhat: '¿Qué ocurre?', rpNote: '¿Algo más que deba saber el administrador? (opcional)', rpSend: 'Enviar informe', rpSent: 'Enviado. Gracias.', rpFail: 'No se pudo enviar', rpMissing: 'Contenido ausente o incompleto', rpQuality: 'Mala calidad de audio', rpPlay: 'No se reproduce', rpWrong: 'Libro, portada o metadatos incorrectos', rpChapters: 'Capítulos incorrectos', rpOther: 'Otra cosa', rpCard: 'Problemas informados', rpHint: 'Problemas que los usuarios informaron desde una página de libro. Resolver lo quita de la lista.', rpEmpty: 'Nada informado.', rpResolve: 'Resolver', rpOpen: 'Abrir libro', apCard: 'Reproducción', apToggle: 'Reproducir automáticamente el siguiente libro de una serie', apHint: 'Cuando termina un libro, empieza automáticamente el siguiente de la misma serie. Solo libros que ya tienes y que no has terminado.', apNext: 'Siguiente de la serie', fdToggle: 'Herramientas de libros terminados en tus estadísticas', ysFinished: 'Terminados hace poco', ysAlmost: 'Casi terminado', ysMarkDone: 'Marcar como terminado', ysEditDate: 'Cambiar la fecha de fin', ysNoDate: 'sin fecha', hmShowing: 'el gráfico muestra', ysTitle: 'Tu escucha', ysStreak: 'Racha', ysCurrent: 'Actual', ysLongest: 'Más larga', ysDaysTotal: 'Días en total', ysPace: 'Ritmo', ysThisWeek: 'Esta semana', ysPerDay: 'Por día de escucha', ysBestDay: 'Mejor día', ysWhen: 'Cuándo escuchas', ysTopBooks: 'Libros más escuchados', ysTopAuthors: 'Autores más escuchados', ysTopNarrators: 'Narradores más escuchados', rfRate: 'Valorar', rfSheet: 'Valora este libro', rfOpen: 'Abrir la página del libro', rfPickHint: 'Elige una valoración', rfTitle: 'Valora lo que terminaste', rfToggle: 'Sección «Valorar» en el inicio', hoTitle: 'Orden de secciones del inicio', hoEmpty: 'Abre la página de inicio una vez y vuelve aquí.', hoReset: 'Restablecer el orden', nrSearch: 'Filtrar narradores…', nrSortName: 'Nombre', nrSortBooks: 'Más libros', nrForms: ['Narrador', 'Narradores'], nrBooksForms: ['libro', 'libros'], auForms: ['Autor', 'Autores'], auSearch: 'Filtrar autores…' , lsTitle: "Estadísticas del servidor", lsAll: "Todas las bibliotecas", lsPlayed: "Libros reproducidos", lsBest: "Mejor valorados", lsGenres: "Géneros principales", rpCard: "Problemas informados", rpHint: "Problemas que los usuarios informaron desde una página de libro. Resolver lo quita de la lista.", rpEmpty: "Nada informado.", rpResolve: "Resolver", rpOpen: "Abrir libro", ctIcon: "Icono", ctColour: "Acento", ctNeedBook: "Audiobookshelf no puede guardar una colección vacía: elige al menos un libro. Después podrás añadir o quitar los que quieras.", colEditIcon: "Cambiar icono", ciTitle: "Icono de la colección", ciReset: "Ajustar automáticamente al nombre", colEditDesc: "Editar descripción", colBookForms: ["libro","libros"], colForms: ["Colección","Colecciones"], ctTitle: "Crear una colección", ctBlank: "Colección vacía", ctNew: "Nueva colección", ctNewHint: "desde una plantilla", ctNamePh: "Nombre de la colección", ctSearch: "Buscar libros o autores…", ctCreate: "Crear", ctBack: "‹ Atrás", ctAddAll: "Añadir todos los libros", abTitle: "Añadir libros", abAdd: "Añadir", sbWeek: "Semana", sbMonth: "Mes", sbYear: "Año", sbAll: "Todo el tiempo", sbBooks: "Libros", sbTopBooks: "Más escuchados", sbTotal: "Total", sbListeners: "Oyentes", sbAvg: "Media", avRemove: "Quitar foto", avSet: "Elegir foto…", ugListened: "Escuchado", ugPhoto: "Foto de perfil", ugNever: "Nunca", ugSeen: "Última actividad", ugEdit: "Editar usuario", ugDelete: "Eliminar usuario", ugAdd: "Añadir foto", ugChange: "Cambiar foto", ugSortName: "A–Z", ugSortTime: "Más escuchados", ugSortSeen: "Activos recientemente", fsTitle: "Clasificación del servidor", fsCard: "Clasificación del servidor", fsToggle: "Compartir mis estadísticas de escucha", fsJoin: "Activa «Compartir mis estadísticas de escucha» en el panel de personalización para aparecer en la clasificación del servidor.", fsWaiting: "Compartir está activado: tu resumen se unirá en breve a la clasificación del servidor, junto con los demás.", fsHint: "Comparte un resumen de tu escucha (totales y minutos por día) con las demás personas de este servidor: alimenta la clasificación. Activado por defecto. Al desactivarlo desapareces de la clasificación y de sus totales, y todo lo compartido se elimina.", yirBtn: "Resumen del año", yirTitle: "Tu año de escucha", yirYear: "Últimos 12 meses", yirDays: "Días con escucha", yirBest: "Mejor día", yirMonths: "Por mes", yirNone: "Aún no hay datos de escucha.", bsCard: "Enlaces del libro", bsHint: "Botones en la página del libro para buscar un título en otros sitios. Goodreads y el mayor sitio de tu idioma vienen activados.", bsFind: "Buscar en", bsGlobal: "En todas partes", bsLocal: "Para tu idioma", bsOther: "Otros países", pgCard: "Páginas rediseñadas", pgHint: "Cada opción sustituye una página de Audiobookshelf por la versión NanoHive. Desactívala para volver a la original.", pgNarrators: "Tarjetas de narradores", pgCollections: "Páginas de colecciones", pgUsers: "Tarjetas de usuarios (ajustes)", pgStats: "Clasificación de escucha", pgPhoto: "Foto de perfil en la barra superior", pgCinematic: "Fondo cinematográfico", pgTransitions: "Transiciones de página", pSearch: "Buscar ajustes…", pSearchNone: "Nada coincide.", srvPick: "Qué incluir:", srvGRest: "Funciones y comportamiento", apCard: "Reproducción", fdToggle: "Herramientas de libros terminados en tus estadísticas", ysNoDate: "sin fecha", hmShowing: "el gráfico muestra", ysStreak: "Racha", ysCurrent: "Actual", ysLongest: "Más larga", ysDaysTotal: "Días en total", ysPace: "Ritmo", ysPerDay: "Por día de escucha", ysWhen: "Cuándo escuchas", ysTopBooks: "Libros más escuchados", ysTopAuthors: "Autores más escuchados", ysTopNarrators: "Narradores más escuchados", rfToggle: "Sección «Valorar» en el inicio", hoTitle: "Orden de secciones del inicio", hoEmpty: "Abre la página de inicio una vez y vuelve aquí.", hoReset: "Restablecer el orden", scmTitle: "Página de serie", scmHint: "Aspecto de la portada generada sobre el título de una serie cuando no se ha subido una propia (solo este navegador).", scmDeck: "Baraja apilada", scmFirst: "Portada del primer libro", scmGrid: "Cuadrícula de portadas (por defecto)", scmOff: "Oculta" , erTypeface: "Tipografía", erPage: "Tema de página", erText: "Color del texto", erBg: "Fondo", erDefault: "Predeterminado (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › orden de serie", lfBySeries: "Serie › orden" , lfSecFilters: "Más filtros", lfSecSort: "Orden múltiple", lfAuthor: "Autor", lfSeries: "Serie", lfTitle: "Título", lfYear: "Año", lfAdded: "Añadido", lfDuration: "Duración", lfNarrator: "Narrador", lfGenre: "Género", lfLanguage: "Idioma", lfProgress: "Progreso", lfPgFinished: "Terminados", lfPgInProgress: "En curso", lfPgNot: "Sin empezar" },
+    it: { nrSearch: 'Filtra narratori…', nrSortName: 'Nome', nrSortBooks: 'Più libri', nrForms: ['Narratore', 'Narratori'], nrBooksForms: ['libro', 'libri'], auForms: ['Autore', 'Autori'], auSearch: 'Filtra autori…' , rpBadge: "Segnalazioni aperte", wkTitle: "Minuti di ascolto — ultimi 7 giorni", wkAvg: "Media giornaliera", wkRow: "Giorni di fila", lsTitle: "Statistiche del server", lsAll: "Tutte le librerie", lsPlayed: "Libri riprodotti", lsBest: "I più votati", lsGenres: "Generi principali", srvPick: "Cosa includere:", srvGRest: "Funzioni e comportamento", aeBtn: "Riordina autori", aeTitle: "Autori senza libri", aeNone: "Ogni autore qui ha almeno un libro.", aeRemove: "Rimuovi", aeDone: "Rimossi", aeWorking: "Rimozione…", rpMenu: "Segnala un problema", rpTitle: "Segnala un problema", rpWhat: "Cosa non va?", rpNote: "Altro che l’amministratore dovrebbe sapere? (facoltativo)", rpSend: "Invia segnalazione", rpSent: "Inviata. Grazie.", rpFail: "Invio non riuscito", rpMissing: "Contenuto mancante o incompleto", rpQuality: "Audio di scarsa qualità", rpPlay: "Non si riproduce", rpWrong: "Libro, copertina o metadati sbagliati", rpChapters: "Capitoli sbagliati", rpOther: "Altro", rpCard: "Problemi segnalati", rpHint: "Problemi segnalati dagli utenti da una pagina libro. Risolverne uno lo toglie dall’elenco.", rpEmpty: "Nessuna segnalazione.", rpResolve: "Risolvi", rpOpen: "Apri il libro", apCard: "Riproduzione", apToggle: "Riproduci automaticamente il libro successivo di una serie", apHint: "Quando un libro finisce, parte automaticamente il successivo della stessa serie. Solo libri già in libreria e non ancora finiti.", apNext: "Prossimo della serie", fdToggle: "Strumenti per i libri finiti nelle tue statistiche", ysFinished: "Finiti di recente", ysAlmost: "Quasi finiti", ysMarkDone: "Segna come finito", ysEditDate: "Cambia la data di fine", ysNoDate: "senza data", hmShowing: "il grafico mostra", ysTitle: "Il tuo ascolto", ysStreak: "Serie di giorni", ysCurrent: "Attuale", ysLongest: "Più lunga", ysDaysTotal: "Giorni in totale", ysPace: "Ritmo", ysThisWeek: "Questa settimana", ysPerDay: "Per giorno di ascolto", ysBestDay: "Giorno migliore", ysWhen: "Quando ascolti", ysTopBooks: "Libri più ascoltati", ysTopAuthors: "Autori più ascoltati", ysTopNarrators: "Narratori più ascoltati", rfRate: "Vota", rfSheet: "Vota questo libro", rfOpen: "Apri la pagina del libro", rfPickHint: "Scegli un voto", rfTitle: "Vota ciò che hai finito", rfToggle: "Sezione «Vota» nella home", hoTitle: "Ordine delle sezioni della home", hoEmpty: "Apri una volta la home e poi torna qui.", hoReset: "Ripristina l’ordine predefinito", ctIcon: "Icona", ctColour: "Accento", ctNeedBook: "Audiobookshelf non può salvare una raccolta vuota: scegli almeno un libro. Potrai aggiungerne o toglierne in seguito.", colEditIcon: "Cambia icona", ciTitle: "Icona della raccolta", ciReset: "Abbina automaticamente al nome", colEditDesc: "Modifica descrizione", colBookForms: ["libro","libri"], colForms: ["Raccolta","Raccolte"], ctTitle: "Crea una raccolta", ctBlank: "Raccolta vuota", ctNew: "Nuova raccolta", ctNewHint: "da un modello", ctNamePh: "Nome della raccolta", ctSearch: "Cerca libri o autori…", ctCreate: "Crea", ctBack: "‹ Indietro", ctAddAll: "Aggiungi tutti i libri", abTitle: "Aggiungi libri", abAdd: "Aggiungi", sbTitle: "Classifica del server", sbWeek: "Settimana", sbMonth: "Mese", sbYear: "Anno", sbAll: "Da sempre", sbBooks: "Libri", sbTopBooks: "I più ascoltati", sbTotal: "Totale", sbListeners: "Ascoltatori", sbAvg: "Media", avRemove: "Rimuovi foto", avSet: "Scegli foto…", ugListened: "Ascoltato", ugPhoto: "Foto profilo", ugNever: "Mai", ugSeen: "Ultima attività", ugEdit: "Modifica utente", ugDelete: "Elimina utente", ugAdd: "Aggiungi foto", ugChange: "Cambia foto", ugSortName: "A–Z", ugSortTime: "Più ascoltati", ugSortSeen: "Attivi di recente", fsTitle: "Classifica del server", fsCard: "Classifica del server", fsToggle: "Condividi le mie statistiche di ascolto", fsJoin: "Attiva «Condividi le mie statistiche di ascolto» nel pannello di personalizzazione per comparire nella classifica del server.", fsWaiting: "Condivisione attiva — il tuo riepilogo entrerà a breve nella classifica del server, insieme agli altri.", fsHint: "Condividi un riepilogo del tuo ascolto (totali e minuti al giorno) con le altre persone di questo server: alimenta la classifica. Attivo per impostazione predefinita. Disattivandolo esci dalla classifica e dai suoi totali, e tutto ciò che hai condiviso viene eliminato.", yirBtn: "Anno in rassegna", yirTitle: "Il tuo anno di ascolto", yirYear: "Ultimi 12 mesi", yirDays: "Giorni con ascolto", yirBest: "Giorno migliore", yirMonths: "Per mese", yirNone: "Ancora nessun dato di ascolto.", bsCard: "Collegamenti del libro", bsHint: "Pulsanti nella pagina del libro per cercare un titolo altrove. Goodreads e il sito più grande della tua lingua sono attivi in partenza.", bsFind: "Cerca su", bsGlobal: "Ovunque", bsLocal: "Per la tua lingua", bsOther: "Altri paesi", pgCard: "Pagine ridisegnate", pgHint: "Ogni opzione sostituisce una pagina di Audiobookshelf con la versione NanoHive. Disattivala per tornare all’originale.", pgNarrators: "Schede dei narratori", pgCollections: "Pagine delle raccolte", pgUsers: "Schede utenti (impostazioni)", pgStats: "Classifica di ascolto", pgPhoto: "Foto profilo nella barra in alto", pgCinematic: "Sfondo cinematografico", pgTransitions: "Transizioni di pagina", pSearch: "Cerca impostazioni…", pSearchNone: "Nessuna corrispondenza.", scmTitle: "Pagina della serie", scmHint: "Aspetto della copertina generata sopra il titolo di una serie quando non ne è stata caricata una (solo questo browser).", scmDeck: "Mazzo sovrapposto", scmFirst: "Copertina del primo libro", scmGrid: "Griglia di copertine (predefinita)", scmOff: "Nascosta" , erTypeface: "Carattere", erPage: "Tema pagina", erText: "Colore del testo", erBg: "Sfondo", erDefault: "Predefinito (ABS)", erAuto: "Auto" , lfByAuthor: "Autore › ordine della serie", lfBySeries: "Serie › ordine" , lfSecFilters: "Altri filtri", lfSecSort: "Ordinamento multiplo", lfAuthor: "Autore", lfSeries: "Serie", lfTitle: "Titolo", lfYear: "Anno", lfAdded: "Aggiunto", lfDuration: "Durata", lfNarrator: "Narratore", lfGenre: "Genere", lfLanguage: "Lingua", lfProgress: "Progresso", lfPgFinished: "Finiti", lfPgInProgress: "In corso", lfPgNot: "Non iniziati" },
+    pt: { nrSearch: 'Filtrar narradores…', nrSortName: 'Nome', nrSortBooks: 'Mais livros', nrForms: ['Narrador', 'Narradores'], nrBooksForms: ['livro', 'livros'], auForms: ['Autor', 'Autores'], auSearch: 'Filtrar autores…' , rpBadge: "Problemas por resolver", wkTitle: "Minutos de escuta — últimos 7 dias", wkAvg: "Média diária", wkRow: "Dias seguidos", lsTitle: "Estatísticas do servidor", lsAll: "Todas as bibliotecas", lsPlayed: "Livros reproduzidos", lsBest: "Mais bem avaliados", lsGenres: "Géneros principais", srvPick: "O que incluir:", srvGRest: "Funções e comportamento", aeBtn: "Arrumar autores", aeTitle: "Autores sem livros", aeNone: "Cada autor aqui tem pelo menos um livro.", aeRemove: "Remover", aeDone: "Removidos", aeWorking: "A remover…", rpMenu: "Comunicar um problema", rpTitle: "Comunicar um problema", rpWhat: "O que está errado?", rpNote: "Mais alguma coisa que o administrador deva saber? (opcional)", rpSend: "Enviar", rpSent: "Enviado. Obrigado.", rpFail: "Não foi possível enviar", rpMissing: "Conteúdo em falta ou incompleto", rpQuality: "Má qualidade de áudio", rpPlay: "Não reproduz", rpWrong: "Livro, capa ou metadados errados", rpChapters: "Capítulos errados", rpOther: "Outra coisa", rpCard: "Problemas comunicados", rpHint: "Problemas comunicados pelos utilizadores a partir de uma página de livro. Resolver remove-o da lista.", rpEmpty: "Nada comunicado.", rpResolve: "Resolver", rpOpen: "Abrir livro", apCard: "Reprodução", apToggle: "Reproduzir automaticamente o próximo livro de uma série", apHint: "Quando um livro termina, começa automaticamente o seguinte da mesma série. Apenas livros já na biblioteca e ainda não terminados.", apNext: "Próximo da série", fdToggle: "Ferramentas de livros terminados nas estatísticas", ysFinished: "Terminados recentemente", ysAlmost: "Quase terminados", ysMarkDone: "Marcar como terminado", ysEditDate: "Alterar a data de fim", ysNoDate: "sem data", hmShowing: "o gráfico mostra", ysTitle: "A tua escuta", ysStreak: "Sequência", ysCurrent: "Atual", ysLongest: "Mais longa", ysDaysTotal: "Dias no total", ysPace: "Ritmo", ysThisWeek: "Esta semana", ysPerDay: "Por dia de escuta", ysBestDay: "Melhor dia", ysWhen: "Quando escutas", ysTopBooks: "Livros mais escutados", ysTopAuthors: "Autores mais escutados", ysTopNarrators: "Narradores mais escutados", rfRate: "Avaliar", rfSheet: "Avaliar este livro", rfOpen: "Abrir a página do livro", rfPickHint: "Escolhe uma avaliação", rfTitle: "Avalia o que terminaste", rfToggle: "Secção «Avaliar» na página inicial", hoTitle: "Ordem das secções da página inicial", hoEmpty: "Abre a página inicial uma vez e volta aqui.", hoReset: "Repor a ordem", ctIcon: "Ícone", ctColour: "Realce", ctNeedBook: "O Audiobookshelf não consegue guardar uma coleção vazia — escolhe pelo menos um livro. Depois podes adicionar ou remover à vontade.", colEditIcon: "Mudar o ícone", ciTitle: "Ícone da coleção", ciReset: "Ajustar automaticamente ao nome", colEditDesc: "Editar descrição", colBookForms: ["livro","livros"], colForms: ["Coleção","Coleções"], ctTitle: "Criar uma coleção", ctBlank: "Coleção vazia", ctNew: "Nova coleção", ctNewHint: "a partir de um modelo", ctNamePh: "Nome da coleção", ctSearch: "Procurar livros ou autores…", ctCreate: "Criar", ctBack: "‹ Voltar", ctAddAll: "Adicionar todos", abTitle: "Adicionar livros", abAdd: "Adicionar", sbTitle: "Classificação do servidor", sbWeek: "Semana", sbMonth: "Mês", sbYear: "Ano", sbAll: "Desde sempre", sbBooks: "Livros", sbTopBooks: "Mais escutados", sbTotal: "Total", sbListeners: "Ouvintes", sbAvg: "Média", avRemove: "Remover foto", avSet: "Escolher foto…", ugListened: "Escutado", ugPhoto: "Foto de perfil", ugNever: "Nunca", ugSeen: "Última atividade", ugEdit: "Editar utilizador", ugDelete: "Eliminar utilizador", ugAdd: "Adicionar foto", ugChange: "Mudar foto", ugSortName: "A–Z", ugSortTime: "Mais escutados", ugSortSeen: "Ativos recentemente", fsTitle: "Classificação do servidor", fsCard: "Classificação do servidor", fsToggle: "Partilhar as minhas estatísticas de escuta", fsJoin: "Ativa «Partilhar as minhas estatísticas de escuta» no painel de personalização para apareceres na classificação do servidor.", fsWaiting: "Partilha ativada — o teu resumo junta-se em breve à classificação do servidor, com toda a gente.", fsHint: "Partilha um resumo da tua escuta (totais e minutos por dia) com as outras pessoas deste servidor — alimenta a classificação. Ativado por predefinição. Ao desligar sais da classificação e dos totais, e tudo o que partilhaste é apagado.", yirBtn: "Retrospetiva do ano", yirTitle: "O teu ano de escuta", yirYear: "Últimos 12 meses", yirDays: "Dias com escuta", yirBest: "Melhor dia", yirMonths: "Por mês", yirNone: "Ainda sem dados de escuta.", bsCard: "Ligações do livro", bsHint: "Botões na página do livro para procurar um título noutros sítios. O Goodreads e o maior site da tua língua vêm ativados.", bsFind: "Procurar em", bsGlobal: "Em todo o lado", bsLocal: "Para a tua língua", bsOther: "Outros países", pgCard: "Páginas redesenhadas", pgHint: "Cada opção substitui uma página do Audiobookshelf pela versão NanoHive. Desativa para voltar à original.", pgNarrators: "Cartões de narradores", pgCollections: "Páginas de coleções", pgUsers: "Cartões de utilizadores (definições)", pgStats: "Classificação de escuta", pgPhoto: "Foto de perfil na barra superior", pgCinematic: "Fundo cinematográfico", pgTransitions: "Transições de página", pSearch: "Procurar definições…", pSearchNone: "Nada corresponde.", scmTitle: "Página da série", scmHint: "Aspeto da capa gerada sobre o título de uma série quando não foi carregada nenhuma (apenas este navegador).", scmDeck: "Baralho em camadas", scmFirst: "Capa do primeiro livro", scmGrid: "Grelha de capas (predefinida)", scmOff: "Oculta" , erTypeface: "Tipo de letra", erPage: "Tema da página", erText: "Cor do texto", erBg: "Fundo", erDefault: "Predefinição (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › ordem da série", lfBySeries: "Série › ordem" , lfSecFilters: "Mais filtros", lfSecSort: "Ordenação múltipla", lfAuthor: "Autor", lfSeries: "Série", lfTitle: "Título", lfYear: "Ano", lfAdded: "Adicionado", lfDuration: "Duração", lfNarrator: "Narrador", lfGenre: "Género", lfLanguage: "Idioma", lfProgress: "Progresso", lfPgFinished: "Terminados", lfPgInProgress: "Em curso", lfPgNot: "Por começar" },
+    nl: { nrSearch: 'Vertellers filteren…', nrSortName: 'Naam', nrSortBooks: 'Meeste boeken', nrForms: ['Verteller', 'Vertellers'], nrBooksForms: ['boek', 'boeken'], auForms: ['Auteur', 'Auteurs'], auSearch: 'Auteurs filteren…' , rpBadge: "Open probleemmeldingen", wkTitle: "Luisterminuten — laatste 7 dagen", wkAvg: "Daggemiddelde", wkRow: "Dagen op rij", lsTitle: "Serverstatistieken", lsAll: "Alle bibliotheken", lsPlayed: "Afgespeelde boeken", lsBest: "Best beoordeeld", lsGenres: "Topgenres", srvPick: "Wat opslaan:", srvGRest: "Functies & gedrag", aeBtn: "Auteurs opruimen", aeTitle: "Auteurs zonder boeken", aeNone: "Elke auteur hier heeft minstens één boek.", aeRemove: "Verwijderen", aeDone: "Verwijderd", aeWorking: "Bezig met verwijderen…", rpMenu: "Probleem melden", rpTitle: "Probleem melden", rpWhat: "Wat is er mis?", rpNote: "Nog iets dat de beheerder moet weten? (optioneel)", rpSend: "Melding versturen", rpSent: "Verstuurd. Bedankt.", rpFail: "Versturen mislukt", rpMissing: "Ontbrekende of onvolledige inhoud", rpQuality: "Slechte geluidskwaliteit", rpPlay: "Speelt niet af", rpWrong: "Verkeerd boek, omslag of metadata", rpChapters: "Hoofdstukken kloppen niet", rpOther: "Iets anders", rpCard: "Gemelde problemen", rpHint: "Problemen die gebruikers vanaf een boekpagina meldden. Oplossen haalt de melding uit de lijst.", rpEmpty: "Niets gemeld.", rpResolve: "Oplossen", rpOpen: "Boek openen", apCard: "Afspelen", apToggle: "Volgende boek in een serie automatisch afspelen", apHint: "Als een boek klaar is, start automatisch het volgende uit dezelfde serie. Alleen boeken die al in je bibliotheek staan en nog niet uit zijn.", apNext: "Volgende in de serie", fdToggle: "Hulpmiddelen voor uitgelezen boeken in je statistieken", ysFinished: "Onlangs uitgelezen", ysAlmost: "Bijna klaar", ysMarkDone: "Markeren als uitgelezen", ysEditDate: "Einddatum wijzigen", ysNoDate: "geen datum", hmShowing: "grafiek toont", ysTitle: "Jouw luisteren", ysStreak: "Reeks", ysCurrent: "Huidige", ysLongest: "Langste", ysDaysTotal: "Dagen totaal", ysPace: "Tempo", ysThisWeek: "Deze week", ysPerDay: "Per luisterdag", ysBestDay: "Beste dag", ysWhen: "Wanneer je luistert", ysTopBooks: "Meest beluisterde boeken", ysTopAuthors: "Meest beluisterde auteurs", ysTopNarrators: "Meest beluisterde vertellers", rfRate: "Beoordelen", rfSheet: "Beoordeel dit boek", rfOpen: "Boekpagina openen", rfPickHint: "Kies een beoordeling", rfTitle: "Beoordeel wat je uit hebt", rfToggle: "Sectie ‘Beoordelen’ op de startpagina", hoTitle: "Volgorde van de startpagina", hoEmpty: "Open de startpagina één keer en kom dan terug.", hoReset: "Standaardvolgorde herstellen", ctIcon: "Pictogram", ctColour: "Accent", ctNeedBook: "Audiobookshelf kan geen lege collectie opslaan — kies minstens één boek. Later kun je vrij toevoegen of verwijderen.", colEditIcon: "Pictogram wijzigen", ciTitle: "Collectie-pictogram", ciReset: "Automatisch op naam afstemmen", colEditDesc: "Beschrijving bewerken", colBookForms: ["boek","boeken"], colForms: ["Collectie","Collecties"], ctTitle: "Collectie aanmaken", ctBlank: "Lege collectie", ctNew: "Nieuwe collectie", ctNewHint: "vanuit een sjabloon", ctNamePh: "Naam van de collectie", ctSearch: "Zoek boeken of auteurs…", ctCreate: "Aanmaken", ctBack: "‹ Terug", ctAddAll: "Alle boeken toevoegen", abTitle: "Boeken toevoegen", abAdd: "Toevoegen", sbTitle: "Serverranglijst", sbWeek: "Week", sbMonth: "Maand", sbYear: "Jaar", sbAll: "Altijd", sbBooks: "Boeken", sbTopBooks: "Meest beluisterd", sbTotal: "Totaal", sbListeners: "Luisteraars", sbAvg: "Gemiddelde", avRemove: "Foto verwijderen", avSet: "Foto kiezen…", ugListened: "Beluisterd", ugPhoto: "Profielfoto", ugNever: "Nooit", ugSeen: "Laatst actief", ugEdit: "Gebruiker bewerken", ugDelete: "Gebruiker verwijderen", ugAdd: "Foto toevoegen", ugChange: "Foto wijzigen", ugSortName: "A–Z", ugSortTime: "Meest beluisterd", ugSortSeen: "Onlangs actief", fsTitle: "Serverranglijst", fsCard: "Serverranglijst", fsToggle: "Mijn luisterstatistieken delen", fsJoin: "Zet ‘Mijn luisterstatistieken delen’ aan in het aanpassingspaneel om in de serverranglijst te verschijnen.", fsWaiting: "Delen staat aan — je samenvatting verschijnt zo in de serverranglijst, samen met alle anderen.", fsHint: "Deel een samenvatting van je luisteren (totalen en minuten per dag) met de anderen op deze server — dit voedt de serverranglijst. Standaard aan. Zet je het uit, dan verdwijn je uit de ranglijst en de totalen, en wordt alles wat je deelde gewist.", yirBtn: "Jaaroverzicht", yirTitle: "Jouw luisterjaar", yirYear: "Laatste 12 maanden", yirDays: "Dagen met luisteren", yirBest: "Beste dag", yirMonths: "Per maand", yirNone: "Nog geen luistergegevens.", bsCard: "Boeklinks", bsHint: "Knoppen op de boekpagina om een titel elders op te zoeken. Goodreads en de grootste site in jouw taal staan standaard aan.", bsFind: "Zoeken op", bsGlobal: "Overal", bsLocal: "Voor jouw taal", bsOther: "Andere landen", pgCard: "Herontworpen pagina's", pgHint: "Elke optie vervangt een Audiobookshelf-pagina door de NanoHive-versie. Zet uit om de originele terug te krijgen.", pgNarrators: "Vertellerkaarten", pgCollections: "Collectiepagina's", pgUsers: "Gebruikerskaarten (instellingen)", pgStats: "Luisterranglijst", pgPhoto: "Profielfoto in de bovenbalk", pgCinematic: "Filmische achtergrond", pgTransitions: "Paginaovergangen", pSearch: "Instellingen zoeken…", pSearchNone: "Niets gevonden.", scmTitle: "Seriepagina", scmHint: "Hoe de gegenereerde omslag boven een serietitel eruitziet als er geen eigen omslag is geüpload (alleen deze browser).", scmDeck: "Gestapelde waaier", scmFirst: "Omslag van het eerste boek", scmGrid: "Omslagraster (standaard)", scmOff: "Verborgen" , erTypeface: "Lettertype", erPage: "Paginathema", erText: "Tekstkleur", erBg: "Achtergrond", erDefault: "Standaard (ABS)", erAuto: "Auto" , lfByAuthor: "Auteur › serievolgorde", lfBySeries: "Serie › volgorde" , lfSecFilters: "Meer filters", lfSecSort: "Multi-sortering", lfAuthor: "Auteur", lfSeries: "Serie", lfTitle: "Titel", lfYear: "Jaar", lfAdded: "Toegevoegd", lfDuration: "Duur", lfNarrator: "Verteller", lfGenre: "Genre", lfLanguage: "Taal", lfProgress: "Voortgang", lfPgFinished: "Uitgelezen", lfPgInProgress: "Bezig", lfPgNot: "Niet begonnen" },
+    cs: { nrSearch: 'Filtrovat vypravěče…', nrSortName: 'Jméno', nrSortBooks: 'Nejvíce knih', nrForms: ['Vypravěč', 'Vypravěči', 'Vypravěčů'], nrBooksForms: ['kniha', 'knihy', 'knih'], auForms: ['Autor', 'Autoři', 'Autorů'], auSearch: 'Filtrovat autory…' , sbTitle: "Žebříček serveru", sbWeek: "Týden", sbMonth: "Měsíc", sbYear: "Rok", sbAll: "Celkem", sbBooks: "Knihy", sbTopBooks: "Nejposlouchanější", sbTotal: "Celkem", sbListeners: "Posluchači", sbAvg: "Průměr", wkTitle: "Minuty poslechu — posledních 7 dní", wkAvg: "Denní průměr", wkRow: "Dní v řadě", rpBadge: "Otevřená hlášení problémů", rpMenu: "Nahlásit problém", rpTitle: "Nahlásit problém", rpWhat: "Co je špatně?", rpNote: "Ještě něco pro správce? (nepovinné)", rpSend: "Odeslat hlášení", rpSent: "Odesláno. Díky.", rpFail: "Odeslání se nezdařilo", rpMissing: "Chybějící nebo neúplný obsah", rpQuality: "Špatná kvalita zvuku", rpPlay: "Nepřehrává se", rpWrong: "Špatná kniha, obálka nebo metadata", rpChapters: "Špatné kapitoly", rpOther: "Něco jiného", rfRate: "Ohodnotit", rfSheet: "Ohodnoťte tuto knihu", rfOpen: "Otevřít stránku knihy", rfPickHint: "Vyberte hodnocení", rfTitle: "Ohodnoťte dokončené", ysFinished: "Nedávno dokončené", ysAlmost: "Téměř hotové", ysMarkDone: "Označit jako dokončené", ysEditDate: "Změnit datum dokončení", ysThisWeek: "Tento týden", ysBestDay: "Nejlepší den", ysTitle: "Váš poslech", fsTitle: "Žebříček serveru", fsCard: "Žebříček serveru", fsToggle: "Sdílet mé statistiky poslechu", fsJoin: "Zapněte „Sdílet mé statistiky poslechu“ v panelu přizpůsobení a objevíte se v žebříčku serveru.", fsWaiting: "Sdílení je zapnuté — vaše shrnutí se brzy přidá do žebříčku serveru spolu s ostatními.", fsHint: "Sdílejte shrnutí svého poslechu (součty a minuty za den) s ostatními na tomto serveru — pohání žebříček serveru. Ve výchozím stavu zapnuto. Po vypnutí zmizíte ze žebříčku i jeho součtů a sdílená data se smažou.", yirBtn: "Rok v přehledu", yirTitle: "Váš rok poslechu", yirYear: "Posledních 12 měsíců", yirDays: "Dny s poslechem", yirBest: "Nejlepší den", yirMonths: "Po měsících", yirNone: "Zatím žádná data o poslechu.", scmTitle: "Stránka série", scmHint: "Vzhled generované obálky nad názvem série, když nebyla nahrána vlastní (jen tento prohlížeč).", scmDeck: "Vrstvený balíček", scmFirst: "Obálka první knihy", scmGrid: "Mřížka obálek (výchozí)", scmOff: "Skrytá" , lsTitle: "Statistiky serveru", lsAll: "Všechny knihovny", lsPlayed: "Přehrané knihy", lsBest: "Nejlépe hodnocené", lsGenres: "Nejčastější žánry", srvPick: "Co uložit:", srvGRest: "Funkce a chování", aeBtn: "Uklidit autory", aeTitle: "Autoři bez knih", aeNone: "Každý autor tu má aspoň jednu knihu.", aeRemove: "Odebrat", aeDone: "Odebráno", aeWorking: "Odebírání…", rpCard: "Nahlášené problémy", rpHint: "Problémy nahlášené uživateli ze stránky knihy. Vyřešení je odstraní ze seznamu.", rpEmpty: "Nic nenahlášeno.", rpResolve: "Vyřešit", rpOpen: "Otevřít knihu", apCard: "Přehrávání", apToggle: "Automaticky přehrát další knihu ze série", apHint: "Po skončení knihy se automaticky spustí další ze stejné série. Jen knihy, které už máš v knihovně a nedokončil jsi je.", apNext: "Další ze série", fdToggle: "Nástroje dokončených knih ve statistikách", ysNoDate: "bez data", hmShowing: "graf ukazuje", ysStreak: "Šňůra", ysCurrent: "Aktuální", ysLongest: "Nejdelší", ysDaysTotal: "Dní celkem", ysPace: "Tempo", ysPerDay: "Na den poslechu", ysWhen: "Kdy posloucháš", ysTopBooks: "Nejposlouchanější knihy", ysTopAuthors: "Nejposlouchanější autoři", ysTopNarrators: "Nejposlouchanější vypravěči", rfToggle: "Sekce „Ohodnoťte“ na hlavní stránce", hoTitle: "Pořadí sekcí hlavní stránky", hoEmpty: "Otevři jednou hlavní stránku a vrať se sem.", hoReset: "Obnovit výchozí pořadí", ctIcon: "Ikona", ctColour: "Akcent", ctNeedBook: "Audiobookshelf neumí uložit prázdnou kolekci — vyber aspoň jednu knihu. Později můžeš přidávat i odebírat.", colEditIcon: "Změnit ikonu", ciTitle: "Ikona kolekce", ciReset: "Přiřadit automaticky podle názvu", colEditDesc: "Upravit popis", colBookForms: ["kniha","knihy","knih"], colForms: ["Kolekce","Kolekce","Kolekcí"], ctTitle: "Založit kolekci", ctBlank: "Prázdná kolekce", ctNew: "Nová kolekce", ctNewHint: "ze šablony", ctNamePh: "Název kolekce", ctSearch: "Hledat knihy nebo autory…", ctCreate: "Vytvořit", ctBack: "‹ Zpět", ctAddAll: "Přidat všechny knihy", abTitle: "Přidat knihy", abAdd: "Přidat", avRemove: "Odebrat fotku", avSet: "Vybrat fotku…", ugListened: "Poslechnuto", ugPhoto: "Profilová fotka", ugNever: "Nikdy", ugSeen: "Naposledy aktivní", ugEdit: "Upravit uživatele", ugDelete: "Smazat uživatele", ugAdd: "Přidat fotku", ugChange: "Změnit fotku", ugSortName: "A–Z", ugSortTime: "Nejvíce poslechnuté", ugSortSeen: "Nedávno aktivní", bsCard: "Odkazy knihy", bsHint: "Tlačítka na stránce knihy pro vyhledání titulu jinde. Goodreads a největší web tvého jazyka jsou zapnuté předem.", bsFind: "Hledat na", bsGlobal: "Všude", bsLocal: "Pro tvůj jazyk", bsOther: "Jiné země", pgCard: "Přepracované stránky", pgHint: "Každá volba nahradí stránku Audiobookshelf verzí NanoHive. Vypni ji a vrátí se původní.", pgNarrators: "Karty vypravěčů", pgCollections: "Stránky kolekcí", pgUsers: "Karty uživatelů (nastavení)", pgStats: "Žebříček poslechu", pgPhoto: "Profilová fotka v horní liště", pgCinematic: "Filmové pozadí", pgTransitions: "Přechody stránek", pSearch: "Hledat nastavení…", pSearchNone: "Nic neodpovídá.", erTypeface: "Písmo", erPage: "Motiv stránky", erText: "Barva textu", erBg: "Pozadí", erDefault: "Výchozí (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › pořadí série", lfBySeries: "Série › pořadí" , lfSecFilters: "Další filtry", lfSecSort: "Vícenásobné řazení", lfAuthor: "Autor", lfSeries: "Série", lfTitle: "Název", lfYear: "Rok", lfAdded: "Přidáno", lfDuration: "Délka", lfNarrator: "Vypravěč", lfGenre: "Žánr", lfLanguage: "Jazyk", lfProgress: "Průběh", lfPgFinished: "Dokončené", lfPgInProgress: "Rozposlouchané", lfPgNot: "Nezačaté" },
+    sk: { nrSearch: 'Filtrovať rozprávačov…', nrSortName: 'Meno', nrSortBooks: 'Najviac kníh', nrForms: ['Rozprávač', 'Rozprávači', 'Rozprávačov'], nrBooksForms: ['kniha', 'knihy', 'kníh'], auForms: ['Autor', 'Autori', 'Autorov'], auSearch: 'Filtrovať autorov…' , sbTitle: "Rebríček servera", sbWeek: "Týždeň", sbMonth: "Mesiac", sbYear: "Rok", sbAll: "Celkovo", sbBooks: "Knihy", sbTopBooks: "Najpočúvanejšie", sbTotal: "Spolu", sbListeners: "Poslucháči", sbAvg: "Priemer", wkTitle: "Minúty počúvania — posledných 7 dní", wkAvg: "Denný priemer", wkRow: "Dní po sebe", rpBadge: "Otvorené hlásenia problémov", rpMenu: "Nahlásiť problém", rpTitle: "Nahlásiť problém", rpWhat: "Čo je zle?", rpNote: "Ešte niečo pre správcu? (voliteľné)", rpSend: "Odoslať hlásenie", rpSent: "Odoslané. Vďaka.", rpFail: "Odoslanie zlyhalo", rpMissing: "Chýbajúci alebo neúplný obsah", rpQuality: "Zlá kvalita zvuku", rpPlay: "Neprehráva sa", rpWrong: "Zlá kniha, obálka alebo metadáta", rpChapters: "Zlé kapitoly", rpOther: "Niečo iné", rfRate: "Ohodnotiť", rfSheet: "Ohodnoťte túto knihu", rfOpen: "Otvoriť stránku knihy", rfPickHint: "Vyberte hodnotenie", rfTitle: "Ohodnoťte dokončené", ysFinished: "Nedávno dokončené", ysAlmost: "Takmer hotové", ysMarkDone: "Označiť ako dokončené", ysEditDate: "Zmeniť dátum dokončenia", ysThisWeek: "Tento týždeň", ysBestDay: "Najlepší deň", ysTitle: "Vaše počúvanie", fsTitle: "Rebríček servera", fsCard: "Rebríček servera", fsToggle: "Zdieľať moje štatistiky počúvania", fsJoin: "Zapnite „Zdieľať moje štatistiky počúvania“ v paneli prispôsobenia a objavíte sa v rebríčku servera.", fsWaiting: "Zdieľanie je zapnuté — vaše zhrnutie sa čoskoro pridá do rebríčka servera spolu s ostatnými.", fsHint: "Zdieľajte zhrnutie svojho počúvania (súčty a minúty za deň) s ostatnými na tomto serveri — poháňa rebríček servera. Predvolene zapnuté. Po vypnutí zmiznete z rebríčka aj jeho súčtov a zdieľané dáta sa vymažú.", yirBtn: "Rok v prehľade", yirTitle: "Váš rok počúvania", yirYear: "Posledných 12 mesiacov", yirDays: "Dni s počúvaním", yirBest: "Najlepší deň", yirMonths: "Po mesiacoch", yirNone: "Zatiaľ žiadne dáta o počúvaní.", scmTitle: "Stránka série", scmHint: "Vzhľad generovanej obálky nad názvom série, keď nebola nahraná vlastná (len tento prehliadač).", scmDeck: "Vrstvený balíček", scmFirst: "Obálka prvej knihy", scmGrid: "Mriežka obálok (predvolené)", scmOff: "Skrytá" , lsTitle: "Štatistiky servera", lsAll: "Všetky knižnice", lsPlayed: "Prehrané knihy", lsBest: "Najlepšie hodnotené", lsGenres: "Najčastejšie žánre", srvPick: "Čo uložiť:", srvGRest: "Funkcie a správanie", aeBtn: "Upratať autorov", aeTitle: "Autori bez kníh", aeNone: "Každý autor tu má aspoň jednu knihu.", aeRemove: "Odstrániť", aeDone: "Odstránené", aeWorking: "Odstraňovanie…", rpCard: "Nahlásené problémy", rpHint: "Problémy nahlásené používateľmi zo stránky knihy. Vyriešenie ich odstráni zo zoznamu.", rpEmpty: "Nič nenahlásené.", rpResolve: "Vyriešiť", rpOpen: "Otvoriť knihu", apCard: "Prehrávanie", apToggle: "Automaticky prehrať ďalšiu knihu zo série", apHint: "Po skončení knihy sa automaticky spustí ďalšia z tej istej série. Iba knihy, ktoré už máš v knižnici a nedokončil si ich.", apNext: "Ďalšia zo série", fdToggle: "Nástroje dokončených kníh v štatistikách", ysNoDate: "bez dátumu", hmShowing: "graf ukazuje", ysStreak: "Séria dní", ysCurrent: "Aktuálna", ysLongest: "Najdlhšia", ysDaysTotal: "Dní spolu", ysPace: "Tempo", ysPerDay: "Na deň počúvania", ysWhen: "Kedy počúvaš", ysTopBooks: "Najpočúvanejšie knihy", ysTopAuthors: "Najpočúvanejší autori", ysTopNarrators: "Najpočúvanejší rozprávači", rfToggle: "Sekcia „Ohodnoť“ na hlavnej stránke", hoTitle: "Poradie sekcií hlavnej stránky", hoEmpty: "Otvor raz hlavnú stránku a vráť sa sem.", hoReset: "Obnoviť predvolené poradie", ctIcon: "Ikona", ctColour: "Akcent", ctNeedBook: "Audiobookshelf nevie uložiť prázdnu kolekciu — vyber aspoň jednu knihu. Neskôr môžeš pridávať aj odoberať.", colEditIcon: "Zmeniť ikonu", ciTitle: "Ikona kolekcie", ciReset: "Priradiť automaticky podľa názvu", colEditDesc: "Upraviť popis", colBookForms: ["kniha","knihy","kníh"], colForms: ["Kolekcia","Kolekcie","Kolekcií"], ctTitle: "Založiť kolekciu", ctBlank: "Prázdna kolekcia", ctNew: "Nová kolekcia", ctNewHint: "zo šablóny", ctNamePh: "Názov kolekcie", ctSearch: "Hľadať knihy alebo autorov…", ctCreate: "Vytvoriť", ctBack: "‹ Späť", ctAddAll: "Pridať všetky knihy", abTitle: "Pridať knihy", abAdd: "Pridať", avRemove: "Odstrániť fotku", avSet: "Vybrať fotku…", ugListened: "Vypočuté", ugPhoto: "Profilová fotka", ugNever: "Nikdy", ugSeen: "Naposledy aktívny", ugEdit: "Upraviť používateľa", ugDelete: "Zmazať používateľa", ugAdd: "Pridať fotku", ugChange: "Zmeniť fotku", ugSortName: "A–Z", ugSortTime: "Najviac vypočuté", ugSortSeen: "Nedávno aktívni", bsCard: "Odkazy knihy", bsHint: "Tlačidlá na stránke knihy na vyhľadanie titulu inde. Goodreads a najväčší web tvojho jazyka sú zapnuté vopred.", bsFind: "Hľadať na", bsGlobal: "Všade", bsLocal: "Pre tvoj jazyk", bsOther: "Iné krajiny", pgCard: "Prerobené stránky", pgHint: "Každá voľba nahradí stránku Audiobookshelf verziou NanoHive. Vypni ju a vráti sa pôvodná.", pgNarrators: "Karty rozprávačov", pgCollections: "Stránky kolekcií", pgUsers: "Karty používateľov (nastavenia)", pgStats: "Rebríček počúvania", pgPhoto: "Profilová fotka v hornej lište", pgCinematic: "Filmové pozadie", pgTransitions: "Prechody stránok", pSearch: "Hľadať nastavenia…", pSearchNone: "Nič sa nezhoduje.", erTypeface: "Písmo", erPage: "Motív stránky", erText: "Farba textu", erBg: "Pozadie", erDefault: "Predvolené (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › poradie série", lfBySeries: "Séria › poradie" , lfSecFilters: "Ďalšie filtre", lfSecSort: "Viacúrovňové radenie", lfAuthor: "Autor", lfSeries: "Séria", lfTitle: "Názov", lfYear: "Rok", lfAdded: "Pridané", lfDuration: "Dĺžka", lfNarrator: "Rozprávač", lfGenre: "Žáner", lfLanguage: "Jazyk", lfProgress: "Priebeh", lfPgFinished: "Dokončené", lfPgInProgress: "Rozpočúvané", lfPgNot: "Nezačaté" },
+    da: { nrSearch: 'Filtrér fortællere…', nrSortName: 'Navn', nrSortBooks: 'Flest bøger', nrForms: ['Fortæller', 'Fortællere'], nrBooksForms: ['bog', 'bøger'], auForms: ['Forfatter', 'Forfattere'], auSearch: 'Filtrér forfattere…' , sbTitle: "Serverrangliste", sbWeek: "Uge", sbMonth: "Måned", sbYear: "År", sbAll: "Altid", sbBooks: "Bøger", sbTopBooks: "Mest aflyttet", sbTotal: "I alt", sbListeners: "Lyttere", sbAvg: "Gennemsnit", wkTitle: "Lytteminutter — seneste 7 dage", wkAvg: "Dagligt gennemsnit", wkRow: "Dage i træk", rpBadge: "Åbne problemmeldinger", rpMenu: "Meld et problem", rpTitle: "Meld et problem", rpWhat: "Hvad er galt?", rpNote: "Andet administratoren bør vide? (valgfrit)", rpSend: "Send melding", rpSent: "Sendt. Tak.", rpFail: "Kunne ikke sende", rpMissing: "Manglende eller ufuldstændigt indhold", rpQuality: "Dårlig lydkvalitet", rpPlay: "Afspiller ikke", rpWrong: "Forkert bog, omslag eller metadata", rpChapters: "Forkerte kapitler", rpOther: "Noget andet", rfRate: "Bedøm", rfSheet: "Bedøm denne bog", rfOpen: "Åbn bogsiden", rfPickHint: "Vælg en bedømmelse", rfTitle: "Bedøm det du har lyttet færdigt", ysFinished: "Færdige for nylig", ysAlmost: "Næsten færdig", ysMarkDone: "Markér som færdig", ysEditDate: "Ret slutdatoen", ysThisWeek: "Denne uge", ysBestDay: "Bedste dag", ysTitle: "Din lytning", fsTitle: "Serverrangliste", fsCard: "Serverrangliste", fsToggle: "Del mine lyttestatistikker", fsJoin: "Slå “Del mine lyttestatistikker” til i tilpasningspanelet for at optræde i serverranglisten.", fsWaiting: "Deling er slået til — dit resumé kommer snart med i serverranglisten sammen med alle andre.", fsHint: "Del et resumé af din lytning (totaler og minutter pr. dag) med de andre på denne server — det driver serverranglisten. Slået til som standard. Slår du det fra, forsvinder du fra ranglisten og dens totaler, og alt delt slettes.", yirBtn: "Året i tilbageblik", yirTitle: "Dit lytteår", yirYear: "Seneste 12 måneder", yirDays: "Dage med lytning", yirBest: "Bedste dag", yirMonths: "Pr. måned", yirNone: "Ingen lyttedata endnu.", scmTitle: "Serieside", scmHint: "Sådan ser det genererede omslag over en serietitel ud, når der ikke er uploadet et eget (kun denne browser).", scmDeck: "Lagdelt stak", scmFirst: "Første bogs omslag", scmGrid: "Omslagsgitter (standard)", scmOff: "Skjult" , lsTitle: "Serverstatistik", lsAll: "Alle biblioteker", lsPlayed: "Afspillede bøger", lsBest: "Bedst bedømt", lsGenres: "Topgenrer", srvPick: "Hvad skal gemmes:", srvGRest: "Funktioner & adfærd", aeBtn: "Ryd op i forfattere", aeTitle: "Forfattere uden bøger", aeNone: "Alle forfattere her har mindst én bog.", aeRemove: "Fjern", aeDone: "Fjernet", aeWorking: "Fjerner…", rpCard: "Meldte problemer", rpHint: "Problemer som brugere meldte fra en bogside. Løses et, forsvinder det fra listen.", rpEmpty: "Intet meldt.", rpResolve: "Løs", rpOpen: "Åbn bog", apCard: "Afspilning", apToggle: "Afspil automatisk næste bog i en serie", apHint: "Når en bog slutter, starter den næste i samme serie automatisk. Kun bøger du allerede har, og som ikke er færdige.", apNext: "Næste i serien", fdToggle: "Værktøjer til færdige bøger i din statistik", ysNoDate: "ingen dato", hmShowing: "grafen viser", ysStreak: "Stime", ysCurrent: "Nuværende", ysLongest: "Længste", ysDaysTotal: "Dage i alt", ysPace: "Tempo", ysPerDay: "Pr. lyttedag", ysWhen: "Hvornår du lytter", ysTopBooks: "Mest aflyttede bøger", ysTopAuthors: "Mest aflyttede forfattere", ysTopNarrators: "Mest aflyttede oplæsere", rfToggle: "Sektionen “Bedøm” på forsiden", hoTitle: "Rækkefølge på forsiden", hoEmpty: "Åbn forsiden én gang og kom tilbage.", hoReset: "Gendan standardrækkefølge", ctIcon: "Ikon", ctColour: "Accent", ctNeedBook: "Audiobookshelf kan ikke gemme en tom samling — vælg mindst én bog. Du kan tilføje og fjerne frit senere.", colEditIcon: "Skift ikon", ciTitle: "Samlingens ikon", ciReset: "Tilpas automatisk efter navnet", colEditDesc: "Redigér beskrivelse", colBookForms: ["bog","bøger"], colForms: ["Samling","Samlinger"], ctTitle: "Opret en samling", ctBlank: "Tom samling", ctNew: "Ny samling", ctNewHint: "fra en skabelon", ctNamePh: "Samlingens navn", ctSearch: "Søg bøger eller forfattere…", ctCreate: "Opret", ctBack: "‹ Tilbage", ctAddAll: "Tilføj alle bøger", abTitle: "Tilføj bøger", abAdd: "Tilføj", avRemove: "Fjern foto", avSet: "Vælg foto…", ugListened: "Lyttet", ugPhoto: "Profilfoto", ugNever: "Aldrig", ugSeen: "Sidst aktiv", ugEdit: "Redigér bruger", ugDelete: "Slet bruger", ugAdd: "Tilføj foto", ugChange: "Skift foto", ugSortName: "A–Z", ugSortTime: "Mest aflyttet", ugSortSeen: "Senest aktive", bsCard: "Boglinks", bsHint: "Knapper på bogsiden til at slå en titel op andre steder. Goodreads og dit sprogs største side er slået til fra start.", bsFind: "Søg på", bsGlobal: "Overalt", bsLocal: "Til dit sprog", bsOther: "Andre lande", pgCard: "Redesignede sider", pgHint: "Hver af disse erstatter en Audiobookshelf-side med NanoHive-versionen. Slå fra for at få originalen tilbage.", pgNarrators: "Oplæserkort", pgCollections: "Samlingssider", pgUsers: "Brugerkort (indstillinger)", pgStats: "Lytterangliste", pgPhoto: "Profilfoto i topbjælken", pgCinematic: "Biografbaggrund", pgTransitions: "Sideovergange", pSearch: "Søg indstillinger…", pSearchNone: "Intet matcher.", erTypeface: "Skrifttype", erPage: "Sidetema", erText: "Tekstfarve", erBg: "Baggrund", erDefault: "Standard (ABS)", erAuto: "Auto" , lfByAuthor: "Forfatter › serierækkefølge", lfBySeries: "Serie › rækkefølge" , lfSecFilters: "Flere filtre", lfSecSort: "Multi-sortering", lfAuthor: "Forfatter", lfSeries: "Serie", lfTitle: "Titel", lfYear: "År", lfAdded: "Tilføjet", lfDuration: "Varighed", lfNarrator: "Oplæser", lfGenre: "Genre", lfLanguage: "Sprog", lfProgress: "Fremskridt", lfPgFinished: "Færdige", lfPgInProgress: "I gang", lfPgNot: "Ikke begyndt" },
+    sv: { nrSearch: 'Filtrera uppläsare…', nrSortName: 'Namn', nrSortBooks: 'Flest böcker', nrForms: ['Uppläsare', 'Uppläsare'], nrBooksForms: ['bok', 'böcker'], auForms: ['Författare', 'Författare'], auSearch: 'Filtrera författare…' , sbTitle: "Serverranking", sbWeek: "Vecka", sbMonth: "Månad", sbYear: "År", sbAll: "Totalt", sbBooks: "Böcker", sbTopBooks: "Mest lyssnade", sbTotal: "Totalt", sbListeners: "Lyssnare", sbAvg: "Genomsnitt", wkTitle: "Lyssningsminuter — senaste 7 dagarna", wkAvg: "Dagligt snitt", wkRow: "Dagar i rad", rpBadge: "Öppna problemrapporter", rpMenu: "Rapportera ett problem", rpTitle: "Rapportera ett problem", rpWhat: "Vad är fel?", rpNote: "Något mer administratören bör veta? (valfritt)", rpSend: "Skicka rapport", rpSent: "Skickat. Tack.", rpFail: "Kunde inte skicka", rpMissing: "Saknat eller ofullständigt innehåll", rpQuality: "Dålig ljudkvalitet", rpPlay: "Spelar inte upp", rpWrong: "Fel bok, omslag eller metadata", rpChapters: "Fel kapitel", rpOther: "Något annat", rfRate: "Betygsätt", rfSheet: "Betygsätt den här boken", rfOpen: "Öppna boksidan", rfPickHint: "Välj ett betyg", rfTitle: "Betygsätt det du lyssnat klart", ysFinished: "Nyligen avslutade", ysAlmost: "Nästan klara", ysMarkDone: "Markera som avslutad", ysEditDate: "Ändra slutdatum", ysThisWeek: "Denna vecka", ysBestDay: "Bästa dagen", ysTitle: "Ditt lyssnande", fsTitle: "Serverranking", fsCard: "Serverranking", fsToggle: "Dela min lyssningsstatistik", fsJoin: "Slå på ”Dela min lyssningsstatistik” i anpassningspanelen för att synas i serverrankingen.", fsWaiting: "Delning är på — din sammanfattning läggs snart till i serverrankingen tillsammans med alla andra.", fsHint: "Dela en sammanfattning av ditt lyssnande (totaler och minuter per dag) med de andra på servern — den driver serverrankingen. På som standard. Stänger du av försvinner du ur rankingen och dess totaler, och allt delat raderas.", yirBtn: "Året i återblick", yirTitle: "Ditt lyssningsår", yirYear: "Senaste 12 månaderna", yirDays: "Dagar med lyssning", yirBest: "Bästa dagen", yirMonths: "Per månad", yirNone: "Inga lyssningsdata ännu.", scmTitle: "Seriesida", scmHint: "Hur det genererade omslaget ovanför en serietitel ser ut när inget eget laddats upp (endast denna webbläsare).", scmDeck: "Lagrad kortlek", scmFirst: "Första bokens omslag", scmGrid: "Omslagsrutnät (standard)", scmOff: "Dold" , lsTitle: "Serverstatistik", lsAll: "Alla bibliotek", lsPlayed: "Spelade böcker", lsBest: "Bäst betygsatta", lsGenres: "Toppgenrer", srvPick: "Vad ska sparas:", srvGRest: "Funktioner & beteende", aeBtn: "Städa författare", aeTitle: "Författare utan böcker", aeNone: "Alla författare här har minst en bok.", aeRemove: "Ta bort", aeDone: "Borttagna", aeWorking: "Tar bort…", rpCard: "Rapporterade problem", rpHint: "Problem som användare rapporterat från en boksida. Att lösa ett tar bort det ur listan.", rpEmpty: "Inget rapporterat.", rpResolve: "Lös", rpOpen: "Öppna boken", apCard: "Uppspelning", apToggle: "Spela automatiskt nästa bok i en serie", apHint: "När en bok tar slut startar nästa i samma serie automatiskt. Bara böcker du redan har och inte lyssnat klart.", apNext: "Nästa i serien", fdToggle: "Verktyg för avslutade böcker i din statistik", ysNoDate: "inget datum", hmShowing: "grafen visar", ysStreak: "Svit", ysCurrent: "Nuvarande", ysLongest: "Längsta", ysDaysTotal: "Dagar totalt", ysPace: "Tempo", ysPerDay: "Per lyssningsdag", ysWhen: "När du lyssnar", ysTopBooks: "Mest lyssnade böcker", ysTopAuthors: "Mest lyssnade författare", ysTopNarrators: "Mest lyssnade uppläsare", rfToggle: "Sektionen ”Betygsätt” på startsidan", hoTitle: "Ordning på startsidans sektioner", hoEmpty: "Öppna startsidan en gång och kom tillbaka.", hoReset: "Återställ standardordning", ctIcon: "Ikon", ctColour: "Accent", ctNeedBook: "Audiobookshelf kan inte spara en tom samling — välj minst en bok. Du kan lägga till och ta bort fritt senare.", colEditIcon: "Byt ikon", ciTitle: "Samlingens ikon", ciReset: "Matcha namnet automatiskt", colEditDesc: "Redigera beskrivning", colBookForms: ["bok","böcker"], colForms: ["Samling","Samlingar"], ctTitle: "Skapa en samling", ctBlank: "Tom samling", ctNew: "Ny samling", ctNewHint: "från en mall", ctNamePh: "Samlingens namn", ctSearch: "Sök böcker eller författare…", ctCreate: "Skapa", ctBack: "‹ Tillbaka", ctAddAll: "Lägg till alla böcker", abTitle: "Lägg till böcker", abAdd: "Lägg till", avRemove: "Ta bort foto", avSet: "Välj foto…", ugListened: "Lyssnat", ugPhoto: "Profilfoto", ugNever: "Aldrig", ugSeen: "Senast aktiv", ugEdit: "Redigera användare", ugDelete: "Ta bort användare", ugAdd: "Lägg till foto", ugChange: "Byt foto", ugSortName: "A–Z", ugSortTime: "Mest lyssnat", ugSortSeen: "Nyligen aktiva", bsCard: "Boklänkar", bsHint: "Knappar på boksidan för att slå upp en titel någon annanstans. Goodreads och ditt språks största sajt är på från början.", bsFind: "Sök på", bsGlobal: "Överallt", bsLocal: "För ditt språk", bsOther: "Andra länder", pgCard: "Omgjorda sidor", pgHint: "Var och en ersätter en Audiobookshelf-sida med NanoHive-versionen. Stäng av för att få tillbaka originalet.", pgNarrators: "Uppläsarkort", pgCollections: "Samlingssidor", pgUsers: "Användarkort (inställningar)", pgStats: "Lyssningsranking", pgPhoto: "Profilfoto i toppfältet", pgCinematic: "Biografbakgrund", pgTransitions: "Sidövergångar", pSearch: "Sök inställningar…", pSearchNone: "Inget matchar.", erTypeface: "Typsnitt", erPage: "Sidtema", erText: "Textfärg", erBg: "Bakgrund", erDefault: "Standard (ABS)", erAuto: "Auto" , lfByAuthor: "Författare › serieordning", lfBySeries: "Serie › ordning" , lfSecFilters: "Fler filter", lfSecSort: "Multisortering", lfAuthor: "Författare", lfSeries: "Serie", lfTitle: "Titel", lfYear: "År", lfAdded: "Tillagd", lfDuration: "Längd", lfNarrator: "Uppläsare", lfGenre: "Genre", lfLanguage: "Språk", lfProgress: "Förlopp", lfPgFinished: "Klara", lfPgInProgress: "Pågående", lfPgNot: "Inte påbörjade" },
+    no: { nrSearch: 'Filtrer fortellere…', nrSortName: 'Navn', nrSortBooks: 'Flest bøker', nrForms: ['Forteller', 'Fortellere'], nrBooksForms: ['bok', 'bøker'], auForms: ['Forfatter', 'Forfattere'], auSearch: 'Filtrer forfattere…' , sbTitle: "Serverrangering", sbWeek: "Uke", sbMonth: "Måned", sbYear: "År", sbAll: "Totalt", sbBooks: "Bøker", sbTopBooks: "Mest lyttet", sbTotal: "Totalt", sbListeners: "Lyttere", sbAvg: "Gjennomsnitt", wkTitle: "Lytteminutter — siste 7 dager", wkAvg: "Daglig snitt", wkRow: "Dager på rad", rpBadge: "Åpne problemrapporter", rpMenu: "Rapporter et problem", rpTitle: "Rapporter et problem", rpWhat: "Hva er galt?", rpNote: "Noe mer administratoren bør vite? (valgfritt)", rpSend: "Send rapport", rpSent: "Sendt. Takk.", rpFail: "Kunne ikke sende", rpMissing: "Manglende eller ufullstendig innhold", rpQuality: "Dårlig lydkvalitet", rpPlay: "Spiller ikke av", rpWrong: "Feil bok, omslag eller metadata", rpChapters: "Feil kapitler", rpOther: "Noe annet", rfRate: "Vurder", rfSheet: "Vurder denne boken", rfOpen: "Åpne boksiden", rfPickHint: "Velg en vurdering", rfTitle: "Vurder det du har hørt ferdig", ysFinished: "Nylig fullført", ysAlmost: "Nesten ferdig", ysMarkDone: "Merk som fullført", ysEditDate: "Endre sluttdato", ysThisWeek: "Denne uken", ysBestDay: "Beste dag", ysTitle: "Din lytting", fsTitle: "Serverrangering", fsCard: "Serverrangering", fsToggle: "Del lyttestatistikken min", fsJoin: "Slå på «Del lyttestatistikken min» i tilpasningspanelet for å vises i serverrangeringen.", fsWaiting: "Deling er på — sammendraget ditt blir snart med i serverrangeringen sammen med alle andre.", fsHint: "Del et sammendrag av lyttingen din (totaler og minutter per dag) med de andre på serveren — det driver serverrangeringen. På som standard. Slår du det av, forsvinner du fra rangeringen og totalene, og alt delt slettes.", yirBtn: "Året i tilbakeblikk", yirTitle: "Ditt lytteår", yirYear: "Siste 12 måneder", yirDays: "Dager med lytting", yirBest: "Beste dag", yirMonths: "Per måned", yirNone: "Ingen lyttedata ennå.", scmTitle: "Serieside", scmHint: "Slik ser det genererte omslaget over en serietittel ut når ingen egen er lastet opp (bare denne nettleseren).", scmDeck: "Lagdelt stabel", scmFirst: "Første bokas omslag", scmGrid: "Omslagsrutenett (standard)", scmOff: "Skjult" , lsTitle: "Serverstatistikk", lsAll: "Alle bibliotek", lsPlayed: "Avspilte bøker", lsBest: "Best vurdert", lsGenres: "Toppsjangre", srvPick: "Hva skal lagres:", srvGRest: "Funksjoner og oppførsel", aeBtn: "Rydd i forfattere", aeTitle: "Forfattere uten bøker", aeNone: "Alle forfattere her har minst én bok.", aeRemove: "Fjern", aeDone: "Fjernet", aeWorking: "Fjerner…", rpCard: "Rapporterte problemer", rpHint: "Problemer brukere har rapportert fra en bokside. Løser du ett, forsvinner det fra listen.", rpEmpty: "Ingenting rapportert.", rpResolve: "Løs", rpOpen: "Åpne boka", apCard: "Avspilling", apToggle: "Spill automatisk neste bok i en serie", apHint: "Når en bok er ferdig, starter neste i samme serie automatisk. Bare bøker du alt har, og som ikke er fullført.", apNext: "Neste i serien", fdToggle: "Verktøy for fullførte bøker i statistikken", ysNoDate: "ingen dato", hmShowing: "grafen viser", ysStreak: "Rekke", ysCurrent: "Nåværende", ysLongest: "Lengste", ysDaysTotal: "Dager totalt", ysPace: "Tempo", ysPerDay: "Per lyttedag", ysWhen: "Når du lytter", ysTopBooks: "Mest lyttede bøker", ysTopAuthors: "Mest lyttede forfattere", ysTopNarrators: "Mest lyttede opplesere", rfToggle: "Seksjonen «Vurder» på forsiden", hoTitle: "Rekkefølge på forsiden", hoEmpty: "Åpne forsiden én gang og kom tilbake.", hoReset: "Tilbakestill rekkefølgen", ctIcon: "Ikon", ctColour: "Aksent", ctNeedBook: "Audiobookshelf kan ikke lagre en tom samling — velg minst én bok. Du kan legge til og fjerne fritt senere.", colEditIcon: "Bytt ikon", ciTitle: "Samlingens ikon", ciReset: "Tilpass navnet automatisk", colEditDesc: "Rediger beskrivelse", colBookForms: ["bok","bøker"], colForms: ["Samling","Samlinger"], ctTitle: "Opprett en samling", ctBlank: "Tom samling", ctNew: "Ny samling", ctNewHint: "fra en mal", ctNamePh: "Samlingens navn", ctSearch: "Søk bøker eller forfattere…", ctCreate: "Opprett", ctBack: "‹ Tilbake", ctAddAll: "Legg til alle bøker", abTitle: "Legg til bøker", abAdd: "Legg til", avRemove: "Fjern bilde", avSet: "Velg bilde…", ugListened: "Lyttet", ugPhoto: "Profilbilde", ugNever: "Aldri", ugSeen: "Sist aktiv", ugEdit: "Rediger bruker", ugDelete: "Slett bruker", ugAdd: "Legg til bilde", ugChange: "Bytt bilde", ugSortName: "A–Å", ugSortTime: "Mest lyttet", ugSortSeen: "Nylig aktive", bsCard: "Boklenker", bsHint: "Knapper på boksiden for å slå opp en tittel andre steder. Goodreads og språkets største side er på fra start.", bsFind: "Søk på", bsGlobal: "Overalt", bsLocal: "For språket ditt", bsOther: "Andre land", pgCard: "Omarbeidede sider", pgHint: "Hver av disse erstatter en Audiobookshelf-side med NanoHive-versjonen. Slå av for å få originalen tilbake.", pgNarrators: "Oppleserkort", pgCollections: "Samlingssider", pgUsers: "Brukerkort (innstillinger)", pgStats: "Lytterangering", pgPhoto: "Profilbilde i topplinja", pgCinematic: "Kinobakgrunn", pgTransitions: "Sideoverganger", pSearch: "Søk i innstillinger…", pSearchNone: "Ingen treff.", erTypeface: "Skrifttype", erPage: "Sidetema", erText: "Tekstfarge", erBg: "Bakgrunn", erDefault: "Standard (ABS)", erAuto: "Auto" , lfByAuthor: "Forfatter › serierekkefølge", lfBySeries: "Serie › rekkefølge" , lfSecFilters: "Flere filtre", lfSecSort: "Multisortering", lfAuthor: "Forfatter", lfSeries: "Serie", lfTitle: "Tittel", lfYear: "År", lfAdded: "Lagt til", lfDuration: "Varighet", lfNarrator: "Oppleser", lfGenre: "Sjanger", lfLanguage: "Språk", lfProgress: "Fremdrift", lfPgFinished: "Fullførte", lfPgInProgress: "Pågående", lfPgNot: "Ikke påbegynt" },
+    fi: { nrSearch: 'Suodata lukijoita…', nrSortName: 'Nimi', nrSortBooks: 'Eniten kirjoja', nrForms: ['Lukija', 'Lukijaa'], nrBooksForms: ['kirja', 'kirjaa'], auForms: ['Kirjailija', 'Kirjailijaa'], auSearch: 'Suodata kirjailijoita…' , sbTitle: "Palvelimen sijoitukset", sbWeek: "Viikko", sbMonth: "Kuukausi", sbYear: "Vuosi", sbAll: "Kaikki aika", sbBooks: "Kirjat", sbTopBooks: "Kuunnelluimmat", sbTotal: "Yhteensä", sbListeners: "Kuuntelijat", sbAvg: "Keskiarvo", wkTitle: "Kuunteluminuutit — viimeiset 7 päivää", wkAvg: "Päiväkeskiarvo", wkRow: "Päivää putkeen", rpBadge: "Avoimia ongelmailmoituksia", rpMenu: "Ilmoita ongelmasta", rpTitle: "Ilmoita ongelmasta", rpWhat: "Mikä on vialla?", rpNote: "Muuta kerrottavaa ylläpitäjälle? (valinnainen)", rpSend: "Lähetä ilmoitus", rpSent: "Lähetetty. Kiitos.", rpFail: "Lähetys epäonnistui", rpMissing: "Puuttuva tai keskeneräinen sisältö", rpQuality: "Huono äänenlaatu", rpPlay: "Ei toistu", rpWrong: "Väärä kirja, kansi tai metatiedot", rpChapters: "Väärät luvut", rpOther: "Jotain muuta", rfRate: "Arvioi", rfSheet: "Arvioi tämä kirja", rfOpen: "Avaa kirjan sivu", rfPickHint: "Valitse arvio", rfTitle: "Arvioi loppuun kuuntelemasi", ysFinished: "Äskettäin valmistuneet", ysAlmost: "Melkein valmiit", ysMarkDone: "Merkitse valmiiksi", ysEditDate: "Muuta valmistumispäivää", ysThisWeek: "Tällä viikolla", ysBestDay: "Paras päivä", ysTitle: "Kuuntelusi", fsTitle: "Palvelimen sijoitukset", fsCard: "Palvelimen sijoitukset", fsToggle: "Jaa kuuntelutilastoni", fsJoin: "Ota ”Jaa kuuntelutilastoni” käyttöön mukautuspaneelissa, niin näyt palvelimen sijoituksissa.", fsWaiting: "Jakaminen on päällä — yhteenvetosi liittyy pian palvelimen sijoituksiin muiden mukana.", fsHint: "Jaa yhteenveto kuuntelustasi (summat ja minuutit päivässä) muiden tämän palvelimen käyttäjien kanssa — se tuottaa palvelimen sijoitukset. Oletuksena päällä. Pois kytkettäessä poistut sijoituksista ja summista, ja jaetut tiedot poistetaan.", yirBtn: "Vuosi tiivistettynä", yirTitle: "Kuunteluvuotesi", yirYear: "Viimeiset 12 kuukautta", yirDays: "Kuuntelupäivät", yirBest: "Paras päivä", yirMonths: "Kuukausittain", yirNone: "Ei vielä kuuntelutietoja.", scmTitle: "Sarjan sivu", scmHint: "Miltä sarjan otsikon yllä oleva generoitu kansi näyttää, kun omaa ei ole ladattu (vain tämä selain).", scmDeck: "Kerrostettu pakka", scmFirst: "Ensimmäisen kirjan kansi", scmGrid: "Kansiruudukko (oletus)", scmOff: "Piilotettu" , lsTitle: "Palvelimen tilastot", lsAll: "Kaikki kirjastot", lsPlayed: "Toistetut kirjat", lsBest: "Parhaiten arvioidut", lsGenres: "Suosituimmat lajityypit", srvPick: "Mitä tallennetaan:", srvGRest: "Toiminnot ja käyttäytyminen", aeBtn: "Siivoa kirjailijat", aeTitle: "Kirjailijat ilman kirjoja", aeNone: "Jokaisella kirjailijalla on täällä vähintään yksi kirja.", aeRemove: "Poista", aeDone: "Poistettu", aeWorking: "Poistetaan…", rpCard: "Ilmoitetut ongelmat", rpHint: "Käyttäjien kirjasivulta ilmoittamat ongelmat. Ratkaiseminen poistaa ilmoituksen listalta.", rpEmpty: "Ei ilmoituksia.", rpResolve: "Ratkaise", rpOpen: "Avaa kirja", apCard: "Toisto", apToggle: "Toista sarjan seuraava kirja automaattisesti", apHint: "Kun kirja loppuu, saman sarjan seuraava alkaa automaattisesti. Vain kirjastossasi jo olevat, kesken olevat kirjat.", apNext: "Sarjan seuraava", fdToggle: "Valmiiden kirjojen työkalut tilastoissasi", ysNoDate: "ei päivämäärää", hmShowing: "kaavio näyttää", ysStreak: "Putki", ysCurrent: "Nykyinen", ysLongest: "Pisin", ysDaysTotal: "Päiviä yhteensä", ysPace: "Tahti", ysPerDay: "Kuuntelupäivää kohden", ysWhen: "Milloin kuuntelet", ysTopBooks: "Kuunnelluimmat kirjat", ysTopAuthors: "Kuunnelluimmat kirjailijat", ysTopNarrators: "Kuunnelluimmat lukijat", rfToggle: "Arvioi-osio etusivulla", hoTitle: "Etusivun osioiden järjestys", hoEmpty: "Avaa etusivu kerran ja palaa tänne.", hoReset: "Palauta oletusjärjestys", ctIcon: "Kuvake", ctColour: "Korostus", ctNeedBook: "Audiobookshelf ei voi tallentaa tyhjää kokoelmaa — valitse vähintään yksi kirja. Voit lisätä ja poistaa vapaasti myöhemmin.", colEditIcon: "Vaihda kuvake", ciTitle: "Kokoelman kuvake", ciReset: "Sovita nimeen automaattisesti", colEditDesc: "Muokkaa kuvausta", colBookForms: ["kirja","kirjaa"], colForms: ["Kokoelma","Kokoelmat"], ctTitle: "Luo kokoelma", ctBlank: "Tyhjä kokoelma", ctNew: "Uusi kokoelma", ctNewHint: "mallista", ctNamePh: "Kokoelman nimi", ctSearch: "Hae kirjoja tai kirjailijoita…", ctCreate: "Luo", ctBack: "‹ Takaisin", ctAddAll: "Lisää kaikki kirjat", abTitle: "Lisää kirjoja", abAdd: "Lisää", avRemove: "Poista kuva", avSet: "Valitse kuva…", ugListened: "Kuunneltu", ugPhoto: "Profiilikuva", ugNever: "Ei koskaan", ugSeen: "Viimeksi aktiivinen", ugEdit: "Muokkaa käyttäjää", ugDelete: "Poista käyttäjä", ugAdd: "Lisää kuva", ugChange: "Vaihda kuva", ugSortName: "A–Ö", ugSortTime: "Kuunnelluimmat", ugSortSeen: "Äskettäin aktiiviset", bsCard: "Kirjalinkit", bsHint: "Kirjasivun painikkeet nimikkeen hakemiseen muualta. Goodreads ja kielesi suurin sivusto ovat valmiiksi päällä.", bsFind: "Hae palvelusta", bsGlobal: "Kaikkialla", bsLocal: "Kielellesi", bsOther: "Muut maat", pgCard: "Uudistetut sivut", pgHint: "Jokainen näistä korvaa Audiobookshelf-sivun NanoHive-versiolla. Poista käytöstä palataksesi alkuperäiseen.", pgNarrators: "Lukijakortit", pgCollections: "Kokoelmasivut", pgUsers: "Käyttäjäkortit (asetukset)", pgStats: "Kuuntelusijoitukset", pgPhoto: "Profiilikuva yläpalkissa", pgCinematic: "Elokuvamainen tausta", pgTransitions: "Sivusiirtymät", pSearch: "Hae asetuksia…", pSearchNone: "Ei osumia.", erTypeface: "Kirjasin", erPage: "Sivun teema", erText: "Tekstin väri", erBg: "Tausta", erDefault: "Oletus (ABS)", erAuto: "Automaattinen" , lfByAuthor: "Kirjailija › sarjajärjestys", lfBySeries: "Sarja › järjestys" , lfSecFilters: "Lisää suodattimia", lfSecSort: "Monitasolajittelu", lfAuthor: "Kirjailija", lfSeries: "Sarja", lfTitle: "Nimi", lfYear: "Vuosi", lfAdded: "Lisätty", lfDuration: "Kesto", lfNarrator: "Lukija", lfGenre: "Lajityyppi", lfLanguage: "Kieli", lfProgress: "Edistyminen", lfPgFinished: "Valmiit", lfPgInProgress: "Kesken", lfPgNot: "Aloittamattomat" },
+    ru: { nrSearch: 'Фильтр чтецов…', nrSortName: 'Имя', nrSortBooks: 'Больше книг', nrForms: ['Чтец', 'Чтеца', 'Чтецов'], nrBooksForms: ['книга', 'книги', 'книг'], auForms: ['Автор', 'Автора', 'Авторов'], auSearch: 'Фильтр авторов…' , sbTitle: "Рейтинг сервера", sbWeek: "Неделя", sbMonth: "Месяц", sbYear: "Год", sbAll: "За всё время", sbBooks: "Книги", sbTopBooks: "Самые прослушиваемые", sbTotal: "Всего", sbListeners: "Слушатели", sbAvg: "В среднем", wkTitle: "Минуты прослушивания — последние 7 дней", wkAvg: "В среднем за день", wkRow: "Дней подряд", rpBadge: "Открытые сообщения о проблемах", rpMenu: "Сообщить о проблеме", rpTitle: "Сообщить о проблеме", rpWhat: "Что не так?", rpNote: "Что-то ещё для администратора? (необязательно)", rpSend: "Отправить", rpSent: "Отправлено. Спасибо.", rpFail: "Не удалось отправить", rpMissing: "Отсутствует или неполное содержимое", rpQuality: "Плохое качество звука", rpPlay: "Не воспроизводится", rpWrong: "Не та книга, обложка или метаданные", rpChapters: "Неверные главы", rpOther: "Другое", rfRate: "Оценить", rfSheet: "Оцените эту книгу", rfOpen: "Открыть страницу книги", rfPickHint: "Выберите оценку", rfTitle: "Оцените прослушанное", ysFinished: "Недавно закончены", ysAlmost: "Почти закончены", ysMarkDone: "Отметить как законченную", ysEditDate: "Изменить дату окончания", ysThisWeek: "На этой неделе", ysBestDay: "Лучший день", ysTitle: "Ваше прослушивание", fsTitle: "Рейтинг сервера", fsCard: "Рейтинг сервера", fsToggle: "Делиться моей статистикой прослушивания", fsJoin: "Включите «Делиться моей статистикой прослушивания» в панели настройки, чтобы появиться в рейтинге сервера.", fsWaiting: "Обмен включён — ваша сводка скоро появится в рейтинге сервера вместе с остальными.", fsHint: "Делитесь сводкой прослушивания (итоги и минуты за день) с другими на этом сервере — она питает рейтинг сервера. Включено по умолчанию. При отключении вы исчезаете из рейтинга и его итогов, а всё переданное удаляется.", yirBtn: "Итоги года", yirTitle: "Ваш год прослушивания", yirYear: "Последние 12 месяцев", yirDays: "Дни с прослушиванием", yirBest: "Лучший день", yirMonths: "По месяцам", yirNone: "Данных о прослушивании пока нет.", scmTitle: "Страница серии", scmHint: "Как выглядит сгенерированная обложка над названием серии, если своя не загружена (только этот браузер).", scmDeck: "Слоёная колода", scmFirst: "Обложка первой книги", scmGrid: "Сетка обложек (по умолчанию)", scmOff: "Скрыта" , lsTitle: "Статистика сервера", lsAll: "Все библиотеки", lsPlayed: "Прослушанные книги", lsBest: "С лучшими оценками", lsGenres: "Популярные жанры", srvPick: "Что сохранить:", srvGRest: "Функции и поведение", aeBtn: "Прибрать авторов", aeTitle: "Авторы без книг", aeNone: "У каждого автора здесь есть хотя бы одна книга.", aeRemove: "Удалить", aeDone: "Удалено", aeWorking: "Удаление…", rpCard: "Сообщённые проблемы", rpHint: "Проблемы, о которых пользователи сообщили со страницы книги. Решение убирает запись из списка.", rpEmpty: "Сообщений нет.", rpResolve: "Решить", rpOpen: "Открыть книгу", apCard: "Воспроизведение", apToggle: "Автоматически включать следующую книгу серии", apHint: "Когда книга заканчивается, автоматически начинается следующая из той же серии. Только книги из вашей библиотеки, ещё не законченные.", apNext: "Следующая в серии", fdToggle: "Инструменты законченных книг в статистике", ysNoDate: "без даты", hmShowing: "график показывает", ysStreak: "Серия дней", ysCurrent: "Текущая", ysLongest: "Самая длинная", ysDaysTotal: "Всего дней", ysPace: "Темп", ysPerDay: "За день прослушивания", ysWhen: "Когда вы слушаете", ysTopBooks: "Самые прослушиваемые книги", ysTopAuthors: "Самые прослушиваемые авторы", ysTopNarrators: "Самые прослушиваемые чтецы", rfToggle: "Раздел «Оцените» на главной", hoTitle: "Порядок разделов главной", hoEmpty: "Откройте главную один раз и вернитесь сюда.", hoReset: "Восстановить порядок по умолчанию", ctIcon: "Значок", ctColour: "Акцент", ctNeedBook: "Audiobookshelf не может сохранить пустую коллекцию — выберите хотя бы одну книгу. Позже можно свободно добавлять и убирать.", colEditIcon: "Сменить значок", ciTitle: "Значок коллекции", ciReset: "Подобрать по названию автоматически", colEditDesc: "Изменить описание", colBookForms: ["книга","книги","книг"], colForms: ["Коллекция","Коллекции","Коллекций"], ctTitle: "Создать коллекцию", ctBlank: "Пустая коллекция", ctNew: "Новая коллекция", ctNewHint: "из шаблона", ctNamePh: "Название коллекции", ctSearch: "Искать книги или авторов…", ctCreate: "Создать", ctBack: "‹ Назад", ctAddAll: "Добавить все книги", abTitle: "Добавить книги", abAdd: "Добавить", avRemove: "Убрать фото", avSet: "Выбрать фото…", ugListened: "Прослушано", ugPhoto: "Фото профиля", ugNever: "Никогда", ugSeen: "Был(а) недавно", ugEdit: "Изменить пользователя", ugDelete: "Удалить пользователя", ugAdd: "Добавить фото", ugChange: "Сменить фото", ugSortName: "А–Я", ugSortTime: "Больше всего слушали", ugSortSeen: "Недавно активные", bsCard: "Ссылки книги", bsHint: "Кнопки на странице книги для поиска названия на других сайтах. Goodreads и крупнейший сайт вашего языка включены заранее.", bsFind: "Искать на", bsGlobal: "Везде", bsLocal: "Для вашего языка", bsOther: "Другие страны", pgCard: "Переработанные страницы", pgHint: "Каждая опция заменяет страницу Audiobookshelf версией NanoHive. Выключите, чтобы вернуть оригинал.", pgNarrators: "Карточки чтецов", pgCollections: "Страницы коллекций", pgUsers: "Карточки пользователей (настройки)", pgStats: "Рейтинг прослушивания", pgPhoto: "Фото профиля в верхней панели", pgCinematic: "Киношный фон", pgTransitions: "Переходы страниц", pSearch: "Поиск настроек…", pSearchNone: "Ничего не найдено.", erTypeface: "Шрифт", erPage: "Тема страницы", erText: "Цвет текста", erBg: "Фон", erDefault: "По умолчанию (ABS)", erAuto: "Авто" , lfByAuthor: "Автор › порядок серии", lfBySeries: "Серия › порядок" , lfSecFilters: "Ещё фильтры", lfSecSort: "Многоуровневая сортировка", lfAuthor: "Автор", lfSeries: "Серия", lfTitle: "Название", lfYear: "Год", lfAdded: "Добавлено", lfDuration: "Длительность", lfNarrator: "Чтец", lfGenre: "Жанр", lfLanguage: "Язык", lfProgress: "Прогресс", lfPgFinished: "Законченные", lfPgInProgress: "Слушаются", lfPgNot: "Не начатые" },
+    uk: { nrSearch: 'Фільтр читців…', nrSortName: 'Імʼя', nrSortBooks: 'Більше книг', nrForms: ['Читець', 'Читці', 'Читців'], nrBooksForms: ['книга', 'книги', 'книг'], auForms: ['Автор', 'Автори', 'Авторів'], auSearch: 'Фільтр авторів…' , sbTitle: "Рейтинг сервера", sbWeek: "Тиждень", sbMonth: "Місяць", sbYear: "Рік", sbAll: "За весь час", sbBooks: "Книги", sbTopBooks: "Найбільше слухані", sbTotal: "Разом", sbListeners: "Слухачі", sbAvg: "У середньому", wkTitle: "Хвилини слухання — останні 7 днів", wkAvg: "Середнє за день", wkRow: "Днів поспіль", rpBadge: "Відкриті повідомлення про проблеми", rpMenu: "Повідомити про проблему", rpTitle: "Повідомити про проблему", rpWhat: "Що не так?", rpNote: "Щось іще для адміністратора? (необов’язково)", rpSend: "Надіслати", rpSent: "Надіслано. Дякуємо.", rpFail: "Не вдалося надіслати", rpMissing: "Відсутній або неповний вміст", rpQuality: "Погана якість звуку", rpPlay: "Не відтворюється", rpWrong: "Не та книга, обкладинка чи метадані", rpChapters: "Неправильні розділи", rpOther: "Інше", rfRate: "Оцінити", rfSheet: "Оцініть цю книгу", rfOpen: "Відкрити сторінку книги", rfPickHint: "Виберіть оцінку", rfTitle: "Оцініть прослухане", ysFinished: "Нещодавно завершені", ysAlmost: "Майже завершені", ysMarkDone: "Позначити як завершену", ysEditDate: "Змінити дату завершення", ysThisWeek: "Цього тижня", ysBestDay: "Найкращий день", ysTitle: "Ваше слухання", fsTitle: "Рейтинг сервера", fsCard: "Рейтинг сервера", fsToggle: "Ділитися моєю статистикою слухання", fsJoin: "Увімкніть «Ділитися моєю статистикою слухання» в панелі налаштувань, щоб з’явитися в рейтингу сервера.", fsWaiting: "Обмін увімкнено — ваш підсумок невдовзі долучиться до рейтингу сервера разом з іншими.", fsHint: "Діліться підсумком свого слухання (загальні суми та хвилини за день) з іншими на цьому сервері — він живить рейтинг сервера. Типово ввімкнено. Після вимкнення ви зникаєте з рейтингу та його сум, а всі передані дані видаляються.", yirBtn: "Підсумки року", yirTitle: "Ваш рік слухання", yirYear: "Останні 12 місяців", yirDays: "Дні зі слуханням", yirBest: "Найкращий день", yirMonths: "За місяцями", yirNone: "Даних про слухання ще немає.", scmTitle: "Сторінка серії", scmHint: "Як виглядає згенерована обкладинка над назвою серії, коли власну не завантажено (лише цей браузер).", scmDeck: "Шарувата колода", scmFirst: "Обкладинка першої книги", scmGrid: "Сітка обкладинок (типово)", scmOff: "Прихована" , lsTitle: "Статистика сервера", lsAll: "Усі бібліотеки", lsPlayed: "Прослухані книги", lsBest: "Найкраще оцінені", lsGenres: "Найпопулярніші жанри", srvPick: "Що зберегти:", srvGRest: "Функції та поведінка", aeBtn: "Прибрати авторів", aeTitle: "Автори без книг", aeNone: "Кожен автор тут має принаймні одну книгу.", aeRemove: "Видалити", aeDone: "Видалено", aeWorking: "Видалення…", rpCard: "Повідомлені проблеми", rpHint: "Проблеми, про які користувачі повідомили зі сторінки книги. Розвʼязання прибирає запис зі списку.", rpEmpty: "Нічого не повідомлено.", rpResolve: "Розвʼязати", rpOpen: "Відкрити книгу", apCard: "Відтворення", apToggle: "Автоматично вмикати наступну книгу серії", apHint: "Коли книга закінчується, автоматично починається наступна з тієї ж серії. Лише книги з вашої бібліотеки, ще не завершені.", apNext: "Наступна в серії", fdToggle: "Інструменти завершених книг у статистиці", ysNoDate: "без дати", hmShowing: "графік показує", ysStreak: "Серія днів", ysCurrent: "Поточна", ysLongest: "Найдовша", ysDaysTotal: "Днів разом", ysPace: "Темп", ysPerDay: "За день слухання", ysWhen: "Коли ви слухаєте", ysTopBooks: "Найбільш слухані книги", ysTopAuthors: "Найбільш слухані автори", ysTopNarrators: "Найбільш слухані оповідачі", rfToggle: "Розділ «Оцініть» на головній", hoTitle: "Порядок розділів головної", hoEmpty: "Відкрийте головну один раз і поверніться сюди.", hoReset: "Відновити типовий порядок", ctIcon: "Значок", ctColour: "Акцент", ctNeedBook: "Audiobookshelf не може зберегти порожню колекцію — виберіть хоча б одну книгу. Пізніше можна вільно додавати й прибирати.", colEditIcon: "Змінити значок", ciTitle: "Значок колекції", ciReset: "Підібрати за назвою автоматично", colEditDesc: "Редагувати опис", colBookForms: ["книга","книги","книг"], colForms: ["Колекція","Колекції","Колекцій"], ctTitle: "Створити колекцію", ctBlank: "Порожня колекція", ctNew: "Нова колекція", ctNewHint: "із шаблону", ctNamePh: "Назва колекції", ctSearch: "Шукати книги або авторів…", ctCreate: "Створити", ctBack: "‹ Назад", ctAddAll: "Додати всі книги", abTitle: "Додати книги", abAdd: "Додати", avRemove: "Прибрати фото", avSet: "Вибрати фото…", ugListened: "Прослухано", ugPhoto: "Фото профілю", ugNever: "Ніколи", ugSeen: "Востаннє активний", ugEdit: "Редагувати користувача", ugDelete: "Видалити користувача", ugAdd: "Додати фото", ugChange: "Змінити фото", ugSortName: "А–Я", ugSortTime: "Найбільше слухали", ugSortSeen: "Нещодавно активні", bsCard: "Посилання книги", bsHint: "Кнопки на сторінці книги для пошуку назви деінде. Goodreads і найбільший сайт вашої мови ввімкнені наперед.", bsFind: "Шукати на", bsGlobal: "Всюди", bsLocal: "Для вашої мови", bsOther: "Інші країни", pgCard: "Перероблені сторінки", pgHint: "Кожна опція замінює сторінку Audiobookshelf версією NanoHive. Вимкніть, щоб повернути оригінал.", pgNarrators: "Картки оповідачів", pgCollections: "Сторінки колекцій", pgUsers: "Картки користувачів (налаштування)", pgStats: "Рейтинг слухання", pgPhoto: "Фото профілю у верхній панелі", pgCinematic: "Кінематографічне тло", pgTransitions: "Переходи сторінок", pSearch: "Шукати налаштування…", pSearchNone: "Нічого не знайдено.", erTypeface: "Шрифт", erPage: "Тема сторінки", erText: "Колір тексту", erBg: "Тло", erDefault: "Типово (ABS)", erAuto: "Авто" , lfByAuthor: "Автор › порядок серії", lfBySeries: "Серія › порядок" , lfSecFilters: "Ще фільтри", lfSecSort: "Багаторівневе сортування", lfAuthor: "Автор", lfSeries: "Серія", lfTitle: "Назва", lfYear: "Рік", lfAdded: "Додано", lfDuration: "Тривалість", lfNarrator: "Оповідач", lfGenre: "Жанр", lfLanguage: "Мова", lfProgress: "Прогрес", lfPgFinished: "Завершені", lfPgInProgress: "Слухаються", lfPgNot: "Не розпочаті" },
+    be: { nrSearch: 'Фільтр чытальнікаў…', nrSortName: 'Імя', nrSortBooks: 'Больш кніг', nrForms: ['Чытальнік', 'Чытальнікі', 'Чытальнікаў'], nrBooksForms: ['кніга', 'кнігі', 'кніг'], auForms: ['Аўтар', 'Аўтары', 'Аўтараў'], auSearch: 'Фільтр аўтараў…' , sbTitle: "Рэйтынг сервера", sbWeek: "Тыдзень", sbMonth: "Месяц", sbYear: "Год", sbAll: "За ўвесь час", sbBooks: "Кнігі", sbTopBooks: "Самыя праслухоўваныя", sbTotal: "Разам", sbListeners: "Слухачы", sbAvg: "У сярэднім", wkTitle: "Хвіліны праслухоўвання — апошнія 7 дзён", wkAvg: "Сярэдняе за дзень", wkRow: "Дзён запар", rpBadge: "Адкрытыя паведамленні пра праблемы", rpMenu: "Паведаміць пра праблему", rpTitle: "Паведаміць пра праблему", rpWhat: "Што не так?", rpNote: "Нешта яшчэ для адміністратара? (неабавязкова)", rpSend: "Даслаць", rpSent: "Даслана. Дзякуй.", rpFail: "Не ўдалося даслаць", rpMissing: "Адсутны або няпоўны змест", rpQuality: "Дрэнная якасць гуку", rpPlay: "Не прайграецца", rpWrong: "Не тая кніга, вокладка ці метаданыя", rpChapters: "Няправільныя раздзелы", rpOther: "Іншае", rfRate: "Ацаніць", rfSheet: "Ацаніце гэтую кнігу", rfOpen: "Адкрыць старонку кнігі", rfPickHint: "Выберыце ацэнку", rfTitle: "Ацаніце праслуханае", ysFinished: "Нядаўна скончаныя", ysAlmost: "Амаль скончаныя", ysMarkDone: "Пазначыць як скончаную", ysEditDate: "Змяніць дату заканчэння", ysThisWeek: "На гэтым тыдні", ysBestDay: "Лепшы дзень", ysTitle: "Ваша праслухоўванне", fsTitle: "Рэйтынг сервера", fsCard: "Рэйтынг сервера", fsToggle: "Дзяліцца маёй статыстыкай праслухоўвання", fsJoin: "Уключыце «Дзяліцца маёй статыстыкай праслухоўвання» ў панэлі налад, каб з’явіцца ў рэйтынгу сервера.", fsWaiting: "Абмен уключаны — ваша зводка неўзабаве далучыцца да рэйтынгу сервера разам з іншымі.", fsHint: "Дзяліцеся зводкай свайго праслухоўвання (сумы і хвіліны за дзень) з іншымі на гэтым серверы — яна жывіць рэйтынг сервера. Тыпова ўключана. Пасля выключэння вы знікаеце з рэйтынгу і яго сум, а перададзеныя даныя выдаляюцца.", yirBtn: "Вынікі года", yirTitle: "Ваш год праслухоўвання", yirYear: "Апошнія 12 месяцаў", yirDays: "Дні з праслухоўваннем", yirBest: "Лепшы дзень", yirMonths: "Па месяцах", yirNone: "Даных пра праслухоўванне пакуль няма.", scmTitle: "Старонка серыі", scmHint: "Як выглядае згенераваная вокладка над назвай серыі, калі ўласную не загружана (толькі гэты браўзер).", scmDeck: "Слаістая калода", scmFirst: "Вокладка першай кнігі", scmGrid: "Сетка вокладак (тыпова)", scmOff: "Схаваная" , lsTitle: "Статыстыка сервера", lsAll: "Усе бібліятэкі", lsPlayed: "Праслуханыя кнігі", lsBest: "Найлепш ацэненыя", lsGenres: "Папулярныя жанры", srvPick: "Што захаваць:", srvGRest: "Функцыі і паводзіны", aeBtn: "Прыбраць аўтараў", aeTitle: "Аўтары без кніг", aeNone: "У кожнага аўтара тут ёсць прынамсі адна кніга.", aeRemove: "Выдаліць", aeDone: "Выдалена", aeWorking: "Выдаленне…", rpCard: "Паведамленыя праблемы", rpHint: "Праблемы, пра якія карыстальнікі паведамілі са старонкі кнігі. Рашэнне прыбірае запіс са спіса.", rpEmpty: "Нічога не паведамлена.", rpResolve: "Вырашыць", rpOpen: "Адкрыць кнігу", apCard: "Прайграванне", apToggle: "Аўтаматычна ўключаць наступную кнігу серыі", apHint: "Калі кніга заканчваецца, аўтаматычна пачынаецца наступная з той жа серыі. Толькі кнігі з вашай бібліятэкі, яшчэ не скончаныя.", apNext: "Наступная ў серыі", fdToggle: "Інструменты скончаных кніг у статыстыцы", ysNoDate: "без даты", hmShowing: "графік паказвае", ysStreak: "Серыя дзён", ysCurrent: "Бягучая", ysLongest: "Найдаўжэйшая", ysDaysTotal: "Дзён разам", ysPace: "Тэмп", ysPerDay: "За дзень праслухоўвання", ysWhen: "Калі вы слухаеце", ysTopBooks: "Самыя праслухоўваныя кнігі", ysTopAuthors: "Самыя праслухоўваныя аўтары", ysTopNarrators: "Самыя праслухоўваныя чытальнікі", rfToggle: "Раздзел «Ацаніце» на галоўнай", hoTitle: "Парадак раздзелаў галоўнай", hoEmpty: "Адкрыйце галоўную адзін раз і вярніцеся сюды.", hoReset: "Аднавіць прадвызначаны парадак", ctIcon: "Значок", ctColour: "Акцэнт", ctNeedBook: "Audiobookshelf не можа захаваць пустую калекцыю — выберыце прынамсі адну кнігу. Пазней можна вольна дадаваць і прыбіраць.", colEditIcon: "Змяніць значок", ciTitle: "Значок калекцыі", ciReset: "Падабраць па назве аўтаматычна", colEditDesc: "Рэдагаваць апісанне", colBookForms: ["кніга","кнігі","кніг"], colForms: ["Калекцыя","Калекцыі","Калекцый"], ctTitle: "Стварыць калекцыю", ctBlank: "Пустая калекцыя", ctNew: "Новая калекцыя", ctNewHint: "з шаблону", ctNamePh: "Назва калекцыі", ctSearch: "Шукаць кнігі або аўтараў…", ctCreate: "Стварыць", ctBack: "‹ Назад", ctAddAll: "Дадаць усе кнігі", abTitle: "Дадаць кнігі", abAdd: "Дадаць", avRemove: "Прыбраць фота", avSet: "Выбраць фота…", ugListened: "Праслухана", ugPhoto: "Фота профілю", ugNever: "Ніколі", ugSeen: "Апошні раз актыўны", ugEdit: "Рэдагаваць карыстальніка", ugDelete: "Выдаліць карыстальніка", ugAdd: "Дадаць фота", ugChange: "Змяніць фота", ugSortName: "А–Я", ugSortTime: "Найбольш слухалі", ugSortSeen: "Нядаўна актыўныя", bsCard: "Спасылкі кнігі", bsHint: "Кнопкі на старонцы кнігі для пошуку назвы ў іншых сэрвісах. Goodreads і найбуйнейшы сайт вашай мовы ўключаныя загадзя.", bsFind: "Шукаць на", bsGlobal: "Усюды", bsLocal: "Для вашай мовы", bsOther: "Іншыя краіны", pgCard: "Перапрацаваныя старонкі", pgHint: "Кожная опцыя замяняе старонку Audiobookshelf версіяй NanoHive. Выключыце, каб вярнуць арыгінал.", pgNarrators: "Карткі чытальнікаў", pgCollections: "Старонкі калекцый", pgUsers: "Карткі карыстальнікаў (налады)", pgStats: "Рэйтынг праслухоўвання", pgPhoto: "Фота профілю ў верхняй панэлі", pgCinematic: "Кінематаграфічны фон", pgTransitions: "Пераходы старонак", pSearch: "Шукаць налады…", pSearchNone: "Нічога не знойдзена.", erTypeface: "Шрыфт", erPage: "Тэма старонкі", erText: "Колер тэксту", erBg: "Фон", erDefault: "Прадвызначана (ABS)", erAuto: "Аўта" , lfByAuthor: "Аўтар › парадак серыі", lfBySeries: "Серыя › парадак" , lfSecFilters: "Яшчэ фільтры", lfSecSort: "Шматузроўневае сартаванне", lfAuthor: "Аўтар", lfSeries: "Серыя", lfTitle: "Назва", lfYear: "Год", lfAdded: "Дададзена", lfDuration: "Працягласць", lfNarrator: "Чытальнік", lfGenre: "Жанр", lfLanguage: "Мова", lfProgress: "Прагрэс", lfPgFinished: "Скончаныя", lfPgInProgress: "Слухаюцца", lfPgNot: "Не пачатыя" },
+    bg: { nrSearch: 'Филтър разказвачи…', nrSortName: 'Име', nrSortBooks: 'Най-много книги', nrForms: ['Разказвач', 'Разказвачи'], nrBooksForms: ['книга', 'книги'], auForms: ['Автор', 'Автори'], auSearch: 'Филтър автори…' , sbTitle: "Класация на сървъра", sbWeek: "Седмица", sbMonth: "Месец", sbYear: "Година", sbAll: "За цялото време", sbBooks: "Книги", sbTopBooks: "Най-слушани", sbTotal: "Общо", sbListeners: "Слушатели", sbAvg: "Средно", wkTitle: "Минути слушане — последните 7 дни", wkAvg: "Дневно средно", wkRow: "Дни подред", rpBadge: "Отворени сигнали за проблеми", rpMenu: "Съобщи за проблем", rpTitle: "Съобщи за проблем", rpWhat: "Какво не е наред?", rpNote: "Още нещо за администратора? (по избор)", rpSend: "Изпрати сигнал", rpSent: "Изпратено. Благодарим.", rpFail: "Неуспешно изпращане", rpMissing: "Липсващо или непълно съдържание", rpQuality: "Лошо качество на звука", rpPlay: "Не се възпроизвежда", rpWrong: "Грешна книга, корица или метаданни", rpChapters: "Грешни глави", rpOther: "Друго", rfRate: "Оцени", rfSheet: "Оцени тази книга", rfOpen: "Отвори страницата на книгата", rfPickHint: "Избери оценка", rfTitle: "Оцени завършеното", ysFinished: "Наскоро завършени", ysAlmost: "Почти готови", ysMarkDone: "Отбележи като завършена", ysEditDate: "Промени датата на завършване", ysThisWeek: "Тази седмица", ysBestDay: "Най-добър ден", ysTitle: "Твоето слушане", fsTitle: "Класация на сървъра", fsCard: "Класация на сървъра", fsToggle: "Споделяй статистиката ми за слушане", fsJoin: "Включи „Споделяй статистиката ми за слушане“ в панела за персонализация, за да се появиш в класацията на сървъра.", fsWaiting: "Споделянето е включено — твоето резюме скоро ще се присъедини към класацията на сървъра заедно с всички останали.", fsHint: "Сподели резюме на слушането си (общи суми и минути на ден) с останалите на този сървър — то захранва класацията. Включено по подразбиране. При изключване изчезваш от класацията и сумите ѝ, а споделеното се изтрива.", yirBtn: "Годината в обзор", yirTitle: "Твоята година на слушане", yirYear: "Последните 12 месеца", yirDays: "Дни със слушане", yirBest: "Най-добър ден", yirMonths: "По месеци", yirNone: "Още няма данни за слушане.", scmTitle: "Страница на поредицата", scmHint: "Как изглежда генерираната корица над заглавието на поредица, когато не е качена собствена (само този браузър).", scmDeck: "Пластова колода", scmFirst: "Корицата на първата книга", scmGrid: "Мрежа от корици (по подразбиране)", scmOff: "Скрита" , lsTitle: "Статистика на сървъра", lsAll: "Всички библиотеки", lsPlayed: "Пуснати книги", lsBest: "Най-добре оценени", lsGenres: "Топ жанрове", srvPick: "Какво да се запази:", srvGRest: "Функции и поведение", aeBtn: "Подреди авторите", aeTitle: "Автори без книги", aeNone: "Всеки автор тук има поне една книга.", aeRemove: "Премахни", aeDone: "Премахнати", aeWorking: "Премахване…", rpCard: "Съобщени проблеми", rpHint: "Проблеми, съобщени от потребители от страница на книга. Решаването премахва записа от списъка.", rpEmpty: "Нищо не е съобщено.", rpResolve: "Реши", rpOpen: "Отвори книгата", apCard: "Възпроизвеждане", apToggle: "Автоматично пускай следващата книга от поредица", apHint: "Когато книга свърши, автоматично започва следващата от същата поредица. Само книги, които вече имаш и не си завършил.", apNext: "Следваща от поредицата", fdToggle: "Инструменти за завършени книги в статистиката", ysNoDate: "без дата", hmShowing: "графиката показва", ysStreak: "Поредица дни", ysCurrent: "Текуща", ysLongest: "Най-дълга", ysDaysTotal: "Дни общо", ysPace: "Темпо", ysPerDay: "На ден слушане", ysWhen: "Кога слушаш", ysTopBooks: "Най-слушани книги", ysTopAuthors: "Най-слушани автори", ysTopNarrators: "Най-слушани разказвачи", rfToggle: "Секция „Оцени“ на началната страница", hoTitle: "Ред на секциите на началната", hoEmpty: "Отвори началната страница веднъж и се върни тук.", hoReset: "Възстанови реда по подразбиране", ctIcon: "Икона", ctColour: "Акцент", ctNeedBook: "Audiobookshelf не може да запази празна колекция — избери поне една книга. По-късно можеш свободно да добавяш и махаш.", colEditIcon: "Смени иконата", ciTitle: "Икона на колекцията", ciReset: "Автоматично според името", colEditDesc: "Редактирай описанието", colBookForms: ["книга","книги"], colForms: ["Колекция","Колекции"], ctTitle: "Създай колекция", ctBlank: "Празна колекция", ctNew: "Нова колекция", ctNewHint: "от шаблон", ctNamePh: "Име на колекцията", ctSearch: "Търси книги или автори…", ctCreate: "Създай", ctBack: "‹ Назад", ctAddAll: "Добави всички книги", abTitle: "Добави книги", abAdd: "Добави", avRemove: "Премахни снимката", avSet: "Избери снимка…", ugListened: "Прослушано", ugPhoto: "Профилна снимка", ugNever: "Никога", ugSeen: "Последно активен", ugEdit: "Редактирай потребителя", ugDelete: "Изтрий потребителя", ugAdd: "Добави снимка", ugChange: "Смени снимката", ugSortName: "А–Я", ugSortTime: "Най-слушани", ugSortSeen: "Скоро активни", bsCard: "Връзки за книгата", bsHint: "Бутони на страницата на книгата за търсене на заглавието другаде. Goodreads и най-големият сайт на твоя език са включени предварително.", bsFind: "Търси в", bsGlobal: "Навсякъде", bsLocal: "За твоя език", bsOther: "Други страни", pgCard: "Преработени страници", pgHint: "Всяка опция заменя страница на Audiobookshelf с версията на NanoHive. Изключи, за да върнеш оригинала.", pgNarrators: "Карти на разказвачи", pgCollections: "Страници на колекции", pgUsers: "Карти на потребители (настройки)", pgStats: "Класация на слушането", pgPhoto: "Профилна снимка в горната лента", pgCinematic: "Кино фон", pgTransitions: "Преходи между страници", pSearch: "Търси настройки…", pSearchNone: "Няма съвпадения.", erTypeface: "Шрифт", erPage: "Тема на страницата", erText: "Цвят на текста", erBg: "Фон", erDefault: "По подразбиране (ABS)", erAuto: "Авто" , lfByAuthor: "Автор › ред на поредицата", lfBySeries: "Поредица › ред" , lfSecFilters: "Още филтри", lfSecSort: "Многостепенно подреждане", lfAuthor: "Автор", lfSeries: "Поредица", lfTitle: "Заглавие", lfYear: "Година", lfAdded: "Добавено", lfDuration: "Времетраене", lfNarrator: "Разказвач", lfGenre: "Жанр", lfLanguage: "Език", lfProgress: "Напредък", lfPgFinished: "Завършени", lfPgInProgress: "В процес", lfPgNot: "Незапочнати" },
+    hr: { nrSearch: 'Filtriraj pripovjedače…', nrSortName: 'Ime', nrSortBooks: 'Najviše knjiga', nrForms: ['Pripovjedač', 'Pripovjedača', 'Pripovjedača'], nrBooksForms: ['knjiga', 'knjige', 'knjiga'], auForms: ['Autor', 'Autora', 'Autora'], auSearch: 'Filtriraj autore…' , sbTitle: "Poredak poslužitelja", sbWeek: "Tjedan", sbMonth: "Mjesec", sbYear: "Godina", sbAll: "Sve vrijeme", sbBooks: "Knjige", sbTopBooks: "Najslušanije", sbTotal: "Ukupno", sbListeners: "Slušatelji", sbAvg: "Prosjek", wkTitle: "Minute slušanja — zadnjih 7 dana", wkAvg: "Dnevni prosjek", wkRow: "Dana zaredom", rpBadge: "Otvorene prijave problema", rpMenu: "Prijavi problem", rpTitle: "Prijavi problem", rpWhat: "Što ne valja?", rpNote: "Još nešto za administratora? (neobavezno)", rpSend: "Pošalji prijavu", rpSent: "Poslano. Hvala.", rpFail: "Slanje nije uspjelo", rpMissing: "Nedostaje ili je nepotpun sadržaj", rpQuality: "Loša kvaliteta zvuka", rpPlay: "Ne reproducira se", rpWrong: "Kriva knjiga, naslovnica ili metapodaci", rpChapters: "Kriva poglavlja", rpOther: "Nešto drugo", rfRate: "Ocijeni", rfSheet: "Ocijeni ovu knjigu", rfOpen: "Otvori stranicu knjige", rfPickHint: "Odaberi ocjenu", rfTitle: "Ocijeni što si završio", ysFinished: "Nedavno završeno", ysAlmost: "Gotovo završeno", ysMarkDone: "Označi kao završeno", ysEditDate: "Promijeni datum završetka", ysThisWeek: "Ovaj tjedan", ysBestDay: "Najbolji dan", ysTitle: "Tvoje slušanje", fsTitle: "Poredak poslužitelja", fsCard: "Poredak poslužitelja", fsToggle: "Dijeli moju statistiku slušanja", fsJoin: "Uključi „Dijeli moju statistiku slušanja“ u ploči prilagodbe da se pojaviš u poretku poslužitelja.", fsWaiting: "Dijeljenje je uključeno — tvoj sažetak uskoro ulazi u poredak poslužitelja zajedno sa svima ostalima.", fsHint: "Podijeli sažetak svog slušanja (ukupno i minute po danu) s ostalima na ovom poslužitelju — on pokreće poredak. Uključeno prema zadanome. Isključivanjem nestaješ iz poretka i njegovih zbrojeva, a podijeljeno se briše.", yirBtn: "Godina u pregledu", yirTitle: "Tvoja godina slušanja", yirYear: "Zadnjih 12 mjeseci", yirDays: "Dani sa slušanjem", yirBest: "Najbolji dan", yirMonths: "Po mjesecima", yirNone: "Još nema podataka o slušanju.", scmTitle: "Stranica serijala", scmHint: "Kako izgleda generirana naslovnica iznad naslova serijala kad vlastita nije učitana (samo ovaj preglednik).", scmDeck: "Slojeviti špil", scmFirst: "Naslovnica prve knjige", scmGrid: "Mreža naslovnica (zadano)", scmOff: "Skrivena" , lsTitle: "Statistika poslužitelja", lsAll: "Sve knjižnice", lsPlayed: "Reproducirane knjige", lsBest: "Najbolje ocijenjene", lsGenres: "Top žanrovi", srvPick: "Što spremiti:", srvGRest: "Funkcije i ponašanje", aeBtn: "Uredi autore", aeTitle: "Autori bez knjiga", aeNone: "Svaki autor ovdje ima barem jednu knjigu.", aeRemove: "Ukloni", aeDone: "Uklonjeno", aeWorking: "Uklanjanje…", rpCard: "Prijavljeni problemi", rpHint: "Problemi koje su korisnici prijavili sa stranice knjige. Rješavanje uklanja prijavu s popisa.", rpEmpty: "Ništa nije prijavljeno.", rpResolve: "Riješi", rpOpen: "Otvori knjigu", apCard: "Reprodukcija", apToggle: "Automatski reproduciraj sljedeću knjigu serijala", apHint: "Kad knjiga završi, automatski počinje sljedeća iz istog serijala. Samo knjige koje već imaš i nisi ih dovršio.", apNext: "Sljedeća u serijalu", fdToggle: "Alati za dovršene knjige u statistici", ysNoDate: "bez datuma", hmShowing: "grafikon prikazuje", ysStreak: "Niz", ysCurrent: "Trenutni", ysLongest: "Najduži", ysDaysTotal: "Dana ukupno", ysPace: "Tempo", ysPerDay: "Po danu slušanja", ysWhen: "Kada slušaš", ysTopBooks: "Najslušanije knjige", ysTopAuthors: "Najslušaniji autori", ysTopNarrators: "Najslušaniji pripovjedači", rfToggle: "Odjeljak „Ocijeni“ na početnoj", hoTitle: "Redoslijed odjeljaka početne", hoEmpty: "Otvori početnu jednom pa se vrati ovamo.", hoReset: "Vrati zadani redoslijed", ctIcon: "Ikona", ctColour: "Naglasak", ctNeedBook: "Audiobookshelf ne može spremiti praznu zbirku — odaberi barem jednu knjigu. Poslije možeš slobodno dodavati i uklanjati.", colEditIcon: "Promijeni ikonu", ciTitle: "Ikona zbirke", ciReset: "Automatski prema nazivu", colEditDesc: "Uredi opis", colBookForms: ["knjiga","knjige","knjiga"], colForms: ["Zbirka","Zbirke","Zbirki"], ctTitle: "Stvori zbirku", ctBlank: "Prazna zbirka", ctNew: "Nova zbirka", ctNewHint: "iz predloška", ctNamePh: "Naziv zbirke", ctSearch: "Traži knjige ili autore…", ctCreate: "Stvori", ctBack: "‹ Natrag", ctAddAll: "Dodaj sve knjige", abTitle: "Dodaj knjige", abAdd: "Dodaj", avRemove: "Ukloni fotografiju", avSet: "Odaberi fotografiju…", ugListened: "Preslušano", ugPhoto: "Profilna fotografija", ugNever: "Nikad", ugSeen: "Zadnje aktivan", ugEdit: "Uredi korisnika", ugDelete: "Izbriši korisnika", ugAdd: "Dodaj fotografiju", ugChange: "Promijeni fotografiju", ugSortName: "A–Ž", ugSortTime: "Najviše preslušano", ugSortSeen: "Nedavno aktivni", bsCard: "Poveznice knjige", bsHint: "Gumbi na stranici knjige za traženje naslova drugdje. Goodreads i najveća stranica tvog jezika uključeni su unaprijed.", bsFind: "Traži na", bsGlobal: "Svugdje", bsLocal: "Za tvoj jezik", bsOther: "Druge zemlje", pgCard: "Redizajnirane stranice", pgHint: "Svaka opcija zamjenjuje stranicu Audiobookshelfa NanoHive verzijom. Isključi za povratak izvorne.", pgNarrators: "Kartice pripovjedača", pgCollections: "Stranice zbirki", pgUsers: "Kartice korisnika (postavke)", pgStats: "Poredak slušanja", pgPhoto: "Profilna fotografija u gornjoj traci", pgCinematic: "Filmska pozadina", pgTransitions: "Prijelazi stranica", pSearch: "Traži postavke…", pSearchNone: "Nema podudaranja.", erTypeface: "Pismo", erPage: "Tema stranice", erText: "Boja teksta", erBg: "Pozadina", erDefault: "Zadano (ABS)", erAuto: "Automatski" , lfByAuthor: "Autor › redoslijed serijala", lfBySeries: "Serijal › redoslijed" , lfSecFilters: "Više filtara", lfSecSort: "Višerazinsko sortiranje", lfAuthor: "Autor", lfSeries: "Serijal", lfTitle: "Naslov", lfYear: "Godina", lfAdded: "Dodano", lfDuration: "Trajanje", lfNarrator: "Pripovjedač", lfGenre: "Žanr", lfLanguage: "Jezik", lfProgress: "Napredak", lfPgFinished: "Dovršene", lfPgInProgress: "U tijeku", lfPgNot: "Nezapočete" },
+    sl: { nrSearch: 'Filtriraj pripovedovalce…', nrSortName: 'Ime', nrSortBooks: 'Največ knjig', nrForms: ['Pripovedovalec', 'Pripovedovalca', 'Pripovedovalcev'], nrBooksForms: ['knjiga', 'knjigi', 'knjig'], auForms: ['Avtor', 'Avtorja', 'Avtorjev'], auSearch: 'Filtriraj avtorje…' , sbTitle: "Lestvica strežnika", sbWeek: "Teden", sbMonth: "Mesec", sbYear: "Leto", sbAll: "Ves čas", sbBooks: "Knjige", sbTopBooks: "Najbolj poslušane", sbTotal: "Skupaj", sbListeners: "Poslušalci", sbAvg: "Povprečje", wkTitle: "Minute poslušanja — zadnjih 7 dni", wkAvg: "Dnevno povprečje", wkRow: "Dni zapored", rpBadge: "Odprte prijave težav", rpMenu: "Prijavi težavo", rpTitle: "Prijavi težavo", rpWhat: "Kaj je narobe?", rpNote: "Še kaj za skrbnika? (neobvezno)", rpSend: "Pošlji prijavo", rpSent: "Poslano. Hvala.", rpFail: "Pošiljanje ni uspelo", rpMissing: "Manjkajoča ali nepopolna vsebina", rpQuality: "Slaba kakovost zvoka", rpPlay: "Se ne predvaja", rpWrong: "Napačna knjiga, naslovnica ali metapodatki", rpChapters: "Napačna poglavja", rpOther: "Nekaj drugega", rfRate: "Oceni", rfSheet: "Oceni to knjigo", rfOpen: "Odpri stran knjige", rfPickHint: "Izberi oceno", rfTitle: "Oceni, kar si končal", ysFinished: "Nedavno končane", ysAlmost: "Skoraj končane", ysMarkDone: "Označi kot končano", ysEditDate: "Spremeni datum konca", ysThisWeek: "Ta teden", ysBestDay: "Najboljši dan", ysTitle: "Tvoje poslušanje", fsTitle: "Lestvica strežnika", fsCard: "Lestvica strežnika", fsToggle: "Deli mojo statistiko poslušanja", fsJoin: "Vklopi »Deli mojo statistiko poslušanja« v plošči prilagoditev, da se pojaviš na lestvici strežnika.", fsWaiting: "Deljenje je vklopljeno — tvoj povzetek se kmalu pridruži lestvici strežnika skupaj z ostalimi.", fsHint: "Deli povzetek svojega poslušanja (skupno in minute na dan) z drugimi na tem strežniku — poganja lestvico strežnika. Privzeto vklopljeno. Ob izklopu izgineš z lestvice in njenih seštevkov, deljeno pa se izbriše.", yirBtn: "Leto v pregledu", yirTitle: "Tvoje leto poslušanja", yirYear: "Zadnjih 12 mesecev", yirDays: "Dnevi s poslušanjem", yirBest: "Najboljši dan", yirMonths: "Po mesecih", yirNone: "Podatkov o poslušanju še ni.", scmTitle: "Stran serije", scmHint: "Kako je videti ustvarjena naslovnica nad naslovom serije, ko lastna ni naložena (samo ta brskalnik).", scmDeck: "Plastnat komplet", scmFirst: "Naslovnica prve knjige", scmGrid: "Mreža naslovnic (privzeto)", scmOff: "Skrita" , lsTitle: "Statistika strežnika", lsAll: "Vse knjižnice", lsPlayed: "Predvajane knjige", lsBest: "Najbolje ocenjene", lsGenres: "Top žanri", srvPick: "Kaj shraniti:", srvGRest: "Funkcije in vedenje", aeBtn: "Pospravi avtorje", aeTitle: "Avtorji brez knjig", aeNone: "Vsak avtor tukaj ima vsaj eno knjigo.", aeRemove: "Odstrani", aeDone: "Odstranjeno", aeWorking: "Odstranjevanje…", rpCard: "Prijavljene težave", rpHint: "Težave, ki so jih uporabniki prijavili s strani knjige. Rešitev odstrani prijavo s seznama.", rpEmpty: "Nič ni prijavljeno.", rpResolve: "Reši", rpOpen: "Odpri knjigo", apCard: "Predvajanje", apToggle: "Samodejno predvajaj naslednjo knjigo serije", apHint: "Ko se knjiga konča, se samodejno začne naslednja iz iste serije. Samo knjige, ki jih že imaš in jih nisi dokončal.", apNext: "Naslednja v seriji", fdToggle: "Orodja za dokončane knjige v statistiki", ysNoDate: "brez datuma", hmShowing: "graf prikazuje", ysStreak: "Niz", ysCurrent: "Trenutni", ysLongest: "Najdaljši", ysDaysTotal: "Skupaj dni", ysPace: "Tempo", ysPerDay: "Na dan poslušanja", ysWhen: "Kdaj poslušaš", ysTopBooks: "Najbolj poslušane knjige", ysTopAuthors: "Najbolj poslušani avtorji", ysTopNarrators: "Najbolj poslušani pripovedovalci", rfToggle: "Razdelek »Oceni« na začetni strani", hoTitle: "Vrstni red razdelkov začetne strani", hoEmpty: "Enkrat odpri začetno stran in se vrni sem.", hoReset: "Ponastavi privzeti vrstni red", ctIcon: "Ikona", ctColour: "Poudarek", ctNeedBook: "Audiobookshelf ne more shraniti prazne zbirke — izberi vsaj eno knjigo. Pozneje lahko prosto dodajaš in odstranjuješ.", colEditIcon: "Zamenjaj ikono", ciTitle: "Ikona zbirke", ciReset: "Samodejno uskladi z imenom", colEditDesc: "Uredi opis", colBookForms: ["knjiga","knjigi","knjig"], colForms: ["Zbirka","Zbirki","Zbirk"], ctTitle: "Ustvari zbirko", ctBlank: "Prazna zbirka", ctNew: "Nova zbirka", ctNewHint: "iz predloge", ctNamePh: "Ime zbirke", ctSearch: "Išči knjige ali avtorje…", ctCreate: "Ustvari", ctBack: "‹ Nazaj", ctAddAll: "Dodaj vse knjige", abTitle: "Dodaj knjige", abAdd: "Dodaj", avRemove: "Odstrani fotografijo", avSet: "Izberi fotografijo…", ugListened: "Poslušano", ugPhoto: "Profilna fotografija", ugNever: "Nikoli", ugSeen: "Nazadnje aktiven", ugEdit: "Uredi uporabnika", ugDelete: "Izbriši uporabnika", ugAdd: "Dodaj fotografijo", ugChange: "Zamenjaj fotografijo", ugSortName: "A–Ž", ugSortTime: "Največ poslušano", ugSortSeen: "Nedavno aktivni", bsCard: "Povezave knjige", bsHint: "Gumbi na strani knjige za iskanje naslova drugod. Goodreads in največja stran tvojega jezika sta vklopljena vnaprej.", bsFind: "Išči na", bsGlobal: "Povsod", bsLocal: "Za tvoj jezik", bsOther: "Druge države", pgCard: "Preoblikovane strani", pgHint: "Vsaka možnost zamenja stran Audiobookshelfa z različico NanoHive. Izklopi za vrnitev izvirnika.", pgNarrators: "Kartice pripovedovalcev", pgCollections: "Strani zbirk", pgUsers: "Kartice uporabnikov (nastavitve)", pgStats: "Lestvica poslušanja", pgPhoto: "Profilna fotografija v zgornji vrstici", pgCinematic: "Filmsko ozadje", pgTransitions: "Prehodi strani", pSearch: "Išči nastavitve…", pSearchNone: "Ni zadetkov.", erTypeface: "Pisava", erPage: "Tema strani", erText: "Barva besedila", erBg: "Ozadje", erDefault: "Privzeto (ABS)", erAuto: "Samodejno" , lfByAuthor: "Avtor › vrstni red serije", lfBySeries: "Serija › vrstni red" , lfSecFilters: "Več filtrov", lfSecSort: "Večnivojsko razvrščanje", lfAuthor: "Avtor", lfSeries: "Serija", lfTitle: "Naslov", lfYear: "Leto", lfAdded: "Dodano", lfDuration: "Trajanje", lfNarrator: "Pripovedovalec", lfGenre: "Žanr", lfLanguage: "Jezik", lfProgress: "Napredek", lfPgFinished: "Končane", lfPgInProgress: "V teku", lfPgNot: "Nezačete" },
+    hu: { sbTitle: "Szerver ranglista", sbWeek: "Hét", sbMonth: "Hónap", sbYear: "Év", sbAll: "Összesen", sbBooks: "Könyvek", sbTopBooks: "Leghallgatottabbak", sbTotal: "Összesen", sbListeners: "Hallgatók", sbAvg: "Átlag", wkTitle: "Hallgatott percek — elmúlt 7 nap", wkAvg: "Napi átlag", wkRow: "Nap egymás után", rpBadge: "Nyitott hibabejelentések", rpMenu: "Hiba bejelentése", rpTitle: "Hiba bejelentése", rpWhat: "Mi a gond?", rpNote: "Bármi más az adminnak? (nem kötelező)", rpSend: "Bejelentés küldése", rpSent: "Elküldve. Köszönjük.", rpFail: "A küldés nem sikerült", rpMissing: "Hiányzó vagy hiányos tartalom", rpQuality: "Rossz hangminőség", rpPlay: "Nem játszódik le", rpWrong: "Rossz könyv, borító vagy metaadat", rpChapters: "Rossz fejezetek", rpOther: "Valami más", rfRate: "Értékelés", rfSheet: "Értékeld ezt a könyvet", rfOpen: "Könyv oldalának megnyitása", rfPickHint: "Válassz értékelést", rfTitle: "Értékeld, amit befejeztél", ysFinished: "Nemrég befejezett", ysAlmost: "Majdnem kész", ysMarkDone: "Megjelölés befejezettként", ysEditDate: "Befejezés dátumának módosítása", ysThisWeek: "Ezen a héten", ysBestDay: "Legjobb nap", ysTitle: "A hallgatásod", fsTitle: "Szerver ranglista", fsCard: "Szerver ranglista", fsToggle: "Hallgatási statisztikáim megosztása", fsJoin: "Kapcsold be a „Hallgatási statisztikáim megosztása” opciót a testreszabási panelen, hogy megjelenj a szerver ranglistáján.", fsWaiting: "A megosztás be van kapcsolva — összegzésed hamarosan csatlakozik a szerver ranglistájához a többiekével együtt.", fsHint: "Oszd meg hallgatásod összegzését (összesítések és napi percek) a szerver többi tagjával — ez táplálja a ranglistát. Alapból bekapcsolva. Kikapcsoláskor eltűnsz a ranglistáról és az összegekből, a megosztott adatok törlődnek.", yirBtn: "Év összefoglaló", yirTitle: "A hallgatási éved", yirYear: "Elmúlt 12 hónap", yirDays: "Hallgatással töltött napok", yirBest: "Legjobb nap", yirMonths: "Havonta", yirNone: "Még nincsenek hallgatási adatok.", scmTitle: "Sorozat oldala", scmHint: "Így néz ki a sorozatcím fölött generált borító, ha nincs saját feltöltve (csak ez a böngésző).", scmDeck: "Rétegzett pakli", scmFirst: "Az első könyv borítója", scmGrid: "Borítórács (alapértelmezett)", scmOff: "Rejtett" , lsTitle: "Szerverstatisztika", lsAll: "Minden könyvtár", lsPlayed: "Lejátszott könyvek", lsBest: "Legjobbra értékelt", lsGenres: "Top műfajok", srvPick: "Mit mentsen:", srvGRest: "Funkciók és viselkedés", aeBtn: "Szerzők rendbetétele", aeTitle: "Szerzők könyv nélkül", aeNone: "Itt minden szerzőnek van legalább egy könyve.", aeRemove: "Eltávolítás", aeDone: "Eltávolítva", aeWorking: "Eltávolítás…", rpCard: "Bejelentett hibák", rpHint: "A felhasználók által könyvoldalról bejelentett hibák. A megoldás leveszi a listáról.", rpEmpty: "Nincs bejelentés.", rpResolve: "Megold", rpOpen: "Könyv megnyitása", apCard: "Lejátszás", apToggle: "Sorozat következő könyvének automatikus lejátszása", apHint: "Ha egy könyv véget ér, automatikusan indul a sorozat következő része. Csak már meglévő, be nem fejezett könyvek.", apNext: "A sorozat következője", fdToggle: "Befejezett könyvek eszközei a statisztikában", ysNoDate: "nincs dátum", hmShowing: "a grafikon ezt mutatja", ysStreak: "Sorozat", ysCurrent: "Jelenlegi", ysLongest: "Leghosszabb", ysDaysTotal: "Napok összesen", ysPace: "Tempó", ysPerDay: "Hallgatási naponként", ysWhen: "Mikor hallgatsz", ysTopBooks: "Leghallgatottabb könyvek", ysTopAuthors: "Leghallgatottabb szerzők", ysTopNarrators: "Leghallgatottabb felolvasók", rfToggle: "„Értékeld” szakasz a kezdőlapon", hoTitle: "Kezdőlap szakaszainak sorrendje", hoEmpty: "Nyisd meg egyszer a kezdőlapot, majd gyere vissza.", hoReset: "Alapértelmezett sorrend visszaállítása", ctIcon: "Ikon", ctColour: "Kiemelés", ctNeedBook: "Az Audiobookshelf nem tud üres gyűjteményt menteni — válassz legalább egy könyvet. Később szabadon bővítheted.", colEditIcon: "Ikon cseréje", ciTitle: "Gyűjtemény ikonja", ciReset: "Automatikus illesztés a névhez", colEditDesc: "Leírás szerkesztése", colBookForms: ["könyv","könyv"], colForms: ["Gyűjtemény","Gyűjtemények"], ctTitle: "Gyűjtemény létrehozása", ctBlank: "Üres gyűjtemény", ctNew: "Új gyűjtemény", ctNewHint: "sablonból", ctNamePh: "Gyűjtemény neve", ctSearch: "Könyvek vagy szerzők keresése…", ctCreate: "Létrehozás", ctBack: "‹ Vissza", ctAddAll: "Minden könyv hozzáadása", abTitle: "Könyvek hozzáadása", abAdd: "Hozzáadás", avRemove: "Fotó eltávolítása", avSet: "Fotó kiválasztása…", ugListened: "Meghallgatva", ugPhoto: "Profilkép", ugNever: "Soha", ugSeen: "Utoljára aktív", ugEdit: "Felhasználó szerkesztése", ugDelete: "Felhasználó törlése", ugAdd: "Fotó hozzáadása", ugChange: "Fotó cseréje", ugSortName: "A–Z", ugSortTime: "Leghallgatottabb", ugSortSeen: "Nemrég aktívak", bsCard: "Könyvhivatkozások", bsHint: "Gombok a könyvoldalon a cím máshol való kereséséhez. A Goodreads és a nyelved legnagyobb oldala előre be van kapcsolva.", bsFind: "Keresés itt:", bsGlobal: "Mindenhol", bsLocal: "A nyelvedhez", bsOther: "Más országok", pgCard: "Újratervezett oldalak", pgHint: "Mindegyik egy Audiobookshelf-oldalt cserél NanoHive-verzióra. Kikapcsolva visszatér az eredeti.", pgNarrators: "Felolvasókártyák", pgCollections: "Gyűjteményoldalak", pgUsers: "Felhasználókártyák (beállítások)", pgStats: "Hallgatási ranglista", pgPhoto: "Profilkép a felső sávban", pgCinematic: "Filmes háttér", pgTransitions: "Oldalátmenetek", pSearch: "Beállítások keresése…", pSearchNone: "Nincs találat.", erTypeface: "Betűtípus", erPage: "Oldaltéma", erText: "Szöveg színe", erBg: "Háttér", erDefault: "Alapértelmezett (ABS)", erAuto: "Automatikus", nrForms: ["Felolvasó","Felolvasók"], nrBooksForms: ["könyv","könyv"], nrSearch: "Felolvasók szűrése…", nrSortName: "Név", nrSortBooks: "Legtöbb könyv", auForms: ["Szerző","Szerzők"], auSearch: "Szerzők szűrése…" , lfByAuthor: "Szerző › sorozatrend", lfBySeries: "Sorozat › sorrend" , lfSecFilters: "További szűrők", lfSecSort: "Többszintű rendezés", lfAuthor: "Szerző", lfSeries: "Sorozat", lfTitle: "Cím", lfYear: "Év", lfAdded: "Hozzáadva", lfDuration: "Hossz", lfNarrator: "Felolvasó", lfGenre: "Műfaj", lfLanguage: "Nyelv", lfProgress: "Haladás", lfPgFinished: "Befejezett", lfPgInProgress: "Folyamatban", lfPgNot: "El nem kezdett" },
+    ro: { sbTitle: "Clasamentul serverului", sbWeek: "Săptămână", sbMonth: "Lună", sbYear: "An", sbAll: "Tot timpul", sbBooks: "Cărți", sbTopBooks: "Cele mai ascultate", sbTotal: "Total", sbListeners: "Ascultători", sbAvg: "Medie", wkTitle: "Minute de ascultare — ultimele 7 zile", wkAvg: "Media zilnică", wkRow: "Zile la rând", rpBadge: "Probleme raportate deschise", rpMenu: "Raportează o problemă", rpTitle: "Raportează o problemă", rpWhat: "Ce nu e în regulă?", rpNote: "Altceva pentru administrator? (opțional)", rpSend: "Trimite raportul", rpSent: "Trimis. Mulțumim.", rpFail: "Trimiterea a eșuat", rpMissing: "Conținut lipsă sau incomplet", rpQuality: "Calitate audio slabă", rpPlay: "Nu se redă", rpWrong: "Carte, copertă sau metadate greșite", rpChapters: "Capitole greșite", rpOther: "Altceva", rfRate: "Evaluează", rfSheet: "Evaluează această carte", rfOpen: "Deschide pagina cărții", rfPickHint: "Alege o notă", rfTitle: "Evaluează ce ai terminat", ysFinished: "Terminate recent", ysAlmost: "Aproape gata", ysMarkDone: "Marchează ca terminată", ysEditDate: "Schimbă data terminării", ysThisWeek: "Săptămâna aceasta", ysBestDay: "Cea mai bună zi", ysTitle: "Ascultarea ta", fsTitle: "Clasamentul serverului", fsCard: "Clasamentul serverului", fsToggle: "Împărtășește statisticile mele de ascultare", fsJoin: "Activează „Împărtășește statisticile mele de ascultare” din panoul de personalizare ca să apari în clasamentul serverului.", fsWaiting: "Partajarea e activă — rezumatul tău se alătură în curând clasamentului serverului, împreună cu toți ceilalți.", fsHint: "Împărtășește un rezumat al ascultării tale (totaluri și minute pe zi) cu ceilalți de pe acest server — alimentează clasamentul. Activ implicit. La dezactivare dispari din clasament și din totaluri, iar datele partajate se șterg.", yirBtn: "Anul în retrospectivă", yirTitle: "Anul tău de ascultare", yirYear: "Ultimele 12 luni", yirDays: "Zile cu ascultare", yirBest: "Cea mai bună zi", yirMonths: "Pe luni", yirNone: "Încă nu există date de ascultare.", scmTitle: "Pagina seriei", scmHint: "Cum arată coperta generată deasupra titlului unei serii când nu s-a încărcat una proprie (doar acest browser).", scmDeck: "Pachet stratificat", scmFirst: "Coperta primei cărți", scmGrid: "Grilă de coperți (implicit)", scmOff: "Ascunsă" , lsTitle: "Statisticile serverului", lsAll: "Toate bibliotecile", lsPlayed: "Cărți redate", lsBest: "Cele mai bine cotate", lsGenres: "Genuri de top", srvPick: "Ce se salvează:", srvGRest: "Funcții și comportament", aeBtn: "Ordonează autorii", aeTitle: "Autori fără cărți", aeNone: "Fiecare autor de aici are cel puțin o carte.", aeRemove: "Elimină", aeDone: "Eliminați", aeWorking: "Se elimină…", rpCard: "Probleme raportate", rpHint: "Probleme raportate de utilizatori de pe pagina unei cărți. Rezolvarea o scoate din listă.", rpEmpty: "Nimic raportat.", rpResolve: "Rezolvă", rpOpen: "Deschide cartea", apCard: "Redare", apToggle: "Redă automat următoarea carte dintr-o serie", apHint: "Când o carte se termină, începe automat următoarea din aceeași serie. Doar cărți pe care le ai deja și neterminate.", apNext: "Următoarea din serie", fdToggle: "Instrumente pentru cărți terminate în statistici", ysNoDate: "fără dată", hmShowing: "graficul arată", ysStreak: "Serie de zile", ysCurrent: "Curentă", ysLongest: "Cea mai lungă", ysDaysTotal: "Zile în total", ysPace: "Ritm", ysPerDay: "Pe zi de ascultare", ysWhen: "Când asculți", ysTopBooks: "Cele mai ascultate cărți", ysTopAuthors: "Cei mai ascultați autori", ysTopNarrators: "Cei mai ascultați naratori", rfToggle: "Secțiunea „Evaluează” pe pagina principală", hoTitle: "Ordinea secțiunilor paginii principale", hoEmpty: "Deschide pagina principală o dată și revino aici.", hoReset: "Restabilește ordinea implicită", ctIcon: "Pictogramă", ctColour: "Accent", ctNeedBook: "Audiobookshelf nu poate salva o colecție goală — alege cel puțin o carte. Poți adăuga și elimina liber mai târziu.", colEditIcon: "Schimbă pictograma", ciTitle: "Pictograma colecției", ciReset: "Potrivește automat după nume", colEditDesc: "Editează descrierea", colBookForms: ["carte","cărți"], colForms: ["Colecție","Colecții"], ctTitle: "Creează o colecție", ctBlank: "Colecție goală", ctNew: "Colecție nouă", ctNewHint: "dintr-un șablon", ctNamePh: "Numele colecției", ctSearch: "Caută cărți sau autori…", ctCreate: "Creează", ctBack: "‹ Înapoi", ctAddAll: "Adaugă toate cărțile", abTitle: "Adaugă cărți", abAdd: "Adaugă", avRemove: "Elimină fotografia", avSet: "Alege fotografia…", ugListened: "Ascultat", ugPhoto: "Fotografie de profil", ugNever: "Niciodată", ugSeen: "Ultima activitate", ugEdit: "Editează utilizatorul", ugDelete: "Șterge utilizatorul", ugAdd: "Adaugă fotografie", ugChange: "Schimbă fotografia", ugSortName: "A–Z", ugSortTime: "Cele mai ascultate", ugSortSeen: "Activi recent", bsCard: "Linkurile cărții", bsHint: "Butoane pe pagina cărții pentru a căuta titlul în altă parte. Goodreads și cel mai mare site al limbii tale sunt activate din start.", bsFind: "Caută pe", bsGlobal: "Peste tot", bsLocal: "Pentru limba ta", bsOther: "Alte țări", pgCard: "Pagini regândite", pgHint: "Fiecare opțiune înlocuiește o pagină Audiobookshelf cu versiunea NanoHive. Dezactiveaz-o pentru a reveni la original.", pgNarrators: "Carduri de naratori", pgCollections: "Pagini de colecții", pgUsers: "Carduri de utilizatori (setări)", pgStats: "Clasament de ascultare", pgPhoto: "Fotografie de profil în bara de sus", pgCinematic: "Fundal cinematografic", pgTransitions: "Tranziții de pagină", pSearch: "Caută setări…", pSearchNone: "Nimic nu se potrivește.", erTypeface: "Font", erPage: "Tema paginii", erText: "Culoarea textului", erBg: "Fundal", erDefault: "Implicit (ABS)", erAuto: "Auto", nrForms: ["Narator","Naratori"], nrBooksForms: ["carte","cărți"], nrSearch: "Filtrează naratorii…", nrSortName: "Nume", nrSortBooks: "Cele mai multe cărți", auForms: ["Autor","Autori"], auSearch: "Filtrează autorii…" , lfByAuthor: "Autor › ordinea seriei", lfBySeries: "Serie › ordine" , lfSecFilters: "Mai multe filtre", lfSecSort: "Sortare multiplă", lfAuthor: "Autor", lfSeries: "Serie", lfTitle: "Titlu", lfYear: "An", lfAdded: "Adăugat", lfDuration: "Durată", lfNarrator: "Narator", lfGenre: "Gen", lfLanguage: "Limbă", lfProgress: "Progres", lfPgFinished: "Terminate", lfPgInProgress: "În curs", lfPgNot: "Neîncepute" },
+    lt: { sbTitle: "Serverio reitingas", sbWeek: "Savaitė", sbMonth: "Mėnuo", sbYear: "Metai", sbAll: "Visą laiką", sbBooks: "Knygos", sbTopBooks: "Daugiausiai klausytos", sbTotal: "Iš viso", sbListeners: "Klausytojai", sbAvg: "Vidurkis", wkTitle: "Klausymo minutės — paskutinės 7 dienos", wkAvg: "Dienos vidurkis", wkRow: "Dienų iš eilės", rpBadge: "Atviri pranešimai apie problemas", rpMenu: "Pranešti apie problemą", rpTitle: "Pranešti apie problemą", rpWhat: "Kas negerai?", rpNote: "Dar kas nors administratoriui? (nebūtina)", rpSend: "Siųsti pranešimą", rpSent: "Išsiųsta. Ačiū.", rpFail: "Nepavyko išsiųsti", rpMissing: "Trūkstamas ar nepilnas turinys", rpQuality: "Prasta garso kokybė", rpPlay: "Negroja", rpWrong: "Ne ta knyga, viršelis ar metaduomenys", rpChapters: "Neteisingi skyriai", rpOther: "Kita", rfRate: "Įvertinti", rfSheet: "Įvertink šią knygą", rfOpen: "Atidaryti knygos puslapį", rfPickHint: "Pasirink įvertinimą", rfTitle: "Įvertink, ką baigei", ysFinished: "Neseniai baigtos", ysAlmost: "Beveik baigtos", ysMarkDone: "Žymėti kaip baigtą", ysEditDate: "Keisti pabaigos datą", ysThisWeek: "Šią savaitę", ysBestDay: "Geriausia diena", ysTitle: "Tavo klausymas", fsTitle: "Serverio reitingas", fsCard: "Serverio reitingas", fsToggle: "Dalintis mano klausymo statistika", fsJoin: "Įjunk „Dalintis mano klausymo statistika“ personalizavimo skydelyje, kad atsirastum serverio reitinge.", fsWaiting: "Dalijimasis įjungtas — tavo santrauka netrukus prisijungs prie serverio reitingo kartu su kitais.", fsHint: "Dalinkis savo klausymo santrauka (sumos ir minutės per dieną) su kitais šiame serveryje — ji maitina serverio reitingą. Įjungta pagal numatymą. Išjungus dingsti iš reitingo ir jo sumų, o pasidalinti duomenys ištrinami.", yirBtn: "Metų apžvalga", yirTitle: "Tavo klausymo metai", yirYear: "Paskutiniai 12 mėnesių", yirDays: "Dienos su klausymu", yirBest: "Geriausia diena", yirMonths: "Pagal mėnesius", yirNone: "Klausymo duomenų dar nėra.", scmTitle: "Serijos puslapis", scmHint: "Kaip atrodo sugeneruotas viršelis virš serijos pavadinimo, kai savas neįkeltas (tik ši naršyklė).", scmDeck: "Sluoksniuota kaladė", scmFirst: "Pirmos knygos viršelis", scmGrid: "Viršelių tinklelis (numatytasis)", scmOff: "Paslėpta" , lsTitle: "Serverio statistika", lsAll: "Visos bibliotekos", lsPlayed: "Grotos knygos", lsBest: "Geriausiai įvertintos", lsGenres: "Populiariausi žanrai", srvPick: "Ką išsaugoti:", srvGRest: "Funkcijos ir elgsena", aeBtn: "Sutvarkyti autorius", aeTitle: "Autoriai be knygų", aeNone: "Kiekvienas autorius čia turi bent vieną knygą.", aeRemove: "Pašalinti", aeDone: "Pašalinta", aeWorking: "Šalinama…", rpCard: "Pranešti nesklandumai", rpHint: "Nesklandumai, apie kuriuos naudotojai pranešė iš knygos puslapio. Išsprendus, įrašas dingsta iš sąrašo.", rpEmpty: "Nieko nepranešta.", rpResolve: "Išspręsti", rpOpen: "Atidaryti knygą", apCard: "Grojimas", apToggle: "Automatiškai groti kitą serijos knygą", apHint: "Kai knyga baigiasi, automatiškai pradedama kita tos pačios serijos knyga. Tik jau turimos ir nebaigtos knygos.", apNext: "Kita serijoje", fdToggle: "Baigtų knygų įrankiai statistikoje", ysNoDate: "be datos", hmShowing: "grafikas rodo", ysStreak: "Dienų serija", ysCurrent: "Dabartinė", ysLongest: "Ilgiausia", ysDaysTotal: "Iš viso dienų", ysPace: "Tempas", ysPerDay: "Per klausymo dieną", ysWhen: "Kada klausai", ysTopBooks: "Daugiausiai klausytos knygos", ysTopAuthors: "Daugiausiai klausyti autoriai", ysTopNarrators: "Daugiausiai klausyti skaitovai", rfToggle: "Skiltis „Įvertink“ pradžios puslapyje", hoTitle: "Pradžios puslapio skilčių tvarka", hoEmpty: "Kartą atidaryk pradžios puslapį ir grįžk čia.", hoReset: "Atkurti numatytą tvarką", ctIcon: "Piktograma", ctColour: "Akcentas", ctNeedBook: "Audiobookshelf negali išsaugoti tuščios kolekcijos — pasirink bent vieną knygą. Vėliau galėsi laisvai pridėti ir šalinti.", colEditIcon: "Keisti piktogramą", ciTitle: "Kolekcijos piktograma", ciReset: "Automatiškai pagal pavadinimą", colEditDesc: "Redaguoti aprašymą", colBookForms: ["knyga","knygos","knygų"], colForms: ["Kolekcija","Kolekcijos","Kolekcijų"], ctTitle: "Sukurti kolekciją", ctBlank: "Tuščia kolekcija", ctNew: "Nauja kolekcija", ctNewHint: "iš šablono", ctNamePh: "Kolekcijos pavadinimas", ctSearch: "Ieškoti knygų ar autorių…", ctCreate: "Sukurti", ctBack: "‹ Atgal", ctAddAll: "Pridėti visas knygas", abTitle: "Pridėti knygų", abAdd: "Pridėti", avRemove: "Pašalinti nuotrauką", avSet: "Pasirinkti nuotrauką…", ugListened: "Išklausyta", ugPhoto: "Profilio nuotrauka", ugNever: "Niekada", ugSeen: "Paskutinį kartą aktyvus", ugEdit: "Redaguoti naudotoją", ugDelete: "Ištrinti naudotoją", ugAdd: "Pridėti nuotrauką", ugChange: "Keisti nuotrauką", ugSortName: "A–Ž", ugSortTime: "Daugiausiai klausyta", ugSortSeen: "Neseniai aktyvūs", bsCard: "Knygos nuorodos", bsHint: "Mygtukai knygos puslapyje pavadinimui ieškoti kitur. Goodreads ir didžiausia tavo kalbos svetainė įjungtos iš anksto.", bsFind: "Ieškoti", bsGlobal: "Visur", bsLocal: "Tavo kalbai", bsOther: "Kitos šalys", pgCard: "Perdarytos puslapiai", pgHint: "Kiekviena parinktis pakeičia Audiobookshelf puslapį NanoHive versija. Išjunk, kad grąžintum originalą.", pgNarrators: "Skaitovų kortelės", pgCollections: "Kolekcijų puslapiai", pgUsers: "Naudotojų kortelės (nustatymai)", pgStats: "Klausymo reitingas", pgPhoto: "Profilio nuotrauka viršutinėje juostoje", pgCinematic: "Kinematografinis fonas", pgTransitions: "Puslapių perėjimai", pSearch: "Ieškoti nustatymų…", pSearchNone: "Atitikmenų nėra.", erTypeface: "Šriftas", erPage: "Puslapio tema", erText: "Teksto spalva", erBg: "Fonas", erDefault: "Numatytasis (ABS)", erAuto: "Automatinis", nrForms: ["Skaitovas","Skaitovai","Skaitovų"], nrBooksForms: ["knyga","knygos","knygų"], nrSearch: "Filtruoti skaitovus…", nrSortName: "Vardas", nrSortBooks: "Daugiausiai knygų", auForms: ["Autorius","Autoriai","Autorių"], auSearch: "Filtruoti autorius…" , lfByAuthor: "Autorius › serijos tvarka", lfBySeries: "Serija › tvarka" , lfSecFilters: "Daugiau filtrų", lfSecSort: "Kelių lygių rikiavimas", lfAuthor: "Autorius", lfSeries: "Serija", lfTitle: "Pavadinimas", lfYear: "Metai", lfAdded: "Pridėta", lfDuration: "Trukmė", lfNarrator: "Skaitovas", lfGenre: "Žanras", lfLanguage: "Kalba", lfProgress: "Eiga", lfPgFinished: "Baigtos", lfPgInProgress: "Klausomos", lfPgNot: "Nepradėtos" },
+    lv: { sbTitle: "Servera reitings", sbWeek: "Nedēļa", sbMonth: "Mēnesis", sbYear: "Gads", sbAll: "Viss laiks", sbBooks: "Grāmatas", sbTopBooks: "Visvairāk klausītās", sbTotal: "Kopā", sbListeners: "Klausītāji", sbAvg: "Vidēji", wkTitle: "Klausīšanās minūtes — pēdējās 7 dienas", wkAvg: "Dienas vidējais", wkRow: "Dienas pēc kārtas", rpBadge: "Atvērti problēmu ziņojumi", rpMenu: "Ziņot par problēmu", rpTitle: "Ziņot par problēmu", rpWhat: "Kas nav kārtībā?", rpNote: "Vēl kas administratoram? (neobligāti)", rpSend: "Sūtīt ziņojumu", rpSent: "Nosūtīts. Paldies.", rpFail: "Neizdevās nosūtīt", rpMissing: "Trūkstošs vai nepilnīgs saturs", rpQuality: "Slikta skaņas kvalitāte", rpPlay: "Neatskaņojas", rpWrong: "Nepareizā grāmata, vāks vai metadati", rpChapters: "Nepareizas nodaļas", rpOther: "Kas cits", rfRate: "Vērtēt", rfSheet: "Novērtē šo grāmatu", rfOpen: "Atvērt grāmatas lapu", rfPickHint: "Izvēlies vērtējumu", rfTitle: "Novērtē pabeigto", ysFinished: "Nesen pabeigtās", ysAlmost: "Gandrīz pabeigtas", ysMarkDone: "Atzīmēt kā pabeigtu", ysEditDate: "Mainīt pabeigšanas datumu", ysThisWeek: "Šonedēļ", ysBestDay: "Labākā diena", ysTitle: "Tava klausīšanās", fsTitle: "Servera reitings", fsCard: "Servera reitings", fsToggle: "Kopīgot manu klausīšanās statistiku", fsJoin: "Ieslēdz “Kopīgot manu klausīšanās statistiku” personalizācijas panelī, lai parādītos servera reitingā.", fsWaiting: "Kopīgošana ieslēgta — tavs kopsavilkums drīz pievienosies servera reitingam kopā ar pārējiem.", fsHint: "Kopīgo savas klausīšanās kopsavilkumu (kopsummas un minūtes dienā) ar pārējiem šajā serverī — tas darbina servera reitingu. Ieslēgts pēc noklusējuma. Izslēdzot tu pazūdi no reitinga un tā kopsummām, un kopīgotie dati tiek dzēsti.", yirBtn: "Gads pārskatā", yirTitle: "Tavs klausīšanās gads", yirYear: "Pēdējie 12 mēneši", yirDays: "Dienas ar klausīšanos", yirBest: "Labākā diena", yirMonths: "Pa mēnešiem", yirNone: "Klausīšanās datu vēl nav.", scmTitle: "Sērijas lapa", scmHint: "Kā izskatās ģenerētais vāks virs sērijas nosaukuma, ja savs nav augšupielādēts (tikai šī pārlūkprogramma).", scmDeck: "Slāņaina kava", scmFirst: "Pirmās grāmatas vāks", scmGrid: "Vāku režģis (noklusējums)", scmOff: "Paslēpts" , lsTitle: "Servera statistika", lsAll: "Visas bibliotēkas", lsPlayed: "Atskaņotās grāmatas", lsBest: "Vislabāk novērtētās", lsGenres: "Top žanri", srvPick: "Ko saglabāt:", srvGRest: "Funkcijas un uzvedība", aeBtn: "Sakārtot autorus", aeTitle: "Autori bez grāmatām", aeNone: "Katram autoram šeit ir vismaz viena grāmata.", aeRemove: "Noņemt", aeDone: "Noņemts", aeWorking: "Noņem…", rpCard: "Ziņotās problēmas", rpHint: "Problēmas, par kurām lietotāji ziņoja no grāmatas lapas. Atrisināšana noņem ierakstu no saraksta.", rpEmpty: "Nekas nav ziņots.", rpResolve: "Atrisināt", rpOpen: "Atvērt grāmatu", apCard: "Atskaņošana", apToggle: "Automātiski atskaņot nākamo sērijas grāmatu", apHint: "Kad grāmata beidzas, automātiski sākas nākamā no tās pašas sērijas. Tikai grāmatas, kas jau ir tavā bibliotēkā un nav pabeigtas.", apNext: "Nākamā sērijā", fdToggle: "Pabeigto grāmatu rīki statistikā", ysNoDate: "bez datuma", hmShowing: "grafiks rāda", ysStreak: "Dienu virkne", ysCurrent: "Pašreizējā", ysLongest: "Garākā", ysDaysTotal: "Dienas kopā", ysPace: "Temps", ysPerDay: "Klausīšanās dienā", ysWhen: "Kad tu klausies", ysTopBooks: "Visvairāk klausītās grāmatas", ysTopAuthors: "Visvairāk klausītie autori", ysTopNarrators: "Visvairāk klausītie lasītāji", rfToggle: "Sadaļa “Novērtē” sākumlapā", hoTitle: "Sākumlapas sadaļu secība", hoEmpty: "Atver sākumlapu vienreiz un atgriezies šeit.", hoReset: "Atjaunot noklusējuma secību", ctIcon: "Ikona", ctColour: "Akcents", ctNeedBook: "Audiobookshelf nevar saglabāt tukšu kolekciju — izvēlies vismaz vienu grāmatu. Vēlāk vari brīvi pievienot un noņemt.", colEditIcon: "Mainīt ikonu", ciTitle: "Kolekcijas ikona", ciReset: "Automātiski pēc nosaukuma", colEditDesc: "Rediģēt aprakstu", colBookForms: ["grāmata","grāmatas"], colForms: ["Kolekcija","Kolekcijas"], ctTitle: "Izveidot kolekciju", ctBlank: "Tukša kolekcija", ctNew: "Jauna kolekcija", ctNewHint: "no veidnes", ctNamePh: "Kolekcijas nosaukums", ctSearch: "Meklēt grāmatas vai autorus…", ctCreate: "Izveidot", ctBack: "‹ Atpakaļ", ctAddAll: "Pievienot visas grāmatas", abTitle: "Pievienot grāmatas", abAdd: "Pievienot", avRemove: "Noņemt foto", avSet: "Izvēlēties foto…", ugListened: "Noklausīts", ugPhoto: "Profila foto", ugNever: "Nekad", ugSeen: "Pēdējoreiz aktīvs", ugEdit: "Rediģēt lietotāju", ugDelete: "Dzēst lietotāju", ugAdd: "Pievienot foto", ugChange: "Mainīt foto", ugSortName: "A–Ž", ugSortTime: "Visvairāk klausīts", ugSortSeen: "Nesen aktīvie", bsCard: "Grāmatas saites", bsHint: "Pogas grāmatas lapā nosaukuma meklēšanai citur. Goodreads un tavas valodas lielākā vietne ir ieslēgtas jau sākumā.", bsFind: "Meklēt vietnē", bsGlobal: "Visur", bsLocal: "Tavai valodai", bsOther: "Citas valstis", pgCard: "Pārveidotās lapas", pgHint: "Katra opcija aizstāj Audiobookshelf lapu ar NanoHive versiju. Izslēdz, lai atgrieztu oriģinālu.", pgNarrators: "Lasītāju kartītes", pgCollections: "Kolekciju lapas", pgUsers: "Lietotāju kartītes (iestatījumi)", pgStats: "Klausīšanās reitings", pgPhoto: "Profila foto augšējā joslā", pgCinematic: "Kino fons", pgTransitions: "Lapu pārejas", pSearch: "Meklēt iestatījumus…", pSearchNone: "Nekas neatbilst.", erTypeface: "Fonts", erPage: "Lapas motīvs", erText: "Teksta krāsa", erBg: "Fons", erDefault: "Noklusējums (ABS)", erAuto: "Auto", nrForms: ["Lasītājs","Lasītāji"], nrBooksForms: ["grāmata","grāmatas"], nrSearch: "Filtrēt lasītājus…", nrSortName: "Vārds", nrSortBooks: "Visvairāk grāmatu", auForms: ["Autors","Autori"], auSearch: "Filtrēt autorus…" , lfByAuthor: "Autors › sērijas secība", lfBySeries: "Sērija › secība" , lfSecFilters: "Vairāk filtru", lfSecSort: "Daudzlīmeņu kārtošana", lfAuthor: "Autors", lfSeries: "Sērija", lfTitle: "Nosaukums", lfYear: "Gads", lfAdded: "Pievienots", lfDuration: "Ilgums", lfNarrator: "Lasītājs", lfGenre: "Žanrs", lfLanguage: "Valoda", lfProgress: "Progress", lfPgFinished: "Pabeigtās", lfPgInProgress: "Procesā", lfPgNot: "Nesāktās" },
+    et: { sbTitle: "Serveri edetabel", sbWeek: "Nädal", sbMonth: "Kuu", sbYear: "Aasta", sbAll: "Kogu aeg", sbBooks: "Raamatud", sbTopBooks: "Enim kuulatud", sbTotal: "Kokku", sbListeners: "Kuulajad", sbAvg: "Keskmine", wkTitle: "Kuulamisminutid — viimased 7 päeva", wkAvg: "Päeva keskmine", wkRow: "Päeva järjest", rpBadge: "Avatud probleemiteated", rpMenu: "Teata probleemist", rpTitle: "Teata probleemist", rpWhat: "Mis on valesti?", rpNote: "Veel midagi administraatorile? (valikuline)", rpSend: "Saada teade", rpSent: "Saadetud. Aitäh.", rpFail: "Saatmine ebaõnnestus", rpMissing: "Puuduv või poolik sisu", rpQuality: "Halb helikvaliteet", rpPlay: "Ei mängi", rpWrong: "Vale raamat, kaas või metaandmed", rpChapters: "Valed peatükid", rpOther: "Midagi muud", rfRate: "Hinda", rfSheet: "Hinda seda raamatut", rfOpen: "Ava raamatu leht", rfPickHint: "Vali hinnang", rfTitle: "Hinda lõpetatut", ysFinished: "Hiljuti lõpetatud", ysAlmost: "Peaaegu valmis", ysMarkDone: "Märgi lõpetatuks", ysEditDate: "Muuda lõpetamise kuupäeva", ysThisWeek: "Sel nädalal", ysBestDay: "Parim päev", ysTitle: "Sinu kuulamine", fsTitle: "Serveri edetabel", fsCard: "Serveri edetabel", fsToggle: "Jaga minu kuulamisstatistikat", fsJoin: "Lülita kohandamispaneelis sisse „Jaga minu kuulamisstatistikat”, et ilmuda serveri edetabelisse.", fsWaiting: "Jagamine on sees — sinu kokkuvõte liitub peagi serveri edetabeliga koos teistega.", fsHint: "Jaga oma kuulamise kokkuvõtet (summad ja minutid päevas) teistega selles serveris — see toidab serveri edetabelit. Vaikimisi sees. Välja lülitades kaod edetabelist ja selle summadest ning jagatu kustutatakse.", yirBtn: "Aasta kokkuvõte", yirTitle: "Sinu kuulamisaasta", yirYear: "Viimased 12 kuud", yirDays: "Kuulamisega päevi", yirBest: "Parim päev", yirMonths: "Kuude kaupa", yirNone: "Kuulamisandmeid veel pole.", scmTitle: "Sarja leht", scmHint: "Kuidas näeb välja sarja pealkirja kohal genereeritud kaas, kui oma pole üles laaditud (ainult see brauser).", scmDeck: "Kihiline pakk", scmFirst: "Esimese raamatu kaas", scmGrid: "Kaante ruudustik (vaikimisi)", scmOff: "Peidetud" , lsTitle: "Serveri statistika", lsAll: "Kõik kogud", lsPlayed: "Esitatud raamatud", lsBest: "Parima hinnanguga", lsGenres: "Populaarseimad žanrid", srvPick: "Mida salvestada:", srvGRest: "Funktsioonid ja käitumine", aeBtn: "Korrasta autorid", aeTitle: "Autorid ilma raamatuteta", aeNone: "Igal autoril siin on vähemalt üks raamat.", aeRemove: "Eemalda", aeDone: "Eemaldatud", aeWorking: "Eemaldan…", rpCard: "Teatatud probleemid", rpHint: "Probleemid, millest kasutajad raamatu lehelt teatasid. Lahendamine eemaldab kirje loendist.", rpEmpty: "Midagi pole teatatud.", rpResolve: "Lahenda", rpOpen: "Ava raamat", apCard: "Esitus", apToggle: "Esita sarja järgmine raamat automaatselt", apHint: "Kui raamat lõpeb, algab sama sarja järgmine automaatselt. Ainult raamatud, mis sul juba on ja mis pole lõpetatud.", apNext: "Sarja järgmine", fdToggle: "Lõpetatud raamatute tööriistad sinu statistikas", ysNoDate: "kuupäevata", hmShowing: "graafik näitab", ysStreak: "Jada", ysCurrent: "Praegune", ysLongest: "Pikim", ysDaysTotal: "Päevi kokku", ysPace: "Tempo", ysPerDay: "Kuulamispäeva kohta", ysWhen: "Millal sa kuulad", ysTopBooks: "Enim kuulatud raamatud", ysTopAuthors: "Enim kuulatud autorid", ysTopNarrators: "Enim kuulatud lugejad", rfToggle: "Jaotis „Hinda” avalehel", hoTitle: "Avalehe jaotiste järjekord", hoEmpty: "Ava avaleht üks kord ja tule siia tagasi.", hoReset: "Taasta vaikimisi järjekord", ctIcon: "Ikoon", ctColour: "Aktsent", ctNeedBook: "Audiobookshelf ei saa tühja kogumikku salvestada — vali vähemalt üks raamat. Hiljem saad vabalt lisada ja eemaldada.", colEditIcon: "Vaheta ikooni", ciTitle: "Kogumiku ikoon", ciReset: "Sobita nimega automaatselt", colEditDesc: "Muuda kirjeldust", colBookForms: ["raamat","raamatut"], colForms: ["Kogumik","Kogumikud"], ctTitle: "Loo kogumik", ctBlank: "Tühi kogumik", ctNew: "Uus kogumik", ctNewHint: "mallist", ctNamePh: "Kogumiku nimi", ctSearch: "Otsi raamatuid või autoreid…", ctCreate: "Loo", ctBack: "‹ Tagasi", ctAddAll: "Lisa kõik raamatud", abTitle: "Lisa raamatuid", abAdd: "Lisa", avRemove: "Eemalda foto", avSet: "Vali foto…", ugListened: "Kuulatud", ugPhoto: "Profiilifoto", ugNever: "Mitte kunagi", ugSeen: "Viimati aktiivne", ugEdit: "Muuda kasutajat", ugDelete: "Kustuta kasutaja", ugAdd: "Lisa foto", ugChange: "Vaheta fotot", ugSortName: "A–Ü", ugSortTime: "Enim kuulatud", ugSortSeen: "Hiljuti aktiivsed", bsCard: "Raamatu lingid", bsHint: "Nupud raamatu lehel pealkirja otsimiseks mujalt. Goodreads ja sinu keele suurim sait on ette sisse lülitatud.", bsFind: "Otsi saidilt", bsGlobal: "Kõikjal", bsLocal: "Sinu keelele", bsOther: "Teised riigid", pgCard: "Ümberkujundatud lehed", pgHint: "Iga valik asendab Audiobookshelfi lehe NanoHive'i versiooniga. Lülita välja, et originaal tagasi saada.", pgNarrators: "Lugejakaardid", pgCollections: "Kogumike lehed", pgUsers: "Kasutajakaardid (seaded)", pgStats: "Kuulamise edetabel", pgPhoto: "Profiilifoto ülaribal", pgCinematic: "Kinolik taust", pgTransitions: "Lehe üleminekud", pSearch: "Otsi seadeid…", pSearchNone: "Vasteid pole.", erTypeface: "Kirjatüüp", erPage: "Lehe teema", erText: "Teksti värv", erBg: "Taust", erDefault: "Vaikimisi (ABS)", erAuto: "Automaatne", nrForms: ["Lugeja","Lugejad"], nrBooksForms: ["raamat","raamatut"], nrSearch: "Filtreeri lugejaid…", nrSortName: "Nimi", nrSortBooks: "Enim raamatuid", auForms: ["Autor","Autorid"], auSearch: "Filtreeri autoreid…" , lfByAuthor: "Autor › sarja järjekord", lfBySeries: "Sari › järjekord" , lfSecFilters: "Rohkem filtreid", lfSecSort: "Mitmetasandiline sortimine", lfAuthor: "Autor", lfSeries: "Sari", lfTitle: "Pealkiri", lfYear: "Aasta", lfAdded: "Lisatud", lfDuration: "Kestus", lfNarrator: "Lugeja", lfGenre: "Žanr", lfLanguage: "Keel", lfProgress: "Edenemine", lfPgFinished: "Lõpetatud", lfPgInProgress: "Pooleli", lfPgNot: "Alustamata" },
+    el: { sbTitle: "Κατάταξη διακομιστή", sbWeek: "Εβδομάδα", sbMonth: "Μήνας", sbYear: "Έτος", sbAll: "Συνολικά", sbBooks: "Βιβλία", sbTopBooks: "Πιο ακουσμένα", sbTotal: "Σύνολο", sbListeners: "Ακροατές", sbAvg: "Μέσος όρος", wkTitle: "Λεπτά ακρόασης — τελευταίες 7 ημέρες", wkAvg: "Ημερήσιος μέσος", wkRow: "Συνεχόμενες ημέρες", rpBadge: "Ανοιχτές αναφορές προβλημάτων", rpMenu: "Αναφορά προβλήματος", rpTitle: "Αναφορά προβλήματος", rpWhat: "Τι πάει στραβά;", rpNote: "Κάτι άλλο για τον διαχειριστή; (προαιρετικό)", rpSend: "Αποστολή αναφοράς", rpSent: "Στάλθηκε. Ευχαριστούμε.", rpFail: "Αποτυχία αποστολής", rpMissing: "Λείπει ή είναι ελλιπές περιεχόμενο", rpQuality: "Κακή ποιότητα ήχου", rpPlay: "Δεν αναπαράγεται", rpWrong: "Λάθος βιβλίο, εξώφυλλο ή μεταδεδομένα", rpChapters: "Λάθος κεφάλαια", rpOther: "Κάτι άλλο", rfRate: "Βαθμολόγησε", rfSheet: "Βαθμολόγησε αυτό το βιβλίο", rfOpen: "Άνοιγμα σελίδας βιβλίου", rfPickHint: "Διάλεξε βαθμολογία", rfTitle: "Βαθμολόγησε όσα τελείωσες", ysFinished: "Πρόσφατα ολοκληρωμένα", ysAlmost: "Σχεδόν έτοιμα", ysMarkDone: "Σήμανση ως ολοκληρωμένο", ysEditDate: "Αλλαγή ημερομηνίας ολοκλήρωσης", ysThisWeek: "Αυτή την εβδομάδα", ysBestDay: "Καλύτερη μέρα", ysTitle: "Η ακρόασή σου", fsTitle: "Κατάταξη διακομιστή", fsCard: "Κατάταξη διακομιστή", fsToggle: "Κοινοποίηση των στατιστικών ακρόασής μου", fsJoin: "Ενεργοποίησε την «Κοινοποίηση των στατιστικών ακρόασής μου» στον πίνακα εξατομίκευσης για να εμφανιστείς στην κατάταξη του διακομιστή.", fsWaiting: "Η κοινοποίηση είναι ενεργή — η σύνοψή σου θα μπει σύντομα στην κατάταξη του διακομιστή μαζί με όλους τους άλλους.", fsHint: "Κοινοποίησε μια σύνοψη της ακρόασής σου (σύνολα και λεπτά ανά ημέρα) στους υπόλοιπους του διακομιστή — τροφοδοτεί την κατάταξη. Ενεργό από προεπιλογή. Αν το απενεργοποιήσεις, βγαίνεις από την κατάταξη και τα σύνολά της, και ό,τι κοινοποιήθηκε διαγράφεται.", yirBtn: "Ανασκόπηση έτους", yirTitle: "Η χρονιά ακρόασής σου", yirYear: "Τελευταίοι 12 μήνες", yirDays: "Ημέρες με ακρόαση", yirBest: "Καλύτερη μέρα", yirMonths: "Ανά μήνα", yirNone: "Δεν υπάρχουν ακόμη δεδομένα ακρόασης.", scmTitle: "Σελίδα σειράς", scmHint: "Πώς φαίνεται το παραγόμενο εξώφυλλο πάνω από τον τίτλο μιας σειράς όταν δεν έχει ανέβει δικό σου (μόνο αυτό το πρόγραμμα περιήγησης).", scmDeck: "Στρωματοποιημένη τράπουλα", scmFirst: "Εξώφυλλο πρώτου βιβλίου", scmGrid: "Πλέγμα εξωφύλλων (προεπιλογή)", scmOff: "Κρυφό" , lsTitle: "Στατιστικά διακομιστή", lsAll: "Όλες οι βιβλιοθήκες", lsPlayed: "Βιβλία που παίχτηκαν", lsBest: "Με την καλύτερη βαθμολογία", lsGenres: "Κορυφαία είδη", srvPick: "Τι να αποθηκευτεί:", srvGRest: "Λειτουργίες και συμπεριφορά", aeBtn: "Τακτοποίηση συγγραφέων", aeTitle: "Συγγραφείς χωρίς βιβλία", aeNone: "Κάθε συγγραφέας εδώ έχει τουλάχιστον ένα βιβλίο.", aeRemove: "Αφαίρεση", aeDone: "Αφαιρέθηκαν", aeWorking: "Αφαίρεση…", rpCard: "Αναφερμένα προβλήματα", rpHint: "Προβλήματα που ανέφεραν χρήστες από σελίδα βιβλίου. Η επίλυση το αφαιρεί από τη λίστα.", rpEmpty: "Καμία αναφορά.", rpResolve: "Επίλυση", rpOpen: "Άνοιγμα βιβλίου", apCard: "Αναπαραγωγή", apToggle: "Αυτόματη αναπαραγωγή του επόμενου βιβλίου σειράς", apHint: "Όταν τελειώνει ένα βιβλίο, ξεκινά αυτόματα το επόμενο της ίδιας σειράς. Μόνο βιβλία που έχεις ήδη και δεν έχεις τελειώσει.", apNext: "Επόμενο της σειράς", fdToggle: "Εργαλεία ολοκληρωμένων βιβλίων στα στατιστικά", ysNoDate: "χωρίς ημερομηνία", hmShowing: "το γράφημα δείχνει", ysStreak: "Σερί", ysCurrent: "Τρέχον", ysLongest: "Μεγαλύτερο", ysDaysTotal: "Σύνολο ημερών", ysPace: "Ρυθμός", ysPerDay: "Ανά ημέρα ακρόασης", ysWhen: "Πότε ακούς", ysTopBooks: "Πιο ακουσμένα βιβλία", ysTopAuthors: "Πιο ακουσμένοι συγγραφείς", ysTopNarrators: "Πιο ακουσμένοι αφηγητές", rfToggle: "Ενότητα «Βαθμολόγησε» στην αρχική", hoTitle: "Σειρά ενοτήτων αρχικής", hoEmpty: "Άνοιξε μία φορά την αρχική και γύρνα εδώ.", hoReset: "Επαναφορά προεπιλεγμένης σειράς", ctIcon: "Εικονίδιο", ctColour: "Απόχρωση", ctNeedBook: "Το Audiobookshelf δεν μπορεί να αποθηκεύσει κενή συλλογή — διάλεξε τουλάχιστον ένα βιβλίο. Αργότερα προσθέτεις και αφαιρείς ελεύθερα.", colEditIcon: "Αλλαγή εικονιδίου", ciTitle: "Εικονίδιο συλλογής", ciReset: "Αυτόματο ταίριασμα με το όνομα", colEditDesc: "Επεξεργασία περιγραφής", colBookForms: ["βιβλίο","βιβλία"], colForms: ["Συλλογή","Συλλογές"], ctTitle: "Δημιουργία συλλογής", ctBlank: "Κενή συλλογή", ctNew: "Νέα συλλογή", ctNewHint: "από πρότυπο", ctNamePh: "Όνομα συλλογής", ctSearch: "Αναζήτηση βιβλίων ή συγγραφέων…", ctCreate: "Δημιουργία", ctBack: "‹ Πίσω", ctAddAll: "Προσθήκη όλων των βιβλίων", abTitle: "Προσθήκη βιβλίων", abAdd: "Προσθήκη", avRemove: "Αφαίρεση φωτογραφίας", avSet: "Επιλογή φωτογραφίας…", ugListened: "Ακούστηκε", ugPhoto: "Φωτογραφία προφίλ", ugNever: "Ποτέ", ugSeen: "Τελευταία δραστηριότητα", ugEdit: "Επεξεργασία χρήστη", ugDelete: "Διαγραφή χρήστη", ugAdd: "Προσθήκη φωτογραφίας", ugChange: "Αλλαγή φωτογραφίας", ugSortName: "Α–Ω", ugSortTime: "Πιο ακουσμένα", ugSortSeen: "Πρόσφατα ενεργοί", bsCard: "Σύνδεσμοι βιβλίου", bsHint: "Κουμπιά στη σελίδα του βιβλίου για αναζήτηση του τίτλου αλλού. Το Goodreads και ο μεγαλύτερος ιστότοπος της γλώσσας σου είναι ενεργά από πριν.", bsFind: "Αναζήτηση στο", bsGlobal: "Παντού", bsLocal: "Για τη γλώσσα σου", bsOther: "Άλλες χώρες", pgCard: "Επανασχεδιασμένες σελίδες", pgHint: "Καθεμία αντικαθιστά μια σελίδα του Audiobookshelf με την έκδοση NanoHive. Απενεργοποίησέ τη για να επανέλθει η αρχική.", pgNarrators: "Κάρτες αφηγητών", pgCollections: "Σελίδες συλλογών", pgUsers: "Κάρτες χρηστών (ρυθμίσεις)", pgStats: "Κατάταξη ακρόασης", pgPhoto: "Φωτογραφία προφίλ στην πάνω μπάρα", pgCinematic: "Κινηματογραφικό φόντο", pgTransitions: "Μεταβάσεις σελίδων", pSearch: "Αναζήτηση ρυθμίσεων…", pSearchNone: "Καμία αντιστοιχία.", erTypeface: "Γραμματοσειρά", erPage: "Θέμα σελίδας", erText: "Χρώμα κειμένου", erBg: "Φόντο", erDefault: "Προεπιλογή (ABS)", erAuto: "Αυτόματο", nrForms: ["Αφηγητής","Αφηγητές"], nrBooksForms: ["βιβλίο","βιβλία"], nrSearch: "Φιλτράρισμα αφηγητών…", nrSortName: "Όνομα", nrSortBooks: "Περισσότερα βιβλία", auForms: ["Συγγραφέας","Συγγραφείς"], auSearch: "Φιλτράρισμα συγγραφέων…" , lfByAuthor: "Συγγραφέας › αρίθμηση σειράς", lfBySeries: "Σειρά › αρίθμηση" , lfSecFilters: "Περισσότερα φίλτρα", lfSecSort: "Πολλαπλή ταξινόμηση", lfAuthor: "Συγγραφέας", lfSeries: "Σειρά", lfTitle: "Τίτλος", lfYear: "Έτος", lfAdded: "Προστέθηκε", lfDuration: "Διάρκεια", lfNarrator: "Αφηγητής", lfGenre: "Είδος", lfLanguage: "Γλώσσα", lfProgress: "Πρόοδος", lfPgFinished: "Ολοκληρωμένα", lfPgInProgress: "Σε εξέλιξη", lfPgNot: "Μη αρχισμένα" },
+    tr: { sbTitle: "Sunucu sıralaması", sbWeek: "Hafta", sbMonth: "Ay", sbYear: "Yıl", sbAll: "Tüm zamanlar", sbBooks: "Kitaplar", sbTopBooks: "En çok dinlenen", sbTotal: "Toplam", sbListeners: "Dinleyiciler", sbAvg: "Ortalama", wkTitle: "Dinleme dakikaları — son 7 gün", wkAvg: "Günlük ortalama", wkRow: "Üst üste gün", rpBadge: "Açık sorun bildirimleri", rpMenu: "Sorun bildir", rpTitle: "Sorun bildir", rpWhat: "Sorun ne?", rpNote: "Yöneticinin bilmesi gereken başka bir şey? (isteğe bağlı)", rpSend: "Bildirimi gönder", rpSent: "Gönderildi. Teşekkürler.", rpFail: "Gönderilemedi", rpMissing: "Eksik veya yarım içerik", rpQuality: "Kötü ses kalitesi", rpPlay: "Oynatılmıyor", rpWrong: "Yanlış kitap, kapak veya üstveri", rpChapters: "Bölümler yanlış", rpOther: "Başka bir şey", rfRate: "Puanla", rfSheet: "Bu kitabı puanla", rfOpen: "Kitap sayfasını aç", rfPickHint: "Bir puan seç", rfTitle: "Bitirdiklerini puanla", ysFinished: "Yakınlarda bitenler", ysAlmost: "Neredeyse bitti", ysMarkDone: "Bitti olarak işaretle", ysEditDate: "Bitiş tarihini değiştir", ysThisWeek: "Bu hafta", ysBestDay: "En iyi gün", ysTitle: "Dinlemen", fsTitle: "Sunucu sıralaması", fsCard: "Sunucu sıralaması", fsToggle: "Dinleme istatistiklerimi paylaş", fsJoin: "Sunucu sıralamasında görünmek için kişiselleştirme panelinde “Dinleme istatistiklerimi paylaş”ı aç.", fsWaiting: "Paylaşım açık — özetin yakında herkesle birlikte sunucu sıralamasına katılacak.", fsHint: "Dinlemenin özetini (toplamlar ve günlük dakikalar) bu sunucudaki diğer kişilerle paylaş — sıralamayı bu besler. Varsayılan olarak açık. Kapatırsan sıralamadan ve toplamlarından çıkarsın, paylaşılanlar silinir.", yirBtn: "Yılın özeti", yirTitle: "Dinleme yılın", yirYear: "Son 12 ay", yirDays: "Dinleme olan günler", yirBest: "En iyi gün", yirMonths: "Aylara göre", yirNone: "Henüz dinleme verisi yok.", scmTitle: "Seri sayfası", scmHint: "Kendi kapağın yüklenmemişse seri başlığının üstündeki üretilen kapak böyle görünür (yalnızca bu tarayıcı).", scmDeck: "Katmanlı deste", scmFirst: "İlk kitabın kapağı", scmGrid: "Kapak ızgarası (varsayılan)", scmOff: "Gizli" , lsTitle: "Sunucu istatistikleri", lsAll: "Tüm kitaplıklar", lsPlayed: "Çalınan kitaplar", lsBest: "En iyi puanlanan", lsGenres: "Popüler türler", srvPick: "Neler kaydedilsin:", srvGRest: "Özellikler ve davranış", aeBtn: "Yazarları düzenle", aeTitle: "Kitapsız yazarlar", aeNone: "Buradaki her yazarın en az bir kitabı var.", aeRemove: "Kaldır", aeDone: "Kaldırıldı", aeWorking: "Kaldırılıyor…", rpCard: "Bildirilen sorunlar", rpHint: "Kullanıcıların kitap sayfasından bildirdiği sorunlar. Çözmek, kaydı listeden kaldırır.", rpEmpty: "Bildirim yok.", rpResolve: "Çöz", rpOpen: "Kitabı aç", apCard: "Oynatma", apToggle: "Serinin sonraki kitabını otomatik oynat", apHint: "Bir kitap bitince aynı serinin sonraki kitabı otomatik başlar. Yalnızca zaten sahip olduğun ve bitirmediğin kitaplar.", apNext: "Serinin sonraki", fdToggle: "İstatistiklerinde biten kitap araçları", ysNoDate: "tarih yok", hmShowing: "grafik şunu gösteriyor", ysStreak: "Seri", ysCurrent: "Mevcut", ysLongest: "En uzun", ysDaysTotal: "Toplam gün", ysPace: "Tempo", ysPerDay: "Dinleme günü başına", ysWhen: "Ne zaman dinliyorsun", ysTopBooks: "En çok dinlenen kitaplar", ysTopAuthors: "En çok dinlenen yazarlar", ysTopNarrators: "En çok dinlenen seslendirenler", rfToggle: "Ana sayfadaki “Puanla” bölümü", hoTitle: "Ana sayfa bölümlerinin sırası", hoEmpty: "Ana sayfayı bir kez aç ve buraya dön.", hoReset: "Varsayılan sırayı geri yükle", ctIcon: "Simge", ctColour: "Vurgu", ctNeedBook: "Audiobookshelf boş bir koleksiyonu kaydedemez — en az bir kitap seç. Sonradan serbestçe ekleyip çıkarabilirsin.", colEditIcon: "Simgeyi değiştir", ciTitle: "Koleksiyon simgesi", ciReset: "Ada göre otomatik eşleştir", colEditDesc: "Açıklamayı düzenle", colBookForms: ["kitap","kitap"], colForms: ["Koleksiyon","Koleksiyonlar"], ctTitle: "Koleksiyon oluştur", ctBlank: "Boş koleksiyon", ctNew: "Yeni koleksiyon", ctNewHint: "şablondan", ctNamePh: "Koleksiyon adı", ctSearch: "Kitap veya yazar ara…", ctCreate: "Oluştur", ctBack: "‹ Geri", ctAddAll: "Tüm kitapları ekle", abTitle: "Kitap ekle", abAdd: "Ekle", avRemove: "Fotoğrafı kaldır", avSet: "Fotoğraf seç…", ugListened: "Dinlendi", ugPhoto: "Profil fotoğrafı", ugNever: "Hiç", ugSeen: "Son aktif", ugEdit: "Kullanıcıyı düzenle", ugDelete: "Kullanıcıyı sil", ugAdd: "Fotoğraf ekle", ugChange: "Fotoğrafı değiştir", ugSortName: "A–Z", ugSortTime: "En çok dinlenen", ugSortSeen: "Son zamanlarda aktif", bsCard: "Kitap bağlantıları", bsHint: "Kitap sayfasında başlığı başka yerde aramak için düğmeler. Goodreads ve dilinin en büyük sitesi baştan açık.", bsFind: "Şurada ara", bsGlobal: "Her yerde", bsLocal: "Dilin için", bsOther: "Diğer ülkeler", pgCard: "Yeniden tasarlanan sayfalar", pgHint: "Her seçenek bir Audiobookshelf sayfasını NanoHive sürümüyle değiştirir. Kapatınca özgün sayfa geri gelir.", pgNarrators: "Seslendiren kartları", pgCollections: "Koleksiyon sayfaları", pgUsers: "Kullanıcı kartları (ayarlar)", pgStats: "Dinleme sıralaması", pgPhoto: "Üst çubukta profil fotoğrafı", pgCinematic: "Sinematik arka plan", pgTransitions: "Sayfa geçişleri", pSearch: "Ayarlarda ara…", pSearchNone: "Eşleşme yok.", erTypeface: "Yazı tipi", erPage: "Sayfa teması", erText: "Metin rengi", erBg: "Arka plan", erDefault: "Varsayılan (ABS)", erAuto: "Otomatik", nrForms: ["Seslendiren","Seslendirenler"], nrBooksForms: ["kitap","kitap"], nrSearch: "Seslendirenleri filtrele…", nrSortName: "Ad", nrSortBooks: "En çok kitap", auForms: ["Yazar","Yazarlar"], auSearch: "Yazarları filtrele…" , lfByAuthor: "Yazar › seri sırası", lfBySeries: "Seri › sıra" , lfSecFilters: "Daha çok filtre", lfSecSort: "Çoklu sıralama", lfAuthor: "Yazar", lfSeries: "Seri", lfTitle: "Başlık", lfYear: "Yıl", lfAdded: "Eklendi", lfDuration: "Süre", lfNarrator: "Seslendiren", lfGenre: "Tür", lfLanguage: "Dil", lfProgress: "İlerleme", lfPgFinished: "Bitenler", lfPgInProgress: "Devam edenler", lfPgNot: "Başlanmayanlar" },
+    ca: { sbTitle: "Classificació del servidor", sbWeek: "Setmana", sbMonth: "Mes", sbYear: "Any", sbAll: "Tot el temps", sbBooks: "Llibres", sbTopBooks: "Més escoltats", sbTotal: "Total", sbListeners: "Oients", sbAvg: "Mitjana", wkTitle: "Minuts d’escolta — últims 7 dies", wkAvg: "Mitjana diària", wkRow: "Dies seguits", rpBadge: "Informes de problemes oberts", rpMenu: "Informa d’un problema", rpTitle: "Informa d’un problema", rpWhat: "Què passa?", rpNote: "Res més que hagi de saber l’administrador? (opcional)", rpSend: "Envia l’informe", rpSent: "Enviat. Gràcies.", rpFail: "No s’ha pogut enviar", rpMissing: "Contingut absent o incomplet", rpQuality: "Mala qualitat d’àudio", rpPlay: "No es reprodueix", rpWrong: "Llibre, coberta o metadades equivocats", rpChapters: "Capítols equivocats", rpOther: "Una altra cosa", rfRate: "Valora", rfSheet: "Valora aquest llibre", rfOpen: "Obre la pàgina del llibre", rfPickHint: "Tria una valoració", rfTitle: "Valora el que has acabat", ysFinished: "Acabats fa poc", ysAlmost: "Gairebé acabats", ysMarkDone: "Marca com a acabat", ysEditDate: "Canvia la data d’acabament", ysThisWeek: "Aquesta setmana", ysBestDay: "Millor dia", ysTitle: "La teva escolta", fsTitle: "Classificació del servidor", fsCard: "Classificació del servidor", fsToggle: "Comparteix les meves estadístiques d’escolta", fsJoin: "Activa «Comparteix les meves estadístiques d’escolta» al panell de personalització per aparèixer a la classificació del servidor.", fsWaiting: "La compartició és activa — el teu resum s’afegirà aviat a la classificació del servidor, amb tothom.", fsHint: "Comparteix un resum de la teva escolta (totals i minuts per dia) amb la resta d’aquest servidor — alimenta la classificació. Activat per defecte. En desactivar-ho desapareixes de la classificació i dels totals, i el que has compartit s’esborra.", yirBtn: "Resum de l’any", yirTitle: "El teu any d’escolta", yirYear: "Últims 12 mesos", yirDays: "Dies amb escolta", yirBest: "Millor dia", yirMonths: "Per mesos", yirNone: "Encara no hi ha dades d’escolta.", scmTitle: "Pàgina de sèrie", scmHint: "Aspecte de la coberta generada sobre el títol d’una sèrie quan no se n’ha pujat cap (només aquest navegador).", scmDeck: "Baralla apilada", scmFirst: "Coberta del primer llibre", scmGrid: "Graella de cobertes (per defecte)", scmOff: "Amagada" , lsTitle: "Estadístiques del servidor", lsAll: "Totes les biblioteques", lsPlayed: "Llibres reproduïts", lsBest: "Més ben valorats", lsGenres: "Gèneres principals", srvPick: "Què incloure:", srvGRest: "Funcions i comportament", aeBtn: "Endreça els autors", aeTitle: "Autors sense llibres", aeNone: "Cada autor d'aquí té almenys un llibre.", aeRemove: "Elimina", aeDone: "Eliminats", aeWorking: "Eliminant…", rpCard: "Problemes informats", rpHint: "Problemes que els usuaris han informat des d'una pàgina de llibre. Resoldre'l el treu de la llista.", rpEmpty: "Res informat.", rpResolve: "Resol", rpOpen: "Obre el llibre", apCard: "Reproducció", apToggle: "Reprodueix automàticament el següent llibre d'una sèrie", apHint: "Quan un llibre s'acaba, comença automàticament el següent de la mateixa sèrie. Només llibres que ja tens i no has acabat.", apNext: "Següent de la sèrie", fdToggle: "Eines de llibres acabats a les teves estadístiques", ysNoDate: "sense data", hmShowing: "el gràfic mostra", ysStreak: "Ratxa", ysCurrent: "Actual", ysLongest: "Més llarga", ysDaysTotal: "Dies en total", ysPace: "Ritme", ysPerDay: "Per dia d'escolta", ysWhen: "Quan escoltes", ysTopBooks: "Llibres més escoltats", ysTopAuthors: "Autors més escoltats", ysTopNarrators: "Narradors més escoltats", rfToggle: "Secció «Valora» a l'inici", hoTitle: "Ordre de les seccions de l'inici", hoEmpty: "Obre la pàgina d'inici un cop i torna aquí.", hoReset: "Restableix l'ordre", ctIcon: "Icona", ctColour: "Accent", ctNeedBook: "L'Audiobookshelf no pot desar una col·lecció buida — tria almenys un llibre. Després pots afegir i treure lliurement.", colEditIcon: "Canvia la icona", ciTitle: "Icona de la col·lecció", ciReset: "Ajusta automàticament al nom", colEditDesc: "Edita la descripció", colBookForms: ["llibre","llibres"], colForms: ["Col·lecció","Col·leccions"], ctTitle: "Crea una col·lecció", ctBlank: "Col·lecció buida", ctNew: "Col·lecció nova", ctNewHint: "des d'una plantilla", ctNamePh: "Nom de la col·lecció", ctSearch: "Cerca llibres o autors…", ctCreate: "Crea", ctBack: "‹ Enrere", ctAddAll: "Afegeix tots els llibres", abTitle: "Afegeix llibres", abAdd: "Afegeix", avRemove: "Treu la foto", avSet: "Tria una foto…", ugListened: "Escoltat", ugPhoto: "Foto de perfil", ugNever: "Mai", ugSeen: "Darrera activitat", ugEdit: "Edita l'usuari", ugDelete: "Suprimeix l'usuari", ugAdd: "Afegeix foto", ugChange: "Canvia la foto", ugSortName: "A–Z", ugSortTime: "Més escoltats", ugSortSeen: "Actius recentment", bsCard: "Enllaços del llibre", bsHint: "Botons a la pàgina del llibre per cercar el títol en altres llocs. Goodreads i el lloc més gran de la teva llengua venen activats.", bsFind: "Cerca a", bsGlobal: "Arreu", bsLocal: "Per a la teva llengua", bsOther: "Altres països", pgCard: "Pàgines redissenyades", pgHint: "Cada opció substitueix una pàgina d'Audiobookshelf per la versió NanoHive. Desactiva-la per recuperar l'original.", pgNarrators: "Targetes de narradors", pgCollections: "Pàgines de col·leccions", pgUsers: "Targetes d'usuaris (configuració)", pgStats: "Classificació d'escolta", pgPhoto: "Foto de perfil a la barra superior", pgCinematic: "Fons cinematogràfic", pgTransitions: "Transicions de pàgina", pSearch: "Cerca configuració…", pSearchNone: "Res no coincideix.", erTypeface: "Tipografia", erPage: "Tema de pàgina", erText: "Color del text", erBg: "Fons", erDefault: "Per defecte (ABS)", erAuto: "Auto", nrForms: ["Narrador","Narradors"], nrBooksForms: ["llibre","llibres"], nrSearch: "Filtra narradors…", nrSortName: "Nom", nrSortBooks: "Més llibres", auForms: ["Autor","Autors"], auSearch: "Filtra autors…" , lfByAuthor: "Autor › ordre de sèrie", lfBySeries: "Sèrie › ordre" , lfSecFilters: "Més filtres", lfSecSort: "Ordenació múltiple", lfAuthor: "Autor", lfSeries: "Sèrie", lfTitle: "Títol", lfYear: "Any", lfAdded: "Afegit", lfDuration: "Durada", lfNarrator: "Narrador", lfGenre: "Gènere", lfLanguage: "Llengua", lfProgress: "Progrés", lfPgFinished: "Acabats", lfPgInProgress: "En curs", lfPgNot: "No començats" },
+    eu: { sbTitle: "Zerbitzariaren sailkapena", sbWeek: "Astea", sbMonth: "Hilabetea", sbYear: "Urtea", sbAll: "Denbora guztia", sbBooks: "Liburuak", sbTopBooks: "Entzunenak", sbTotal: "Guztira", sbListeners: "Entzuleak", sbAvg: "Batezbestekoa", wkTitle: "Entzute-minutuak — azken 7 egunak", wkAvg: "Eguneko batezbestekoa", wkRow: "Egun jarraian", rpBadge: "Arazo-txosten irekiak", rpMenu: "Arazo baten berri eman", rpTitle: "Arazo baten berri eman", rpWhat: "Zer dago gaizki?", rpNote: "Beste zerbait administratzailearentzat? (aukerakoa)", rpSend: "Bidali txostena", rpSent: "Bidalita. Eskerrik asko.", rpFail: "Ezin izan da bidali", rpMissing: "Eduki falta edo osatugabea", rpQuality: "Audio-kalitate txarra", rpPlay: "Ez da erreproduzitzen", rpWrong: "Liburu, azal edo metadatu okerrak", rpChapters: "Kapitulu okerrak", rpOther: "Beste zerbait", rfRate: "Baloratu", rfSheet: "Baloratu liburu hau", rfOpen: "Ireki liburuaren orria", rfPickHint: "Aukeratu balorazioa", rfTitle: "Baloratu amaitutakoa", ysFinished: "Duela gutxi amaituak", ysAlmost: "Ia amaituta", ysMarkDone: "Markatu amaitutzat", ysEditDate: "Aldatu amaiera-data", ysThisWeek: "Aste honetan", ysBestDay: "Egunik onena", ysTitle: "Zure entzutea", fsTitle: "Zerbitzariaren sailkapena", fsCard: "Zerbitzariaren sailkapena", fsToggle: "Partekatu nire entzute-estatistikak", fsJoin: "Aktibatu «Partekatu nire entzute-estatistikak» pertsonalizazio-panelean zerbitzariaren sailkapenean agertzeko.", fsWaiting: "Partekatzea aktibo dago — zure laburpena laster sartuko da zerbitzariaren sailkapenean, besteekin batera.", fsHint: "Partekatu zure entzutearen laburpena (guztizkoak eta eguneko minutuak) zerbitzari honetako gainerakoekin — sailkapena elikatzen du. Lehenespenez aktibatuta. Desaktibatzean sailkapenetik eta bere guztizkoetatik desagertzen zara, eta partekatutakoa ezabatzen da.", yirBtn: "Urtearen laburpena", yirTitle: "Zure entzute-urtea", yirYear: "Azken 12 hilabeteak", yirDays: "Entzutedun egunak", yirBest: "Egunik onena", yirMonths: "Hilabeteka", yirNone: "Oraindik ez dago entzute-daturik.", scmTitle: "Serie-orria", scmHint: "Serie baten izenburuaren gainean sortutako azalaren itxura, berezkorik igo ez denean (nabigatzaile hau bakarrik).", scmDeck: "Geruzatutako sorta", scmFirst: "Lehen liburuaren azala", scmGrid: "Azalen sareta (lehenetsia)", scmOff: "Ezkutatuta" , lsTitle: "Zerbitzariaren estatistikak", lsAll: "Liburutegi guztiak", lsPlayed: "Erreproduzitutako liburuak", lsBest: "Baloraziorik onenak", lsGenres: "Genero nagusiak", srvPick: "Zer gorde:", srvGRest: "Funtzioak eta portaera", aeBtn: "Egileak txukundu", aeTitle: "Libururik gabeko egileak", aeNone: "Hemengo egile bakoitzak gutxienez liburu bat du.", aeRemove: "Kendu", aeDone: "Kenduta", aeWorking: "Kentzen…", rpCard: "Jakinarazitako arazoak", rpHint: "Erabiltzaileek liburu-orritik jakinarazitako arazoak. Konpontzean zerrendatik kentzen da.", rpEmpty: "Ezer ez da jakinarazi.", rpResolve: "Konpondu", rpOpen: "Ireki liburua", apCard: "Erreprodukzioa", apToggle: "Serie bateko hurrengo liburua automatikoki erreproduzitu", apHint: "Liburu bat amaitzean, serie bereko hurrengoa automatikoki hasten da. Dagoeneko dituzun eta amaitu gabeko liburuak soilik.", apNext: "Seriearen hurrengoa", fdToggle: "Amaitutako liburuen tresnak estatistiketan", ysNoDate: "datarik gabe", hmShowing: "grafikoak erakusten du", ysStreak: "Bolada", ysCurrent: "Unekoa", ysLongest: "Luzeena", ysDaysTotal: "Egunak guztira", ysPace: "Erritmoa", ysPerDay: "Entzute-eguneko", ysWhen: "Noiz entzuten duzun", ysTopBooks: "Gehien entzundako liburuak", ysTopAuthors: "Gehien entzundako egileak", ysTopNarrators: "Gehien entzundako narratzaileak", rfToggle: "«Baloratu» atala hasieran", hoTitle: "Hasierako atalen ordena", hoEmpty: "Ireki hasiera behin eta itzuli hona.", hoReset: "Berrezarri ordena lehenetsia", ctIcon: "Ikonoa", ctColour: "Azentua", ctNeedBook: "Audiobookshelf-ek ezin du bilduma huts bat gorde — aukeratu gutxienez liburu bat. Gero libre gehitu eta kendu ditzakezu.", colEditIcon: "Aldatu ikonoa", ciTitle: "Bildumaren ikonoa", ciReset: "Automatikoki izenarekin bat etorri", colEditDesc: "Editatu deskribapena", colBookForms: ["liburu","liburu"], colForms: ["Bilduma","Bildumak"], ctTitle: "Sortu bilduma", ctBlank: "Bilduma hutsa", ctNew: "Bilduma berria", ctNewHint: "txantiloi batetik", ctNamePh: "Bildumaren izena", ctSearch: "Bilatu liburuak edo egileak…", ctCreate: "Sortu", ctBack: "‹ Atzera", ctAddAll: "Gehitu liburu guztiak", abTitle: "Gehitu liburuak", abAdd: "Gehitu", avRemove: "Kendu argazkia", avSet: "Aukeratu argazkia…", ugListened: "Entzunda", ugPhoto: "Profileko argazkia", ugNever: "Inoiz ez", ugSeen: "Azken jarduera", ugEdit: "Editatu erabiltzailea", ugDelete: "Ezabatu erabiltzailea", ugAdd: "Gehitu argazkia", ugChange: "Aldatu argazkia", ugSortName: "A–Z", ugSortTime: "Gehien entzundakoak", ugSortSeen: "Duela gutxi aktibo", bsCard: "Liburuaren estekak", bsHint: "Liburu-orriko botoiak izenburua beste nonbait bilatzeko. Goodreads eta zure hizkuntzako gunerik handiena aktibatuta datoz.", bsFind: "Bilatu hemen:", bsGlobal: "Edonon", bsLocal: "Zure hizkuntzarako", bsOther: "Beste herrialde batzuk", pgCard: "Birdiseinatutako orriak", pgHint: "Aukera bakoitzak Audiobookshelf orri bat NanoHive bertsioarekin ordezkatzen du. Desaktibatu jatorrizkoa berreskuratzeko.", pgNarrators: "Narratzaileen txartelak", pgCollections: "Bildumen orriak", pgUsers: "Erabiltzaileen txartelak (ezarpenak)", pgStats: "Entzute-sailkapena", pgPhoto: "Profileko argazkia goiko barran", pgCinematic: "Zinema-atzealdea", pgTransitions: "Orri-trantsizioak", pSearch: "Bilatu ezarpenak…", pSearchNone: "Ez dago bat datorrenik.", erTypeface: "Letra-tipoa", erPage: "Orriaren gaia", erText: "Testuaren kolorea", erBg: "Atzealdea", erDefault: "Lehenetsia (ABS)", erAuto: "Auto", nrForms: ["Narratzailea","Narratzaileak"], nrBooksForms: ["liburu","liburu"], nrSearch: "Iragazi narratzaileak…", nrSortName: "Izena", nrSortBooks: "Liburu gehien", auForms: ["Egilea","Egileak"], auSearch: "Iragazi egileak…" , lfByAuthor: "Egilea › serieko ordena", lfBySeries: "Seriea › ordena" , lfSecFilters: "Iragazki gehiago", lfSecSort: "Ordenatze anizkoitza", lfAuthor: "Egilea", lfSeries: "Seriea", lfTitle: "Izenburua", lfYear: "Urtea", lfAdded: "Gehituta", lfDuration: "Iraupena", lfNarrator: "Narratzailea", lfGenre: "Generoa", lfLanguage: "Hizkuntza", lfProgress: "Aurrerapena", lfPgFinished: "Amaituak", lfPgInProgress: "Abian", lfPgNot: "Hasi gabeak" },
+    is: { sbTitle: "Röðun netþjóns", sbWeek: "Vika", sbMonth: "Mánuður", sbYear: "Ár", sbAll: "Allur tíminn", sbBooks: "Bækur", sbTopBooks: "Mest hlustað", sbTotal: "Samtals", sbListeners: "Hlustendur", sbAvg: "Meðaltal", wkTitle: "Hlustunarmínútur — síðustu 7 dagar", wkAvg: "Dagsmeðaltal", wkRow: "Dagar í röð", rpBadge: "Opnar vandamálatilkynningar", rpMenu: "Tilkynna vandamál", rpTitle: "Tilkynna vandamál", rpWhat: "Hvað er að?", rpNote: "Eitthvað fleira fyrir stjórnandann? (valfrjálst)", rpSend: "Senda tilkynningu", rpSent: "Sent. Takk.", rpFail: "Tókst ekki að senda", rpMissing: "Vantar eða ófullkomið efni", rpQuality: "Léleg hljóðgæði", rpPlay: "Spilast ekki", rpWrong: "Röng bók, kápa eða lýsigögn", rpChapters: "Rangir kaflar", rpOther: "Eitthvað annað", rfRate: "Gefa einkunn", rfSheet: "Gefðu þessari bók einkunn", rfOpen: "Opna bókarsíðu", rfPickHint: "Veldu einkunn", rfTitle: "Gefðu því sem þú kláraðir einkunn", ysFinished: "Nýlega kláraðar", ysAlmost: "Næstum búnar", ysMarkDone: "Merkja sem kláraða", ysEditDate: "Breyta lokadagsetningu", ysThisWeek: "Í þessari viku", ysBestDay: "Besti dagurinn", ysTitle: "Hlustunin þín", fsTitle: "Röðun netþjóns", fsCard: "Röðun netþjóns", fsToggle: "Deila hlustunartölfræðinni minni", fsJoin: "Kveiktu á „Deila hlustunartölfræðinni minni“ í sérstillingaspjaldinu til að birtast í röðun netþjónsins.", fsWaiting: "Deiling er á — samantektin þín bætist bráðum í röðun netþjónsins ásamt öllum hinum.", fsHint: "Deildu samantekt á hlustuninni þinni (heildartölur og mínútur á dag) með öðrum á þessum netþjóni — hún knýr röðunina. Sjálfgefið á. Ef þú slekkur hverfurðu úr röðuninni og tölum hennar og öllu deildu er eytt.", yirBtn: "Árið í hnotskurn", yirTitle: "Hlustunarárið þitt", yirYear: "Síðustu 12 mánuðir", yirDays: "Dagar með hlustun", yirBest: "Besti dagurinn", yirMonths: "Eftir mánuðum", yirNone: "Engin hlustunargögn ennþá.", scmTitle: "Síða bókaraðar", scmHint: "Svona lítur mynduð kápa fyrir ofan titil bókaraðar út þegar engin eigin hefur verið hlaðið upp (aðeins þessi vafri).", scmDeck: "Lagskiptur bunki", scmFirst: "Kápa fyrstu bókar", scmGrid: "Kápunet (sjálfgefið)", scmOff: "Falin" , lsTitle: "Tölfræði netþjóns", lsAll: "Öll bókasöfn", lsPlayed: "Spilaðar bækur", lsBest: "Best metnar", lsGenres: "Efstu flokkar", srvPick: "Hvað á að vista:", srvGRest: "Eiginleikar og hegðun", aeBtn: "Taka til í höfundum", aeTitle: "Höfundar án bóka", aeNone: "Allir höfundar hér eiga að minnsta kosti eina bók.", aeRemove: "Fjarlægja", aeDone: "Fjarlægt", aeWorking: "Fjarlægi…", rpCard: "Tilkynnt vandamál", rpHint: "Vandamál sem notendur tilkynntu af bókarsíðu. Að leysa eitt fjarlægir það af listanum.", rpEmpty: "Ekkert tilkynnt.", rpResolve: "Leysa", rpOpen: "Opna bók", apCard: "Spilun", apToggle: "Spila sjálfkrafa næstu bók í bókaröð", apHint: "Þegar bók klárast byrjar sú næsta í sömu röð sjálfkrafa. Aðeins bækur sem þú átt nú þegar og hefur ekki klárað.", apNext: "Næsta í röðinni", fdToggle: "Verkfæri kláraðra bóka í tölfræðinni", ysNoDate: "engin dagsetning", hmShowing: "grafið sýnir", ysStreak: "Runa", ysCurrent: "Núverandi", ysLongest: "Lengsta", ysDaysTotal: "Dagar alls", ysPace: "Taktur", ysPerDay: "Á hlustunardag", ysWhen: "Hvenær þú hlustar", ysTopBooks: "Mest hlustuðu bækurnar", ysTopAuthors: "Mest hlustuðu höfundarnir", ysTopNarrators: "Mest hlustuðu lesararnir", rfToggle: "„Gefa einkunn“ hluti á forsíðu", hoTitle: "Röð forsíðuhluta", hoEmpty: "Opnaðu forsíðuna einu sinni og komdu svo aftur.", hoReset: "Endurstilla sjálfgefna röð", ctIcon: "Táknmynd", ctColour: "Áherslulitur", ctNeedBook: "Audiobookshelf getur ekki vistað tómt safn — veldu að minnsta kosti eina bók. Seinna geturðu bætt við og fjarlægt að vild.", colEditIcon: "Skipta um táknmynd", ciTitle: "Táknmynd safnsins", ciReset: "Passa sjálfkrafa við nafnið", colEditDesc: "Breyta lýsingu", colBookForms: ["bók","bækur"], colForms: ["Safn","Söfn"], ctTitle: "Búa til safn", ctBlank: "Tómt safn", ctNew: "Nýtt safn", ctNewHint: "úr sniðmáti", ctNamePh: "Nafn safnsins", ctSearch: "Leita að bókum eða höfundum…", ctCreate: "Búa til", ctBack: "‹ Til baka", ctAddAll: "Bæta öllum bókum við", abTitle: "Bæta við bókum", abAdd: "Bæta við", avRemove: "Fjarlægja mynd", avSet: "Velja mynd…", ugListened: "Hlustað", ugPhoto: "Prófílmynd", ugNever: "Aldrei", ugSeen: "Síðast virkur", ugEdit: "Breyta notanda", ugDelete: "Eyða notanda", ugAdd: "Bæta við mynd", ugChange: "Skipta um mynd", ugSortName: "A–Ö", ugSortTime: "Mest hlustað", ugSortSeen: "Nýlega virkir", bsCard: "Bókartenglar", bsHint: "Hnappar á bókarsíðunni til að fletta titlinum upp annars staðar. Goodreads og stærsta síða tungumálsins þíns eru virk frá byrjun.", bsFind: "Leita á", bsGlobal: "Alls staðar", bsLocal: "Fyrir þitt tungumál", bsOther: "Önnur lönd", pgCard: "Endurhannaðar síður", pgHint: "Hver valkostur skiptir Audiobookshelf-síðu út fyrir NanoHive-útgáfuna. Slökktu til að fá upprunalegu síðuna aftur.", pgNarrators: "Lesaraspjöld", pgCollections: "Safnasíður", pgUsers: "Notendaspjöld (stillingar)", pgStats: "Hlustunarröðun", pgPhoto: "Prófílmynd í efstu stiku", pgCinematic: "Kvikmyndalegur bakgrunnur", pgTransitions: "Síðuskipti", pSearch: "Leita í stillingum…", pSearchNone: "Ekkert passar.", erTypeface: "Leturgerð", erPage: "Síðuþema", erText: "Litur texta", erBg: "Bakgrunnur", erDefault: "Sjálfgefið (ABS)", erAuto: "Sjálfvirkt", nrForms: ["Lesari","Lesarar"], nrBooksForms: ["bók","bækur"], nrSearch: "Sía lesara…", nrSortName: "Nafn", nrSortBooks: "Flestar bækur", auForms: ["Höfundur","Höfundar"], auSearch: "Sía höfunda…" , lfByAuthor: "Höfundur › röð bókaraðar", lfBySeries: "Bókaröð › röð" , lfSecFilters: "Fleiri síur", lfSecSort: "Fjölþrepa röðun", lfAuthor: "Höfundur", lfSeries: "Bókaröð", lfTitle: "Titill", lfYear: "Ár", lfAdded: "Bætt við", lfDuration: "Lengd", lfNarrator: "Lesari", lfGenre: "Tegund", lfLanguage: "Tungumál", lfProgress: "Framvinda", lfPgFinished: "Kláraðar", lfPgInProgress: "Í gangi", lfPgNot: "Óbyrjaðar" },
+    ja: { sbTitle: "サーバーランキング", sbWeek: "週", sbMonth: "月", sbYear: "年", sbAll: "全期間", sbBooks: "書籍", sbTopBooks: "よく聴いた本", sbTotal: "合計", sbListeners: "リスナー", sbAvg: "平均", wkTitle: "再生時間（分）— 過去7日間", wkAvg: "1日平均", wkRow: "連続日数", rpBadge: "未対応の問題報告", rpMenu: "問題を報告", rpTitle: "問題を報告", rpWhat: "何が問題ですか？", rpNote: "管理者に伝えたいことがあれば（任意）", rpSend: "報告を送信", rpSent: "送信しました。ありがとうございます。", rpFail: "送信できませんでした", rpMissing: "内容の欠落・不完全", rpQuality: "音質が悪い", rpPlay: "再生できない", rpWrong: "本・カバー・メタデータが違う", rpChapters: "チャプターが違う", rpOther: "その他", rfRate: "評価", rfSheet: "この本を評価", rfOpen: "本のページを開く", rfPickHint: "評価を選択", rfTitle: "聴き終えた本を評価", ysFinished: "最近読み終えた本", ysAlmost: "もうすぐ読了", ysMarkDone: "読了にする", ysEditDate: "読了日を変更", ysThisWeek: "今週", ysBestDay: "ベストな日", ysTitle: "あなたのリスニング", fsTitle: "サーバーランキング", fsCard: "サーバーランキング", fsToggle: "リスニング統計を共有する", fsJoin: "カスタマイズパネルで「リスニング統計を共有する」をオンにすると、サーバーランキングに表示されます。", fsWaiting: "共有はオンです — まもなくあなたのサマリーが皆と一緒にサーバーランキングに加わります。", fsHint: "リスニングのサマリー（合計と1日あたりの分数）をこのサーバーのメンバーと共有します — これがサーバーランキングの元になります。既定でオン。オフにするとランキングと集計から外れ、共有データは削除されます。", yirBtn: "1年の振り返り", yirTitle: "あなたのリスニングの1年", yirYear: "過去12か月", yirDays: "聴いた日数", yirBest: "ベストな日", yirMonths: "月別", yirNone: "リスニングデータはまだありません。", scmTitle: "シリーズページ", scmHint: "カバー未アップロード時にシリーズ名の上に生成される画像の見た目（このブラウザのみ）。", scmDeck: "重ねたデッキ", scmFirst: "1冊目のカバー", scmGrid: "カバーグリッド（既定）", scmOff: "非表示" , lsTitle: "サーバー統計", lsAll: "すべてのライブラリ", lsPlayed: "再生された本", lsBest: "高評価の本", lsGenres: "人気ジャンル", srvPick: "保存する内容:", srvGRest: "機能と動作", aeBtn: "著者を整理", aeTitle: "本のない著者", aeNone: "ここの著者は全員少なくとも1冊あります。", aeRemove: "削除", aeDone: "削除しました", aeWorking: "削除中…", rpCard: "報告された問題", rpHint: "ユーザーが本のページから報告した問題。解決するとリストから消えます。", rpEmpty: "報告はありません。", rpResolve: "解決", rpOpen: "本を開く", apCard: "再生", apToggle: "シリーズの次の本を自動再生", apHint: "本が終わると同じシリーズの次の本が自動的に始まります。ライブラリにある未読了の本のみが対象です。", apNext: "シリーズの次", fdToggle: "統計に読了ツールを表示", ysNoDate: "日付なし", hmShowing: "グラフの表示範囲", ysStreak: "連続記録", ysCurrent: "現在", ysLongest: "最長", ysDaysTotal: "合計日数", ysPace: "ペース", ysPerDay: "聴いた日あたり", ysWhen: "聴く曜日", ysTopBooks: "よく聴いた本", ysTopAuthors: "よく聴いた著者", ysTopNarrators: "よく聴いたナレーター", rfToggle: "ホームの「評価」セクション", hoTitle: "ホームのセクション順", hoEmpty: "一度ホームを開いてから戻ってください。", hoReset: "既定の順序に戻す", ctIcon: "アイコン", ctColour: "アクセント", ctNeedBook: "Audiobookshelfは空のコレクションを保存できません — 少なくとも1冊選んでください。後から自由に追加・削除できます。", colEditIcon: "アイコンを変更", ciTitle: "コレクションのアイコン", ciReset: "名前に自動で合わせる", colEditDesc: "説明を編集", colBookForms: ["冊","冊"], colForms: ["コレクション","コレクション"], ctTitle: "コレクションを作成", ctBlank: "空のコレクション", ctNew: "新しいコレクション", ctNewHint: "テンプレートから", ctNamePh: "コレクション名", ctSearch: "本や著者を検索…", ctCreate: "作成", ctBack: "‹ 戻る", ctAddAll: "すべての本を追加", abTitle: "本を追加", abAdd: "追加", avRemove: "写真を削除", avSet: "写真を選択…", ugListened: "再生時間", ugPhoto: "プロフィール写真", ugNever: "なし", ugSeen: "最終アクティブ", ugEdit: "ユーザーを編集", ugDelete: "ユーザーを削除", ugAdd: "写真を追加", ugChange: "写真を変更", ugSortName: "名前順", ugSortTime: "再生時間順", ugSortSeen: "最近アクティブ", bsCard: "ブックリンク", bsHint: "本のページから他サイトでタイトルを調べるボタン。Goodreadsとあなたの言語で最大のサイトが最初から有効です。", bsFind: "検索:", bsGlobal: "どこでも", bsLocal: "あなたの言語向け", bsOther: "他の国", pgCard: "再設計されたページ", pgHint: "それぞれAudiobookshelfのページをNanoHive版に置き換えます。オフにすると元のページに戻ります。", pgNarrators: "ナレーターカード", pgCollections: "コレクションページ", pgUsers: "ユーザーカード(設定)", pgStats: "リスニングランキング", pgPhoto: "トップバーのプロフィール写真", pgCinematic: "シネマ背景", pgTransitions: "ページ遷移", pSearch: "設定を検索…", pSearchNone: "一致なし。", erTypeface: "書体", erPage: "ページテーマ", erText: "文字色", erBg: "背景", erDefault: "既定 (ABS)", erAuto: "自動", nrForms: ["ナレーター","ナレーター"], nrBooksForms: ["冊","冊"], nrSearch: "ナレーターを絞り込む…", nrSortName: "名前", nrSortBooks: "冊数順", auForms: ["著者","著者"], auSearch: "著者を絞り込む…" , lfByAuthor: "著者 › シリーズ順", lfBySeries: "シリーズ › 順番" , lfSecFilters: "追加フィルター", lfSecSort: "マルチソート", lfAuthor: "著者", lfSeries: "シリーズ", lfTitle: "タイトル", lfYear: "年", lfAdded: "追加日", lfDuration: "再生時間", lfNarrator: "ナレーター", lfGenre: "ジャンル", lfLanguage: "言語", lfProgress: "進捗", lfPgFinished: "読了", lfPgInProgress: "再生中", lfPgNot: "未再生" },
+    ko: { sbTitle: "서버 랭킹", sbWeek: "주", sbMonth: "월", sbYear: "년", sbAll: "전체 기간", sbBooks: "책", sbTopBooks: "가장 많이 들은 책", sbTotal: "합계", sbListeners: "청취자", sbAvg: "평균", wkTitle: "청취 시간(분) — 최근 7일", wkAvg: "일일 평균", wkRow: "연속 일수", rpBadge: "미해결 문제 신고", rpMenu: "문제 신고", rpTitle: "문제 신고", rpWhat: "무엇이 잘못되었나요?", rpNote: "관리자에게 더 알릴 내용이 있나요? (선택)", rpSend: "신고 보내기", rpSent: "보냈습니다. 감사합니다.", rpFail: "보내지 못했습니다", rpMissing: "내용 누락 또는 불완전", rpQuality: "음질 불량", rpPlay: "재생되지 않음", rpWrong: "잘못된 책·표지·메타데이터", rpChapters: "챕터가 잘못됨", rpOther: "기타", rfRate: "평가", rfSheet: "이 책 평가하기", rfOpen: "책 페이지 열기", rfPickHint: "평점을 선택하세요", rfTitle: "다 들은 책 평가하기", ysFinished: "최근에 끝낸 책", ysAlmost: "거의 다 들음", ysMarkDone: "완료로 표시", ysEditDate: "완료 날짜 변경", ysThisWeek: "이번 주", ysBestDay: "최고의 날", ysTitle: "나의 청취", fsTitle: "서버 랭킹", fsCard: "서버 랭킹", fsToggle: "내 청취 통계 공유", fsJoin: "사용자 지정 패널에서 ‘내 청취 통계 공유’를 켜면 서버 랭킹에 표시됩니다.", fsWaiting: "공유가 켜져 있습니다 — 곧 여러분의 요약이 다른 사람들과 함께 서버 랭킹에 추가됩니다.", fsHint: "청취 요약(합계와 일일 분)을 이 서버의 다른 사람들과 공유합니다 — 서버 랭킹의 원천입니다. 기본적으로 켜져 있습니다. 끄면 랭킹과 합계에서 제외되고 공유된 데이터는 삭제됩니다.", yirBtn: "한 해 돌아보기", yirTitle: "나의 청취 연말결산", yirYear: "최근 12개월", yirDays: "청취한 날", yirBest: "최고의 날", yirMonths: "월별", yirNone: "아직 청취 데이터가 없습니다.", scmTitle: "시리즈 페이지", scmHint: "직접 올린 표지가 없을 때 시리즈 제목 위에 생성되는 표지의 모양(이 브라우저에만 적용).", scmDeck: "겹친 덱", scmFirst: "첫 책의 표지", scmGrid: "표지 그리드(기본)", scmOff: "숨김" , lsTitle: "서버 통계", lsAll: "모든 라이브러리", lsPlayed: "재생된 책", lsBest: "평점 높은 책", lsGenres: "인기 장르", srvPick: "저장할 항목:", srvGRest: "기능 및 동작", aeBtn: "작가 정리", aeTitle: "책이 없는 작가", aeNone: "여기 있는 모든 작가는 최소 한 권의 책이 있습니다.", aeRemove: "삭제", aeDone: "삭제됨", aeWorking: "삭제 중…", rpCard: "신고된 문제", rpHint: "사용자가 책 페이지에서 신고한 문제입니다. 해결하면 목록에서 사라집니다.", rpEmpty: "신고 없음.", rpResolve: "해결", rpOpen: "책 열기", apCard: "재생", apToggle: "시리즈의 다음 책 자동 재생", apHint: "책이 끝나면 같은 시리즈의 다음 책이 자동으로 시작됩니다. 이미 보유 중이고 끝내지 않은 책만 해당합니다.", apNext: "시리즈의 다음", fdToggle: "통계에 완독 도구 표시", ysNoDate: "날짜 없음", hmShowing: "차트 표시 범위", ysStreak: "연속 기록", ysCurrent: "현재", ysLongest: "최장", ysDaysTotal: "총 일수", ysPace: "페이스", ysPerDay: "청취일당", ysWhen: "듣는 요일", ysTopBooks: "가장 많이 들은 책", ysTopAuthors: "가장 많이 들은 작가", ysTopNarrators: "가장 많이 들은 낭독자", rfToggle: "홈의 '평가' 섹션", hoTitle: "홈 섹션 순서", hoEmpty: "홈을 한 번 연 다음 돌아오세요.", hoReset: "기본 순서 복원", ctIcon: "아이콘", ctColour: "강조색", ctNeedBook: "Audiobookshelf는 빈 컬렉션을 저장할 수 없습니다 — 최소 한 권을 선택하세요. 나중에 자유롭게 추가·삭제할 수 있습니다.", colEditIcon: "아이콘 변경", ciTitle: "컬렉션 아이콘", ciReset: "이름에 자동으로 맞추기", colEditDesc: "설명 편집", colBookForms: ["권","권"], colForms: ["컬렉션","컬렉션"], ctTitle: "컬렉션 만들기", ctBlank: "빈 컬렉션", ctNew: "새 컬렉션", ctNewHint: "템플릿에서", ctNamePh: "컬렉션 이름", ctSearch: "책이나 작가 검색…", ctCreate: "만들기", ctBack: "‹ 뒤로", ctAddAll: "모든 책 추가", abTitle: "책 추가", abAdd: "추가", avRemove: "사진 삭제", avSet: "사진 선택…", ugListened: "청취 시간", ugPhoto: "프로필 사진", ugNever: "없음", ugSeen: "마지막 활동", ugEdit: "사용자 편집", ugDelete: "사용자 삭제", ugAdd: "사진 추가", ugChange: "사진 변경", ugSortName: "이름순", ugSortTime: "청취 시간순", ugSortSeen: "최근 활동순", bsCard: "책 링크", bsHint: "책 페이지에서 제목을 다른 곳에서 찾아보는 버튼입니다. Goodreads와 해당 언어 최대 사이트가 기본으로 켜져 있습니다.", bsFind: "검색:", bsGlobal: "어디서나", bsLocal: "당신의 언어", bsOther: "다른 나라", pgCard: "재설계된 페이지", pgHint: "각 옵션은 Audiobookshelf 페이지를 NanoHive 버전으로 바꿉니다. 끄면 원래 페이지로 돌아갑니다.", pgNarrators: "낭독자 카드", pgCollections: "컬렉션 페이지", pgUsers: "사용자 카드(설정)", pgStats: "청취 랭킹", pgPhoto: "상단 바의 프로필 사진", pgCinematic: "시네마틱 배경", pgTransitions: "페이지 전환", pSearch: "설정 검색…", pSearchNone: "일치 항목 없음.", erTypeface: "글꼴", erPage: "페이지 테마", erText: "글자 색", erBg: "배경", erDefault: "기본값 (ABS)", erAuto: "자동", nrForms: ["낭독자","낭독자"], nrBooksForms: ["권","권"], nrSearch: "낭독자 필터…", nrSortName: "이름", nrSortBooks: "책 많은 순", auForms: ["작가","작가"], auSearch: "작가 필터…" , lfByAuthor: "작가 › 시리즈 순서", lfBySeries: "시리즈 › 순서" , lfSecFilters: "추가 필터", lfSecSort: "다중 정렬", lfAuthor: "작가", lfSeries: "시리즈", lfTitle: "제목", lfYear: "연도", lfAdded: "추가일", lfDuration: "길이", lfNarrator: "낭독자", lfGenre: "장르", lfLanguage: "언어", lfProgress: "진행률", lfPgFinished: "완독", lfPgInProgress: "듣는 중", lfPgNot: "시작 안 함" },
+    zh: { sbTitle: "服务器排行榜", sbWeek: "周", sbMonth: "月", sbYear: "年", sbAll: "全部时间", sbBooks: "书籍", sbTopBooks: "最常收听", sbTotal: "总计", sbListeners: "听众", sbAvg: "平均", wkTitle: "收听分钟数 — 最近7天", wkAvg: "日均", wkRow: "连续天数", rpBadge: "未处理的问题报告", rpMenu: "报告问题", rpTitle: "报告问题", rpWhat: "哪里有问题？", rpNote: "还有什么要告诉管理员的吗？（可选）", rpSend: "发送报告", rpSent: "已发送，谢谢。", rpFail: "发送失败", rpMissing: "内容缺失或不完整", rpQuality: "音质差", rpPlay: "无法播放", rpWrong: "书籍、封面或元数据有误", rpChapters: "章节有误", rpOther: "其他", rfRate: "评分", rfSheet: "为这本书评分", rfOpen: "打开书籍页面", rfPickHint: "选择评分", rfTitle: "为听完的书评分", ysFinished: "最近听完", ysAlmost: "即将听完", ysMarkDone: "标记为已听完", ysEditDate: "修改完成日期", ysThisWeek: "本周", ysBestDay: "最佳一天", ysTitle: "你的收听", fsTitle: "服务器排行榜", fsCard: "服务器排行榜", fsToggle: "共享我的收听统计", fsJoin: "在个性化面板开启“共享我的收听统计”，即可出现在服务器排行榜中。", fsWaiting: "共享已开启 — 你的摘要很快会和大家一起加入服务器排行榜。", fsHint: "与本服务器的其他人共享你的收听摘要（总量与每日分钟数）— 它是服务器排行榜的数据来源。默认开启。关闭后你将从排行榜及其统计中移除，共享的数据会被删除。", yirBtn: "年度回顾", yirTitle: "你的收听年度", yirYear: "最近12个月", yirDays: "有收听的天数", yirBest: "最佳一天", yirMonths: "按月", yirNone: "暂无收听数据。", scmTitle: "系列页面", scmHint: "未上传自定义封面时，系列标题上方生成封面的样式（仅此浏览器）。", scmDeck: "层叠卡组", scmFirst: "第一本书的封面", scmGrid: "封面网格（默认）", scmOff: "隐藏" , lsTitle: "服务器统计", lsAll: "所有书库", lsPlayed: "播放过的书", lsBest: "评分最高", lsGenres: "热门类型", srvPick: "保存内容:", srvGRest: "功能与行为", aeBtn: "整理作者", aeTitle: "没有书的作者", aeNone: "这里的每位作者都至少有一本书。", aeRemove: "移除", aeDone: "已移除", aeWorking: "移除中…", rpCard: "已报告的问题", rpHint: "用户从图书页面报告的问题。解决后将从列表中移除。", rpEmpty: "暂无报告。", rpResolve: "解决", rpOpen: "打开图书", apCard: "播放", apToggle: "自动播放系列中的下一本书", apHint: "一本书结束后自动开始同系列的下一本。仅限你已拥有且未听完的书。", apNext: "系列下一本", fdToggle: "在统计中显示已完成图书工具", ysNoDate: "无日期", hmShowing: "图表显示", ysStreak: "连续天数", ysCurrent: "当前", ysLongest: "最长", ysDaysTotal: "总天数", ysPace: "节奏", ysPerDay: "每个收听日", ysWhen: "你何时收听", ysTopBooks: "收听最多的书", ysTopAuthors: "收听最多的作者", ysTopNarrators: "收听最多的朗读者", rfToggle: "主页的“评分”栏目", hoTitle: "主页栏目顺序", hoEmpty: "先打开一次主页，然后回到这里。", hoReset: "恢复默认顺序", ctIcon: "图标", ctColour: "强调色", ctNeedBook: "Audiobookshelf 无法保存空收藏 — 请至少选择一本书。之后可自由增删。", colEditIcon: "更换图标", ciTitle: "收藏图标", ciReset: "根据名称自动匹配", colEditDesc: "编辑简介", colBookForms: ["本","本"], colForms: ["收藏","收藏"], ctTitle: "创建收藏", ctBlank: "空收藏", ctNew: "新收藏", ctNewHint: "从模板", ctNamePh: "收藏名称", ctSearch: "搜索图书或作者…", ctCreate: "创建", ctBack: "‹ 返回", ctAddAll: "添加全部图书", abTitle: "添加图书", abAdd: "添加", avRemove: "移除照片", avSet: "选择照片…", ugListened: "已收听", ugPhoto: "头像", ugNever: "从未", ugSeen: "最近活跃", ugEdit: "编辑用户", ugDelete: "删除用户", ugAdd: "添加照片", ugChange: "更换照片", ugSortName: "按名称", ugSortTime: "按收听时长", ugSortSeen: "最近活跃", bsCard: "图书链接", bsHint: "图书页面上的按钮，可在其他网站查找该书。Goodreads 和你语言中最大的网站默认开启。", bsFind: "搜索于", bsGlobal: "全球", bsLocal: "你的语言", bsOther: "其他国家", pgCard: "重新设计的页面", pgHint: "每一项都会用 NanoHive 版本替换 Audiobookshelf 页面。关闭即可恢复原版。", pgNarrators: "朗读者卡片", pgCollections: "收藏页面", pgUsers: "用户卡片（设置）", pgStats: "收听排行榜", pgPhoto: "顶栏头像", pgCinematic: "影院式背景", pgTransitions: "页面过渡", pSearch: "搜索设置…", pSearchNone: "无匹配项。", erTypeface: "字体", erPage: "页面主题", erText: "文字颜色", erBg: "背景", erDefault: "默认 (ABS)", erAuto: "自动", nrForms: ["朗读者","朗读者"], nrBooksForms: ["本","本"], nrSearch: "筛选朗读者…", nrSortName: "名称", nrSortBooks: "书最多", auForms: ["作者","作者"], auSearch: "筛选作者…" , lfByAuthor: "作者 › 系列顺序", lfBySeries: "系列 › 顺序" , lfSecFilters: "更多筛选", lfSecSort: "多级排序", lfAuthor: "作者", lfSeries: "系列", lfTitle: "标题", lfYear: "年份", lfAdded: "添加时间", lfDuration: "时长", lfNarrator: "朗读者", lfGenre: "类型", lfLanguage: "语言", lfProgress: "进度", lfPgFinished: "已听完", lfPgInProgress: "收听中", lfPgNot: "未开始" },
+    ar: { sbTitle: "ترتيب الخادم", sbWeek: "أسبوع", sbMonth: "شهر", sbYear: "سنة", sbAll: "كل الوقت", sbBooks: "الكتب", sbTopBooks: "الأكثر استماعًا", sbTotal: "الإجمالي", sbListeners: "المستمعون", sbAvg: "المتوسط", wkTitle: "دقائق الاستماع — آخر 7 أيام", wkAvg: "المتوسط اليومي", wkRow: "أيام متتالية", rpBadge: "بلاغات مشاكل مفتوحة", rpMenu: "الإبلاغ عن مشكلة", rpTitle: "الإبلاغ عن مشكلة", rpWhat: "ما الخطأ؟", rpNote: "أي شيء آخر ينبغي أن يعرفه المدير؟ (اختياري)", rpSend: "إرسال البلاغ", rpSent: "تم الإرسال. شكرًا.", rpFail: "تعذر الإرسال", rpMissing: "محتوى ناقص أو غير مكتمل", rpQuality: "جودة صوت سيئة", rpPlay: "لا يعمل التشغيل", rpWrong: "كتاب أو غلاف أو بيانات وصفية خاطئة", rpChapters: "فصول خاطئة", rpOther: "شيء آخر", rfRate: "قيّم", rfSheet: "قيّم هذا الكتاب", rfOpen: "فتح صفحة الكتاب", rfPickHint: "اختر تقييمًا", rfTitle: "قيّم ما أنهيته", ysFinished: "أُنهيت مؤخرًا", ysAlmost: "على وشك الانتهاء", ysMarkDone: "وضع علامة منتهٍ", ysEditDate: "تغيير تاريخ الانتهاء", ysThisWeek: "هذا الأسبوع", ysBestDay: "أفضل يوم", ysTitle: "استماعك", fsTitle: "ترتيب الخادم", fsCard: "ترتيب الخادم", fsToggle: "مشاركة إحصاءات استماعي", fsJoin: "فعّل «مشاركة إحصاءات استماعي» في لوحة التخصيص لتظهر في ترتيب الخادم.", fsWaiting: "المشاركة مفعّلة — سينضم ملخصك قريبًا إلى ترتيب الخادم مع الجميع.", fsHint: "شارك ملخص استماعك (الإجماليات والدقائق اليومية) مع الآخرين على هذا الخادم — فهو يغذي ترتيب الخادم. مفعّل افتراضيًا. عند إيقافه تُزال من الترتيب ومجاميعه وتُحذف البيانات المشتركة.", yirBtn: "حصاد العام", yirTitle: "عامك في الاستماع", yirYear: "آخر 12 شهرًا", yirDays: "أيام بها استماع", yirBest: "أفضل يوم", yirMonths: "حسب الشهر", yirNone: "لا توجد بيانات استماع بعد.", scmTitle: "صفحة السلسلة", scmHint: "شكل الغلاف المولّد فوق عنوان السلسلة عند عدم رفع غلاف خاص (هذا المتصفح فقط).", scmDeck: "رزمة متراكبة", scmFirst: "غلاف الكتاب الأول", scmGrid: "شبكة أغلفة (افتراضي)", scmOff: "مخفي" , lsTitle: "إحصاءات الخادم", lsAll: "كل المكتبات", lsPlayed: "الكتب المشغَّلة", lsBest: "الأعلى تقييمًا", lsGenres: "أبرز التصنيفات", srvPick: "ما الذي يُحفظ:", srvGRest: "الميزات والسلوك", aeBtn: "ترتيب المؤلفين", aeTitle: "مؤلفون بلا كتب", aeNone: "كل مؤلف هنا لديه كتاب واحد على الأقل.", aeRemove: "إزالة", aeDone: "تمت الإزالة", aeWorking: "جارٍ الإزالة…", rpCard: "المشاكل المبلَّغ عنها", rpHint: "مشاكل أبلغ عنها المستخدمون من صفحة كتاب. حلّها يزيلها من القائمة.", rpEmpty: "لا بلاغات.", rpResolve: "حلّ", rpOpen: "فتح الكتاب", apCard: "التشغيل", apToggle: "تشغيل الكتاب التالي في السلسلة تلقائيًا", apHint: "عند انتهاء كتاب يبدأ التالي من السلسلة نفسها تلقائيًا. فقط الكتب الموجودة لديك وغير المنتهية.", apNext: "التالي في السلسلة", fdToggle: "أدوات الكتب المنتهية في إحصاءاتك", ysNoDate: "بلا تاريخ", hmShowing: "يعرض الرسم", ysStreak: "التتابع", ysCurrent: "الحالي", ysLongest: "الأطول", ysDaysTotal: "إجمالي الأيام", ysPace: "الوتيرة", ysPerDay: "لكل يوم استماع", ysWhen: "متى تستمع", ysTopBooks: "الأكثر استماعًا من الكتب", ysTopAuthors: "الأكثر استماعًا من المؤلفين", ysTopNarrators: "الأكثر استماعًا من الرواة", rfToggle: "قسم «قيّم» في الرئيسية", hoTitle: "ترتيب أقسام الرئيسية", hoEmpty: "افتح الصفحة الرئيسية مرة ثم عد إلى هنا.", hoReset: "استعادة الترتيب الافتراضي", ctIcon: "أيقونة", ctColour: "لون مميز", ctNeedBook: "لا يستطيع Audiobookshelf حفظ مجموعة فارغة — اختر كتابًا واحدًا على الأقل. يمكنك الإضافة والحذف لاحقًا بحرية.", colEditIcon: "تغيير الأيقونة", ciTitle: "أيقونة المجموعة", ciReset: "مطابقة الاسم تلقائيًا", colEditDesc: "تحرير الوصف", colBookForms: ["كتاب","كتب"], colForms: ["مجموعة","مجموعات"], ctTitle: "إنشاء مجموعة", ctBlank: "مجموعة فارغة", ctNew: "مجموعة جديدة", ctNewHint: "من قالب", ctNamePh: "اسم المجموعة", ctSearch: "ابحث عن كتب أو مؤلفين…", ctCreate: "إنشاء", ctBack: "‹ رجوع", ctAddAll: "إضافة كل الكتب", abTitle: "إضافة كتب", abAdd: "إضافة", avRemove: "إزالة الصورة", avSet: "اختيار صورة…", ugListened: "وقت الاستماع", ugPhoto: "صورة الملف الشخصي", ugNever: "أبدًا", ugSeen: "آخر نشاط", ugEdit: "تحرير المستخدم", ugDelete: "حذف المستخدم", ugAdd: "إضافة صورة", ugChange: "تغيير الصورة", ugSortName: "أبجديًا", ugSortTime: "الأكثر استماعًا", ugSortSeen: "النشطون مؤخرًا", bsCard: "روابط الكتاب", bsHint: "أزرار في صفحة الكتاب للبحث عن العنوان في مواقع أخرى. Goodreads وأكبر موقع بلغتك مفعّلان مسبقًا.", bsFind: "ابحث في", bsGlobal: "في كل مكان", bsLocal: "للغتك", bsOther: "بلدان أخرى", pgCard: "صفحات معاد تصميمها", pgHint: "كل خيار يستبدل صفحة Audiobookshelf بنسخة NanoHive. عطّله لاستعادة الأصل.", pgNarrators: "بطاقات الرواة", pgCollections: "صفحات المجموعات", pgUsers: "بطاقات المستخدمين (الإعدادات)", pgStats: "تصنيف الاستماع", pgPhoto: "صورة الملف في الشريط العلوي", pgCinematic: "خلفية سينمائية", pgTransitions: "انتقالات الصفحات", pSearch: "ابحث في الإعدادات…", pSearchNone: "لا تطابق.", erTypeface: "الخط", erPage: "سمة الصفحة", erText: "لون النص", erBg: "الخلفية", erDefault: "الافتراضي (ABS)", erAuto: "تلقائي", nrForms: ["راوٍ","رواة"], nrBooksForms: ["كتاب","كتب"], nrSearch: "تصفية الرواة…", nrSortName: "الاسم", nrSortBooks: "الأكثر كتبًا", auForms: ["مؤلف","مؤلفون"], auSearch: "تصفية المؤلفين…" , lfByAuthor: "المؤلف › ترتيب السلسلة", lfBySeries: "السلسلة › الترتيب" , lfSecFilters: "مرشحات إضافية", lfSecSort: "فرز متعدد", lfAuthor: "المؤلف", lfSeries: "السلسلة", lfTitle: "العنوان", lfYear: "السنة", lfAdded: "أضيف", lfDuration: "المدة", lfNarrator: "الراوي", lfGenre: "التصنيف", lfLanguage: "اللغة", lfProgress: "التقدم", lfPgFinished: "منتهية", lfPgInProgress: "قيد الاستماع", lfPgNot: "لم تبدأ" },
+    he: { sbTitle: "דירוג השרת", sbWeek: "שבוע", sbMonth: "חודש", sbYear: "שנה", sbAll: "כל הזמן", sbBooks: "ספרים", sbTopBooks: "הנשמעים ביותר", sbTotal: "סה\"כ", sbListeners: "מאזינים", sbAvg: "ממוצע", wkTitle: "דקות האזנה — 7 הימים האחרונים", wkAvg: "ממוצע יומי", wkRow: "ימים ברצף", rpBadge: "דיווחי תקלות פתוחים", rpMenu: "דיווח על תקלה", rpTitle: "דיווח על תקלה", rpWhat: "מה לא בסדר?", rpNote: "עוד משהו שהמנהל צריך לדעת? (רשות)", rpSend: "שליחת דיווח", rpSent: "נשלח. תודה.", rpFail: "השליחה נכשלה", rpMissing: "תוכן חסר או לא שלם", rpQuality: "איכות שמע ירודה", rpPlay: "לא מתנגן", rpWrong: "ספר, כריכה או מטא-נתונים שגויים", rpChapters: "פרקים שגויים", rpOther: "משהו אחר", rfRate: "דרג", rfSheet: "דרגו את הספר הזה", rfOpen: "פתיחת עמוד הספר", rfPickHint: "בחרו דירוג", rfTitle: "דרגו את מה שסיימתם", ysFinished: "הסתיימו לאחרונה", ysAlmost: "כמעט סיימתם", ysMarkDone: "סימון כהושלם", ysEditDate: "שינוי תאריך הסיום", ysThisWeek: "השבוע", ysBestDay: "היום הטוב ביותר", ysTitle: "ההאזנה שלך", fsTitle: "דירוג השרת", fsCard: "דירוג השרת", fsToggle: "שיתוף נתוני ההאזנה שלי", fsJoin: "הפעילו את ״שיתוף נתוני ההאזנה שלי״ בלוח ההתאמה כדי להופיע בדירוג השרת.", fsWaiting: "השיתוף פעיל — הסיכום שלכם יצטרף בקרוב לדירוג השרת יחד עם כולם.", fsHint: "שתפו סיכום של ההאזנה שלכם (סכומים ודקות ליום) עם שאר המשתמשים בשרת — הוא מזין את דירוג השרת. פעיל כברירת מחדל. בכיבוי תוסרו מהדירוג ומסכומיו, והנתונים ששותפו יימחקו.", yirBtn: "סיכום שנה", yirTitle: "שנת ההאזנה שלך", yirYear: "12 החודשים האחרונים", yirDays: "ימים עם האזנה", yirBest: "היום הטוב ביותר", yirMonths: "לפי חודש", yirNone: "אין עדיין נתוני האזנה.", scmTitle: "עמוד סדרה", scmHint: "כך נראית הכריכה שנוצרת מעל שם הסדרה כשלא הועלתה כריכה משלכם (דפדפן זה בלבד).", scmDeck: "חפיסה בשכבות", scmFirst: "כריכת הספר הראשון", scmGrid: "רשת כריכות (ברירת מחדל)", scmOff: "מוסתר" , lsTitle: "סטטיסטיקות שרת", lsAll: "כל הספריות", lsPlayed: "ספרים שנוגנו", lsBest: "המדורגים ביותר", lsGenres: "ז'אנרים מובילים", srvPick: "מה לשמור:", srvGRest: "תכונות והתנהגות", aeBtn: "סידור סופרים", aeTitle: "סופרים ללא ספרים", aeNone: "לכל סופר כאן יש לפחות ספר אחד.", aeRemove: "הסרה", aeDone: "הוסרו", aeWorking: "מסיר…", rpCard: "תקלות שדווחו", rpHint: "תקלות שמשתמשים דיווחו מעמוד ספר. פתירה מסירה מהרשימה.", rpEmpty: "אין דיווחים.", rpResolve: "פתירה", rpOpen: "פתיחת הספר", apCard: "נגינה", apToggle: "נגן אוטומטית את הספר הבא בסדרה", apHint: "כשספר נגמר, הבא באותה סדרה מתחיל אוטומטית. רק ספרים שכבר יש לך ולא סיימת.", apNext: "הבא בסדרה", fdToggle: "כלי ספרים שהושלמו בסטטיסטיקות", ysNoDate: "ללא תאריך", hmShowing: "הגרף מציג", ysStreak: "רצף", ysCurrent: "נוכחי", ysLongest: "הארוך ביותר", ysDaysTotal: "סך ימים", ysPace: "קצב", ysPerDay: "ליום האזנה", ysWhen: "מתי אתם מאזינים", ysTopBooks: "הספרים הנשמעים ביותר", ysTopAuthors: "הסופרים הנשמעים ביותר", ysTopNarrators: "הקריינים הנשמעים ביותר", rfToggle: "מקטע ״דרגו״ בעמוד הבית", hoTitle: "סדר מקטעי עמוד הבית", hoEmpty: "פתחו פעם את עמוד הבית וחזרו לכאן.", hoReset: "שחזור סדר ברירת המחדל", ctIcon: "סמל", ctColour: "הדגשה", ctNeedBook: "Audiobookshelf לא יכול לשמור אוסף ריק — בחרו לפחות ספר אחד. אחר כך אפשר להוסיף ולהסיר בחופשיות.", colEditIcon: "החלפת סמל", ciTitle: "סמל האוסף", ciReset: "התאמה אוטומטית לשם", colEditDesc: "עריכת תיאור", colBookForms: ["ספר","ספרים"], colForms: ["אוסף","אוספים"], ctTitle: "יצירת אוסף", ctBlank: "אוסף ריק", ctNew: "אוסף חדש", ctNewHint: "מתבנית", ctNamePh: "שם האוסף", ctSearch: "חיפוש ספרים או סופרים…", ctCreate: "יצירה", ctBack: "‹ חזרה", ctAddAll: "הוספת כל הספרים", abTitle: "הוספת ספרים", abAdd: "הוספה", avRemove: "הסרת תמונה", avSet: "בחירת תמונה…", ugListened: "זמן האזנה", ugPhoto: "תמונת פרופיל", ugNever: "אף פעם", ugSeen: "פעילות אחרונה", ugEdit: "עריכת משתמש", ugDelete: "מחיקת משתמש", ugAdd: "הוספת תמונה", ugChange: "החלפת תמונה", ugSortName: "א–ת", ugSortTime: "הנשמעים ביותר", ugSortSeen: "פעילים לאחרונה", bsCard: "קישורי ספר", bsHint: "כפתורים בעמוד הספר לחיפוש הכותר במקומות אחרים. Goodreads והאתר הגדול בשפתכם מופעלים מראש.", bsFind: "חיפוש ב-", bsGlobal: "בכל מקום", bsLocal: "לשפה שלך", bsOther: "מדינות אחרות", pgCard: "עמודים בעיצוב מחודש", pgHint: "כל אפשרות מחליפה עמוד של Audiobookshelf בגרסת NanoHive. כיבוי מחזיר את המקור.", pgNarrators: "כרטיסי קריינים", pgCollections: "עמודי אוספים", pgUsers: "כרטיסי משתמשים (הגדרות)", pgStats: "דירוג האזנה", pgPhoto: "תמונת פרופיל בסרגל העליון", pgCinematic: "רקע קולנועי", pgTransitions: "מעברי עמודים", pSearch: "חיפוש הגדרות…", pSearchNone: "אין התאמות.", erTypeface: "גופן", erPage: "ערכת עמוד", erText: "צבע טקסט", erBg: "רקע", erDefault: "ברירת מחדל (ABS)", erAuto: "אוטומטי", nrForms: ["קריין","קריינים"], nrBooksForms: ["ספר","ספרים"], nrSearch: "סינון קריינים…", nrSortName: "שם", nrSortBooks: "הכי הרבה ספרים", auForms: ["סופר","סופרים"], auSearch: "סינון סופרים…" , lfByAuthor: "סופר › סדר הסדרה", lfBySeries: "סדרה › סדר" , lfSecFilters: "מסננים נוספים", lfSecSort: "מיון מרובה", lfAuthor: "סופר", lfSeries: "סדרה", lfTitle: "כותרת", lfYear: "שנה", lfAdded: "נוסף", lfDuration: "משך", lfNarrator: "קריין", lfGenre: "ז'אנר", lfLanguage: "שפה", lfProgress: "התקדמות", lfPgFinished: "הושלמו", lfPgInProgress: "בהאזנה", lfPgNot: "לא התחילו" },
+    fa: { sbTitle: "رتبه‌بندی سرور", sbWeek: "هفته", sbMonth: "ماه", sbYear: "سال", sbAll: "کل زمان", sbBooks: "کتاب‌ها", sbTopBooks: "پرشنیده‌ترین", sbTotal: "مجموع", sbListeners: "شنوندگان", sbAvg: "میانگین", wkTitle: "دقیقه‌های شنیدن — ۷ روز اخیر", wkAvg: "میانگین روزانه", wkRow: "روز پیاپی", rpBadge: "گزارش‌های باز مشکل", rpMenu: "گزارش مشکل", rpTitle: "گزارش مشکل", rpWhat: "مشکل چیست؟", rpNote: "چیز دیگری که مدیر باید بداند؟ (اختیاری)", rpSend: "ارسال گزارش", rpSent: "ارسال شد. سپاس.", rpFail: "ارسال ناموفق بود", rpMissing: "محتوای ناقص یا از‌دست‌رفته", rpQuality: "کیفیت صدای بد", rpPlay: "پخش نمی‌شود", rpWrong: "کتاب، جلد یا فراداده اشتباه", rpChapters: "فصل‌ها اشتباه‌اند", rpOther: "چیز دیگر", rfRate: "امتیاز بده", rfSheet: "به این کتاب امتیاز بده", rfOpen: "باز کردن صفحه کتاب", rfPickHint: "یک امتیاز انتخاب کن", rfTitle: "به آنچه تمام کردی امتیاز بده", ysFinished: "به‌تازگی تمام‌شده", ysAlmost: "تقریباً تمام", ysMarkDone: "علامت‌گذاری به‌عنوان تمام‌شده", ysEditDate: "تغییر تاریخ پایان", ysThisWeek: "این هفته", ysBestDay: "بهترین روز", ysTitle: "شنیدن شما", fsTitle: "رتبه‌بندی سرور", fsCard: "رتبه‌بندی سرور", fsToggle: "اشتراک آمار شنیدن من", fsJoin: "«اشتراک آمار شنیدن من» را در پنل شخصی‌سازی روشن کنید تا در رتبه‌بندی سرور دیده شوید.", fsWaiting: "اشتراک روشن است — خلاصه شما به‌زودی همراه بقیه به رتبه‌بندی سرور می‌پیوندد.", fsHint: "خلاصه‌ای از شنیدن خود (مجموع‌ها و دقیقه‌های روزانه) را با دیگران در این سرور به اشتراک بگذارید — منبع رتبه‌بندی سرور است. به‌طور پیش‌فرض روشن. با خاموش کردن، از رتبه‌بندی و جمع‌های آن حذف می‌شوید و داده‌های اشتراکی پاک می‌شوند.", yirBtn: "مرور سال", yirTitle: "سالِ شنیدن شما", yirYear: "۱۲ ماه اخیر", yirDays: "روزهای دارای شنیدن", yirBest: "بهترین روز", yirMonths: "به تفکیک ماه", yirNone: "هنوز داده شنیداری نیست.", scmTitle: "صفحه مجموعه", scmHint: "نمای جلد تولیدشده بالای عنوان مجموعه وقتی جلدی بارگذاری نشده است (فقط این مرورگر).", scmDeck: "دسته لایه‌ای", scmFirst: "جلد کتاب اول", scmGrid: "شبکه جلدها (پیش‌فرض)", scmOff: "پنهان" , lsTitle: "آمار سرور", lsAll: "همه کتابخانه‌ها", lsPlayed: "کتاب‌های پخش‌شده", lsBest: "بالاترین امتیاز", lsGenres: "ژانرهای برتر", srvPick: "چه چیزی ذخیره شود:", srvGRest: "قابلیت‌ها و رفتار", aeBtn: "مرتب‌سازی نویسندگان", aeTitle: "نویسندگان بدون کتاب", aeNone: "هر نویسنده اینجا دست‌کم یک کتاب دارد.", aeRemove: "حذف", aeDone: "حذف شد", aeWorking: "در حال حذف…", rpCard: "مشکلات گزارش‌شده", rpHint: "مشکلاتی که کاربران از صفحه کتاب گزارش کرده‌اند. حل کردن، آن را از فهرست برمی‌دارد.", rpEmpty: "گزارشی نیست.", rpResolve: "حل", rpOpen: "باز کردن کتاب", apCard: "پخش", apToggle: "پخش خودکار کتاب بعدی مجموعه", apHint: "وقتی کتابی تمام می‌شود، بعدی از همان مجموعه خودکار شروع می‌شود. فقط کتاب‌هایی که داری و تمام نکرده‌ای.", apNext: "بعدی مجموعه", fdToggle: "ابزار کتاب‌های تمام‌شده در آمار", ysNoDate: "بدون تاریخ", hmShowing: "نمودار نشان می‌دهد", ysStreak: "روزهای پیاپی", ysCurrent: "فعلی", ysLongest: "طولانی‌ترین", ysDaysTotal: "مجموع روزها", ysPace: "آهنگ", ysPerDay: "به‌ازای هر روز شنیدن", ysWhen: "چه زمانی می‌شنوی", ysTopBooks: "پرشنیده‌ترین کتاب‌ها", ysTopAuthors: "پرشنیده‌ترین نویسندگان", ysTopNarrators: "پرشنیده‌ترین گویندگان", rfToggle: "بخش «امتیاز بده» در خانه", hoTitle: "ترتیب بخش‌های خانه", hoEmpty: "یک بار صفحه خانه را باز کن و برگرد.", hoReset: "بازگرداندن ترتیب پیش‌فرض", ctIcon: "آیکن", ctColour: "رنگ تأکیدی", ctNeedBook: "Audiobookshelf نمی‌تواند مجموعه خالی ذخیره کند — دست‌کم یک کتاب انتخاب کن. بعداً آزادانه اضافه و حذف می‌کنی.", colEditIcon: "تغییر آیکن", ciTitle: "آیکن مجموعه", ciReset: "تطبیق خودکار با نام", colEditDesc: "ویرایش توضیح", colBookForms: ["کتاب","کتاب"], colForms: ["مجموعه","مجموعه‌ها"], ctTitle: "ساخت مجموعه", ctBlank: "مجموعه خالی", ctNew: "مجموعه جدید", ctNewHint: "از الگو", ctNamePh: "نام مجموعه", ctSearch: "جست‌وجوی کتاب یا نویسنده…", ctCreate: "ساختن", ctBack: "‹ بازگشت", ctAddAll: "افزودن همه کتاب‌ها", abTitle: "افزودن کتاب", abAdd: "افزودن", avRemove: "حذف عکس", avSet: "انتخاب عکس…", ugListened: "شنیده‌شده", ugPhoto: "عکس پروفایل", ugNever: "هرگز", ugSeen: "آخرین فعالیت", ugEdit: "ویرایش کاربر", ugDelete: "حذف کاربر", ugAdd: "افزودن عکس", ugChange: "تغییر عکس", ugSortName: "الفبایی", ugSortTime: "پرشنیده‌ترین", ugSortSeen: "فعال‌های اخیر", bsCard: "پیوندهای کتاب", bsHint: "دکمه‌هایی در صفحه کتاب برای جست‌وجوی عنوان در جاهای دیگر. Goodreads و بزرگ‌ترین سایت زبانت از قبل روشن‌اند.", bsFind: "جست‌وجو در", bsGlobal: "همه‌جا", bsLocal: "برای زبان تو", bsOther: "کشورهای دیگر", pgCard: "صفحات بازطراحی‌شده", pgHint: "هر گزینه صفحه‌ای از Audiobookshelf را با نسخه NanoHive جایگزین می‌کند. خاموش کنی، نسخه اصلی برمی‌گردد.", pgNarrators: "کارت‌های گویندگان", pgCollections: "صفحات مجموعه‌ها", pgUsers: "کارت‌های کاربران (تنظیمات)", pgStats: "رتبه‌بندی شنیدن", pgPhoto: "عکس پروفایل در نوار بالا", pgCinematic: "پس‌زمینه سینمایی", pgTransitions: "گذار صفحات", pSearch: "جست‌وجوی تنظیمات…", pSearchNone: "موردی یافت نشد.", erTypeface: "قلم", erPage: "تم صفحه", erText: "رنگ متن", erBg: "پس‌زمینه", erDefault: "پیش‌فرض (ABS)", erAuto: "خودکار", nrForms: ["گوینده","گویندگان"], nrBooksForms: ["کتاب","کتاب"], nrSearch: "فیلتر گویندگان…", nrSortName: "نام", nrSortBooks: "بیشترین کتاب", auForms: ["نویسنده","نویسندگان"], auSearch: "فیلتر نویسندگان…" , lfByAuthor: "نویسنده › ترتیب مجموعه", lfBySeries: "مجموعه › ترتیب" , lfSecFilters: "فیلترهای بیشتر", lfSecSort: "مرتب‌سازی چندگانه", lfAuthor: "نویسنده", lfSeries: "مجموعه", lfTitle: "عنوان", lfYear: "سال", lfAdded: "افزوده‌شده", lfDuration: "مدت", lfNarrator: "گوینده", lfGenre: "ژانر", lfLanguage: "زبان", lfProgress: "پیشرفت", lfPgFinished: "تمام‌شده", lfPgInProgress: "در حال شنیدن", lfPgNot: "شروع‌نشده" },
+    hi: { sbTitle: "सर्वर रैंकिंग", sbWeek: "सप्ताह", sbMonth: "महीना", sbYear: "वर्ष", sbAll: "कुल समय", sbBooks: "पुस्तकें", sbTopBooks: "सबसे ज़्यादा सुनी गईं", sbTotal: "कुल", sbListeners: "श्रोता", sbAvg: "औसत", wkTitle: "सुनने के मिनट — पिछले 7 दिन", wkAvg: "दैनिक औसत", wkRow: "लगातार दिन", rpBadge: "खुली समस्या रिपोर्टें", rpMenu: "समस्या रिपोर्ट करें", rpTitle: "समस्या रिपोर्ट करें", rpWhat: "क्या गड़बड़ है?", rpNote: "एडमिन को और कुछ बताना है? (वैकल्पिक)", rpSend: "रिपोर्ट भेजें", rpSent: "भेज दी गई। धन्यवाद।", rpFail: "भेजा नहीं जा सका", rpMissing: "सामग्री गुम या अधूरी", rpQuality: "खराब ऑडियो गुणवत्ता", rpPlay: "चलता नहीं", rpWrong: "गलत पुस्तक, कवर या मेटाडेटा", rpChapters: "अध्याय गलत हैं", rpOther: "कुछ और", rfRate: "रेट करें", rfSheet: "इस पुस्तक को रेट करें", rfOpen: "पुस्तक पृष्ठ खोलें", rfPickHint: "रेटिंग चुनें", rfTitle: "जो पूरा किया उसे रेट करें", ysFinished: "हाल में पूरी हुईं", ysAlmost: "लगभग पूरी", ysMarkDone: "पूर्ण के रूप में चिह्नित करें", ysEditDate: "समाप्ति तिथि बदलें", ysThisWeek: "इस सप्ताह", ysBestDay: "सबसे अच्छा दिन", ysTitle: "आपका सुनना", fsTitle: "सर्वर रैंकिंग", fsCard: "सर्वर रैंकिंग", fsToggle: "मेरे सुनने के आँकड़े साझा करें", fsJoin: "सर्वर रैंकिंग में दिखने के लिए कस्टमाइज़ेशन पैनल में “मेरे सुनने के आँकड़े साझा करें” चालू करें।", fsWaiting: "साझा करना चालू है — आपकी सारांश जल्द ही सबके साथ सर्वर रैंकिंग में जुड़ जाएगी।", fsHint: "अपने सुनने का सारांश (कुल और प्रतिदिन मिनट) इस सर्वर के अन्य लोगों के साथ साझा करें — यही सर्वर रैंकिंग को चलाता है। डिफ़ॉल्ट रूप से चालू। बंद करने पर आप रैंकिंग और उसके योगों से हट जाते हैं, और साझा डेटा मिट जाता है।", yirBtn: "वर्ष की झलक", yirTitle: "आपके सुनने का वर्ष", yirYear: "पिछले 12 महीने", yirDays: "सुनने वाले दिन", yirBest: "सबसे अच्छा दिन", yirMonths: "महीने के अनुसार", yirNone: "अभी कोई सुनने का डेटा नहीं।", scmTitle: "श्रृंखला पृष्ठ", scmHint: "जब अपना कवर अपलोड न हो तो श्रृंखला शीर्षक के ऊपर बनने वाले कवर का रूप (केवल यह ब्राउज़र)।", scmDeck: "परतदार डेक", scmFirst: "पहली पुस्तक का कवर", scmGrid: "कवर ग्रिड (डिफ़ॉल्ट)", scmOff: "छिपा" , lsTitle: "सर्वर आँकड़े", lsAll: "सभी लाइब्रेरी", lsPlayed: "चलाई गई पुस्तकें", lsBest: "सर्वोच्च रेटेड", lsGenres: "शीर्ष विधाएँ", srvPick: "क्या सहेजें:", srvGRest: "सुविधाएँ और व्यवहार", aeBtn: "लेखकों को व्यवस्थित करें", aeTitle: "बिना पुस्तक वाले लेखक", aeNone: "यहाँ हर लेखक के पास कम से कम एक पुस्तक है।", aeRemove: "हटाएँ", aeDone: "हटाया गया", aeWorking: "हटाया जा रहा है…", rpCard: "रिपोर्ट की गई समस्याएँ", rpHint: "पुस्तक पृष्ठ से उपयोगकर्ताओं द्वारा रिपोर्ट की गई समस्याएँ। हल करने पर सूची से हट जाती है।", rpEmpty: "कोई रिपोर्ट नहीं।", rpResolve: "हल करें", rpOpen: "पुस्तक खोलें", apCard: "प्लेबैक", apToggle: "श्रृंखला की अगली पुस्तक स्वतः चलाएँ", apHint: "पुस्तक समाप्त होने पर उसी श्रृंखला की अगली स्वतः शुरू होती है। केवल वे पुस्तकें जो आपके पास हैं और अधूरी हैं।", apNext: "श्रृंखला में अगली", fdToggle: "आँकड़ों में पूर्ण पुस्तकों के उपकरण", ysNoDate: "तिथि नहीं", hmShowing: "चार्ट दिखा रहा है", ysStreak: "लगातार दिन", ysCurrent: "वर्तमान", ysLongest: "सबसे लंबा", ysDaysTotal: "कुल दिन", ysPace: "गति", ysPerDay: "प्रति श्रवण दिवस", ysWhen: "आप कब सुनते हैं", ysTopBooks: "सबसे अधिक सुनी पुस्तकें", ysTopAuthors: "सबसे अधिक सुने लेखक", ysTopNarrators: "सबसे अधिक सुने वाचक", rfToggle: "होम पर “रेट करें” खंड", hoTitle: "होम खंडों का क्रम", hoEmpty: "एक बार होम खोलें, फिर यहाँ लौटें।", hoReset: "डिफ़ॉल्ट क्रम बहाल करें", ctIcon: "आइकन", ctColour: "एक्सेंट", ctNeedBook: "Audiobookshelf खाली संग्रह सहेज नहीं सकता — कम से कम एक पुस्तक चुनें। बाद में स्वतंत्र रूप से जोड़-हटा सकते हैं।", colEditIcon: "आइकन बदलें", ciTitle: "संग्रह का आइकन", ciReset: "नाम से स्वतः मिलाएँ", colEditDesc: "विवरण संपादित करें", colBookForms: ["पुस्तक","पुस्तकें"], colForms: ["संग्रह","संग्रह"], ctTitle: "संग्रह बनाएँ", ctBlank: "खाली संग्रह", ctNew: "नया संग्रह", ctNewHint: "टेम्पलेट से", ctNamePh: "संग्रह का नाम", ctSearch: "पुस्तकें या लेखक खोजें…", ctCreate: "बनाएँ", ctBack: "‹ वापस", ctAddAll: "सभी पुस्तकें जोड़ें", abTitle: "पुस्तकें जोड़ें", abAdd: "जोड़ें", avRemove: "फ़ोटो हटाएँ", avSet: "फ़ोटो चुनें…", ugListened: "सुना गया", ugPhoto: "प्रोफ़ाइल फ़ोटो", ugNever: "कभी नहीं", ugSeen: "अंतिम सक्रियता", ugEdit: "उपयोगकर्ता संपादित करें", ugDelete: "उपयोगकर्ता हटाएँ", ugAdd: "फ़ोटो जोड़ें", ugChange: "फ़ोटो बदलें", ugSortName: "अ–ज्ञ", ugSortTime: "सबसे अधिक सुना", ugSortSeen: "हाल में सक्रिय", bsCard: "पुस्तक लिंक", bsHint: "पुस्तक पृष्ठ पर शीर्षक को अन्यत्र खोजने के बटन। Goodreads और आपकी भाषा की सबसे बड़ी साइट पहले से चालू हैं।", bsFind: "यहाँ खोजें", bsGlobal: "हर जगह", bsLocal: "आपकी भाषा के लिए", bsOther: "अन्य देश", pgCard: "पुनर्निर्मित पृष्ठ", pgHint: "हर विकल्प Audiobookshelf पृष्ठ को NanoHive संस्करण से बदलता है। बंद करने पर मूल वापस आ जाता है।", pgNarrators: "वाचक कार्ड", pgCollections: "संग्रह पृष्ठ", pgUsers: "उपयोगकर्ता कार्ड (सेटिंग्स)", pgStats: "श्रवण रैंकिंग", pgPhoto: "शीर्ष पट्टी में प्रोफ़ाइल फ़ोटो", pgCinematic: "सिनेमाई पृष्ठभूमि", pgTransitions: "पृष्ठ संक्रमण", pSearch: "सेटिंग्स खोजें…", pSearchNone: "कोई मेल नहीं।", erTypeface: "टाइपफ़ेस", erPage: "पृष्ठ थीम", erText: "पाठ का रंग", erBg: "पृष्ठभूमि", erDefault: "डिफ़ॉल्ट (ABS)", erAuto: "स्वतः", nrForms: ["वाचक","वाचक"], nrBooksForms: ["पुस्तक","पुस्तकें"], nrSearch: "वाचक फ़िल्टर करें…", nrSortName: "नाम", nrSortBooks: "सबसे अधिक पुस्तकें", auForms: ["लेखक","लेखक"], auSearch: "लेखक फ़िल्टर करें…" , lfByAuthor: "लेखक › श्रृंखला क्रम", lfBySeries: "श्रृंखला › क्रम" , lfSecFilters: "और फ़िल्टर", lfSecSort: "बहु-स्तरीय क्रम", lfAuthor: "लेखक", lfSeries: "श्रृंखला", lfTitle: "शीर्षक", lfYear: "वर्ष", lfAdded: "जोड़ा गया", lfDuration: "अवधि", lfNarrator: "वाचक", lfGenre: "शैली", lfLanguage: "भाषा", lfProgress: "प्रगति", lfPgFinished: "पूर्ण", lfPgInProgress: "जारी", lfPgNot: "शुरू नहीं" },
+    bn: { sbTitle: "সার্ভার র‍্যাঙ্কিং", sbWeek: "সপ্তাহ", sbMonth: "মাস", sbYear: "বছর", sbAll: "সব সময়", sbBooks: "বই", sbTopBooks: "সবচেয়ে বেশি শোনা", sbTotal: "মোট", sbListeners: "শ্রোতা", sbAvg: "গড়", wkTitle: "শোনার মিনিট — গত ৭ দিন", wkAvg: "দৈনিক গড়", wkRow: "টানা দিন", rpBadge: "খোলা সমস্যা প্রতিবেদন", rpMenu: "সমস্যা জানান", rpTitle: "সমস্যা জানান", rpWhat: "কী সমস্যা?", rpNote: "অ্যাডমিনকে আর কিছু জানাতে চান? (ঐচ্ছিক)", rpSend: "প্রতিবেদন পাঠান", rpSent: "পাঠানো হয়েছে। ধন্যবাদ।", rpFail: "পাঠানো যায়নি", rpMissing: "বিষয়বস্তু নেই বা অসম্পূর্ণ", rpQuality: "খারাপ অডিও মান", rpPlay: "চালানো যাচ্ছে না", rpWrong: "ভুল বই, প্রচ্ছদ বা মেটাডেটা", rpChapters: "অধ্যায় ভুল", rpOther: "অন্য কিছু", rfRate: "রেট দিন", rfSheet: "এই বইটি রেট দিন", rfOpen: "বইয়ের পাতা খুলুন", rfPickHint: "একটি রেটিং বাছুন", rfTitle: "যা শেষ করেছেন তা রেট দিন", ysFinished: "সম্প্রতি শেষ হওয়া", ysAlmost: "প্রায় শেষ", ysMarkDone: "সম্পন্ন হিসেবে চিহ্নিত করুন", ysEditDate: "শেষের তারিখ বদলান", ysThisWeek: "এই সপ্তাহে", ysBestDay: "সেরা দিন", ysTitle: "আপনার শোনা", fsTitle: "সার্ভার র‍্যাঙ্কিং", fsCard: "সার্ভার র‍্যাঙ্কিং", fsToggle: "আমার শোনার পরিসংখ্যান শেয়ার করুন", fsJoin: "সার্ভার র‍্যাঙ্কিংয়ে দেখা দিতে কাস্টমাইজেশন প্যানেলে “আমার শোনার পরিসংখ্যান শেয়ার করুন” চালু করুন।", fsWaiting: "শেয়ারিং চালু — আপনার সারাংশ শিগগিরই সবার সঙ্গে সার্ভার র‍্যাঙ্কিংয়ে যুক্ত হবে।", fsHint: "আপনার শোনার সারাংশ (মোট ও দৈনিক মিনিট) এই সার্ভারের অন্যদের সঙ্গে শেয়ার করুন — এটিই সার্ভার র‍্যাঙ্কিং চালায়। ডিফল্টে চালু। বন্ধ করলে আপনি র‍্যাঙ্কিং ও তার যোগফল থেকে বাদ পড়বেন, শেয়ার করা ডেটা মুছে যাবে।", yirBtn: "বছরের ফিরে দেখা", yirTitle: "আপনার শোনার বছর", yirYear: "গত ১২ মাস", yirDays: "শোনার দিন", yirBest: "সেরা দিন", yirMonths: "মাস অনুযায়ী", yirNone: "এখনও শোনার ডেটা নেই।", scmTitle: "সিরিজ পাতা", scmHint: "নিজস্ব প্রচ্ছদ আপলোড না থাকলে সিরিজের নামের উপরে তৈরি প্রচ্ছদ যেমন দেখায় (শুধু এই ব্রাউজার)।", scmDeck: "স্তরের ডেক", scmFirst: "প্রথম বইয়ের প্রচ্ছদ", scmGrid: "প্রচ্ছদ গ্রিড (ডিফল্ট)", scmOff: "লুকানো" , lsTitle: "সার্ভার পরিসংখ্যান", lsAll: "সব লাইব্রেরি", lsPlayed: "চালানো বই", lsBest: "সেরা রেটিং", lsGenres: "শীর্ষ ধরন", srvPick: "কী সংরক্ষণ হবে:", srvGRest: "বৈশিষ্ট্য ও আচরণ", aeBtn: "লেখক গোছান", aeTitle: "বইবিহীন লেখক", aeNone: "এখানে প্রত্যেক লেখকের অন্তত একটি বই আছে।", aeRemove: "সরান", aeDone: "সরানো হয়েছে", aeWorking: "সরানো হচ্ছে…", rpCard: "জানানো সমস্যা", rpHint: "বইয়ের পাতা থেকে ব্যবহারকারীদের জানানো সমস্যা। সমাধান করলে তালিকা থেকে চলে যায়।", rpEmpty: "কোনো রিপোর্ট নেই।", rpResolve: "সমাধান", rpOpen: "বই খুলুন", apCard: "প্লেব্যাক", apToggle: "সিরিজের পরের বই স্বয়ংক্রিয়ভাবে চালান", apHint: "একটি বই শেষ হলে একই সিরিজের পরেরটি নিজে থেকে শুরু হয়। শুধু আপনার লাইব্রেরিতে থাকা, অসমাপ্ত বই।", apNext: "সিরিজের পরেরটি", fdToggle: "পরিসংখ্যানে শেষ-করা বইয়ের সরঞ্জাম", ysNoDate: "তারিখ নেই", hmShowing: "চার্ট দেখাচ্ছে", ysStreak: "টানা দিন", ysCurrent: "বর্তমান", ysLongest: "দীর্ঘতম", ysDaysTotal: "মোট দিন", ysPace: "গতি", ysPerDay: "প্রতি শোনার দিনে", ysWhen: "আপনি কখন শোনেন", ysTopBooks: "সবচেয়ে বেশি শোনা বই", ysTopAuthors: "সবচেয়ে বেশি শোনা লেখক", ysTopNarrators: "সবচেয়ে বেশি শোনা পাঠক", rfToggle: "হোমে “রেট দিন” অংশ", hoTitle: "হোম অংশের ক্রম", hoEmpty: "একবার হোম খুলে আবার এখানে আসুন।", hoReset: "ডিফল্ট ক্রম ফেরান", ctIcon: "আইকন", ctColour: "অ্যাকসেন্ট", ctNeedBook: "Audiobookshelf খালি সংগ্রহ সংরক্ষণ করতে পারে না — অন্তত একটি বই বাছুন। পরে ইচ্ছেমতো যোগ-বাদ করা যাবে।", colEditIcon: "আইকন বদলান", ciTitle: "সংগ্রহের আইকন", ciReset: "নাম অনুযায়ী স্বয়ংক্রিয় মিল", colEditDesc: "বিবরণ সম্পাদনা", colBookForms: ["বই","বই"], colForms: ["সংগ্রহ","সংগ্রহ"], ctTitle: "সংগ্রহ তৈরি করুন", ctBlank: "খালি সংগ্রহ", ctNew: "নতুন সংগ্রহ", ctNewHint: "টেমপ্লেট থেকে", ctNamePh: "সংগ্রহের নাম", ctSearch: "বই বা লেখক খুঁজুন…", ctCreate: "তৈরি", ctBack: "‹ পিছনে", ctAddAll: "সব বই যোগ করুন", abTitle: "বই যোগ করুন", abAdd: "যোগ", avRemove: "ছবি সরান", avSet: "ছবি বাছুন…", ugListened: "শোনা হয়েছে", ugPhoto: "প্রোফাইল ছবি", ugNever: "কখনো না", ugSeen: "সর্বশেষ সক্রিয়", ugEdit: "ব্যবহারকারী সম্পাদনা", ugDelete: "ব্যবহারকারী মুছুন", ugAdd: "ছবি যোগ", ugChange: "ছবি বদলান", ugSortName: "অ–হ", ugSortTime: "সবচেয়ে বেশি শোনা", ugSortSeen: "সম্প্রতি সক্রিয়", bsCard: "বইয়ের লিংক", bsHint: "বইয়ের পাতায় শিরোনাম অন্যত্র খোঁজার বোতাম। Goodreads ও আপনার ভাষার বৃহত্তম সাইট আগে থেকেই চালু।", bsFind: "খুঁজুন", bsGlobal: "সব জায়গায়", bsLocal: "আপনার ভাষার জন্য", bsOther: "অন্যান্য দেশ", pgCard: "নতুন নকশার পাতা", pgHint: "প্রতিটি বিকল্প Audiobookshelf-এর পাতা NanoHive সংস্করণে বদলে দেয়। বন্ধ করলে আসলটি ফিরে আসে।", pgNarrators: "পাঠকের কার্ড", pgCollections: "সংগ্রহের পাতা", pgUsers: "ব্যবহারকারীর কার্ড (সেটিংস)", pgStats: "শোনার র‍্যাঙ্কিং", pgPhoto: "উপরের বারে প্রোফাইল ছবি", pgCinematic: "সিনেমাটিক পটভূমি", pgTransitions: "পাতা পরিবর্তন", pSearch: "সেটিংস খুঁজুন…", pSearchNone: "কোনো মিল নেই।", erTypeface: "টাইপফেস", erPage: "পাতার থিম", erText: "লেখার রং", erBg: "পটভূমি", erDefault: "ডিফল্ট (ABS)", erAuto: "স্বয়ংক্রিয়", nrForms: ["পাঠক","পাঠক"], nrBooksForms: ["বই","বই"], nrSearch: "পাঠক ফিল্টার…", nrSortName: "নাম", nrSortBooks: "সবচেয়ে বেশি বই", auForms: ["লেখক","লেখক"], auSearch: "লেখক ফিল্টার…" , lfByAuthor: "লেখক › সিরিজের ক্রম", lfBySeries: "সিরিজ › ক্রম" , lfSecFilters: "আরও ফিল্টার", lfSecSort: "বহুস্তর সাজানো", lfAuthor: "লেখক", lfSeries: "সিরিজ", lfTitle: "শিরোনাম", lfYear: "বছর", lfAdded: "যোগ হয়েছে", lfDuration: "দৈর্ঘ্য", lfNarrator: "পাঠক", lfGenre: "ধরন", lfLanguage: "ভাষা", lfProgress: "অগ্রগতি", lfPgFinished: "শেষ", lfPgInProgress: "চলছে", lfPgNot: "শুরু হয়নি" },
+    gu: { sbTitle: "સર્વર રેન્કિંગ", sbWeek: "અઠવાડિયું", sbMonth: "મહિનો", sbYear: "વર્ષ", sbAll: "કુલ સમય", sbBooks: "પુસ્તકો", sbTopBooks: "સૌથી વધુ સાંભળેલી", sbTotal: "કુલ", sbListeners: "શ્રોતાઓ", sbAvg: "સરેરાશ", wkTitle: "સાંભળવાની મિનિટ — છેલ્લા 7 દિવસ", wkAvg: "દૈનિક સરેરાશ", wkRow: "સળંગ દિવસ", rpBadge: "ખુલ્લા સમસ્યા અહેવાલ", rpMenu: "સમસ્યાની જાણ કરો", rpTitle: "સમસ્યાની જાણ કરો", rpWhat: "શું ખોટું છે?", rpNote: "એડમિનને બીજું કંઈ કહેવું છે? (વૈકલ્પિક)", rpSend: "અહેવાલ મોકલો", rpSent: "મોકલાયો. આભાર.", rpFail: "મોકલી શકાયો નહીં", rpMissing: "સામગ્રી ખૂટે છે અથવા અધૂરી", rpQuality: "ખરાબ ઓડિયો ગુણવત્તા", rpPlay: "વાગતું નથી", rpWrong: "ખોટી પુસ્તક, કવર કે મેટાડેટા", rpChapters: "પ્રકરણો ખોટાં", rpOther: "બીજું કંઈક", rfRate: "રેટ કરો", rfSheet: "આ પુસ્તકને રેટ કરો", rfOpen: "પુસ્તક પાનું ખોલો", rfPickHint: "રેટિંગ પસંદ કરો", rfTitle: "પૂરું કરેલું રેટ કરો", ysFinished: "તાજેતરમાં પૂરી થયેલી", ysAlmost: "લગભગ પૂરી", ysMarkDone: "પૂર્ણ તરીકે ચિહ્નિત કરો", ysEditDate: "પૂર્ણ થવાની તારીખ બદલો", ysThisWeek: "આ અઠવાડિયે", ysBestDay: "શ્રેષ્ઠ દિવસ", ysTitle: "તમારું સાંભળવું", fsTitle: "સર્વર રેન્કિંગ", fsCard: "સર્વર રેન્કિંગ", fsToggle: "મારા સાંભળવાના આંકડા શેર કરો", fsJoin: "સર્વર રેન્કિંગમાં દેખાવા માટે કસ્ટમાઇઝેશન પેનલમાં “મારા સાંભળવાના આંકડા શેર કરો” ચાલુ કરો.", fsWaiting: "શેરિંગ ચાલુ છે — તમારો સારાંશ ટૂંક સમયમાં બધા સાથે સર્વર રેન્કિંગમાં જોડાશે.", fsHint: "તમારા સાંભળવાનો સારાંશ (કુલ અને દૈનિક મિનિટ) આ સર્વરના અન્ય લોકો સાથે શેર કરો — તે સર્વર રેન્કિંગ ચલાવે છે. ડિફૉલ્ટ રૂપે ચાલુ. બંધ કરવાથી તમે રેન્કિંગ અને તેના સરવાળામાંથી નીકળી જશો, અને શેર કરેલો ડેટા ભૂંસાઈ જશે.", yirBtn: "વર્ષની ઝલક", yirTitle: "તમારું સાંભળવાનું વર્ષ", yirYear: "છેલ્લા 12 મહિના", yirDays: "સાંભળવાના દિવસો", yirBest: "શ્રેષ્ઠ દિવસ", yirMonths: "મહિના પ્રમાણે", yirNone: "હજી કોઈ ડેટા નથી.", scmTitle: "શ્રેણી પાનું", scmHint: "પોતાનું કવર અપલોડ ન હોય ત્યારે શ્રેણીના શીર્ષક ઉપર બનતા કવરનો દેખાવ (ફક્ત આ બ્રાઉઝર).", scmDeck: "સ્તરવાળી ડેક", scmFirst: "પહેલી પુસ્તકનું કવર", scmGrid: "કવર ગ્રિડ (ડિફૉલ્ટ)", scmOff: "છુપાયેલું" , lsTitle: "સર્વર આંકડા", lsAll: "બધી લાઇબ્રેરી", lsPlayed: "વગાડેલી પુસ્તકો", lsBest: "શ્રેષ્ઠ રેટેડ", lsGenres: "ટોચની શૈલીઓ", srvPick: "શું સાચવવું:", srvGRest: "સુવિધાઓ અને વર્તન", aeBtn: "લેખકો ગોઠવો", aeTitle: "પુસ્તક વગરના લેખકો", aeNone: "અહીં દરેક લેખક પાસે ઓછામાં ઓછી એક પુસ્તક છે.", aeRemove: "દૂર કરો", aeDone: "દૂર થયું", aeWorking: "દૂર કરી રહ્યાં છીએ…", rpCard: "જાણ કરેલી સમસ્યાઓ", rpHint: "પુસ્તક પાનાં પરથી વપરાશકર્તાઓએ જણાવેલી સમસ્યાઓ. ઉકેલવાથી યાદીમાંથી નીકળી જાય છે.", rpEmpty: "કોઈ જાણ નથી.", rpResolve: "ઉકેલો", rpOpen: "પુસ્તક ખોલો", apCard: "પ્લેબેક", apToggle: "શ્રેણીની આગલી પુસ્તક આપોઆપ વગાડો", apHint: "પુસ્તક પૂરી થતાં એ જ શ્રેણીની આગલી આપોઆપ શરૂ થાય છે. ફક્ત તમારી પાસે હોય અને અધૂરી હોય તેવી પુસ્તકો.", apNext: "શ્રેણીમાં આગલી", fdToggle: "આંકડામાં પૂર્ણ પુસ્તકોના સાધનો", ysNoDate: "તારીખ નથી", hmShowing: "ચાર્ટ બતાવે છે", ysStreak: "સળંગ દિવસો", ysCurrent: "વર્તમાન", ysLongest: "સૌથી લાંબો", ysDaysTotal: "કુલ દિવસો", ysPace: "ગતિ", ysPerDay: "શ્રવણ દિવસ દીઠ", ysWhen: "તમે ક્યારે સાંભળો છો", ysTopBooks: "સૌથી વધુ સાંભળેલી પુસ્તકો", ysTopAuthors: "સૌથી વધુ સાંભળેલા લેખકો", ysTopNarrators: "સૌથી વધુ સાંભળેલા વાચકો", rfToggle: "હોમ પર “રેટ કરો” વિભાગ", hoTitle: "હોમ વિભાગોનો ક્રમ", hoEmpty: "એકવાર હોમ ખોલો, પછી અહીં પાછા આવો.", hoReset: "મૂળ ક્રમ પુનઃસ્થાપિત કરો", ctIcon: "આઇકન", ctColour: "એક્સેન્ટ", ctNeedBook: "Audiobookshelf ખાલી સંગ્રહ સાચવી શકતું નથી — ઓછામાં ઓછી એક પુસ્તક પસંદ કરો. પછી મરજી મુજબ ઉમેરી-કાઢી શકશો.", colEditIcon: "આઇકન બદલો", ciTitle: "સંગ્રહનું આઇકન", ciReset: "નામ પ્રમાણે આપોઆપ ગોઠવો", colEditDesc: "વર્ણન સંપાદિત કરો", colBookForms: ["પુસ્તક","પુસ્તકો"], colForms: ["સંગ્રહ","સંગ્રહો"], ctTitle: "સંગ્રહ બનાવો", ctBlank: "ખાલી સંગ્રહ", ctNew: "નવો સંગ્રહ", ctNewHint: "ટેમ્પલેટમાંથી", ctNamePh: "સંગ્રહનું નામ", ctSearch: "પુસ્તકો કે લેખકો શોધો…", ctCreate: "બનાવો", ctBack: "‹ પાછળ", ctAddAll: "બધી પુસ્તકો ઉમેરો", abTitle: "પુસ્તકો ઉમેરો", abAdd: "ઉમેરો", avRemove: "ફોટો દૂર કરો", avSet: "ફોટો પસંદ કરો…", ugListened: "સાંભળ્યું", ugPhoto: "પ્રોફાઇલ ફોટો", ugNever: "ક્યારેય નહીં", ugSeen: "છેલ્લે સક્રિય", ugEdit: "વપરાશકર્તા સંપાદિત કરો", ugDelete: "વપરાશકર્તા કાઢી નાખો", ugAdd: "ફોટો ઉમેરો", ugChange: "ફોટો બદલો", ugSortName: "અ–જ્ઞ", ugSortTime: "સૌથી વધુ સાંભળેલું", ugSortSeen: "તાજેતરમાં સક્રિય", bsCard: "પુસ્તક લિંક", bsHint: "પુસ્તક પાનાં પર શીર્ષક બીજે શોધવાનાં બટન. Goodreads અને તમારી ભાષાની સૌથી મોટી સાઇટ પહેલેથી ચાલુ છે.", bsFind: "અહીં શોધો", bsGlobal: "બધે", bsLocal: "તમારી ભાષા માટે", bsOther: "અન્ય દેશો", pgCard: "નવી ડિઝાઇનનાં પાનાં", pgHint: "દરેક વિકલ્પ Audiobookshelf પાનું NanoHive સંસ્કરણથી બદલે છે. બંધ કરો એટલે મૂળ પાછું આવે.", pgNarrators: "વાચક કાર્ડ", pgCollections: "સંગ્રહ પાનાં", pgUsers: "વપરાશકર્તા કાર્ડ (સેટિંગ્સ)", pgStats: "શ્રવણ રેન્કિંગ", pgPhoto: "ટોચની પટ્ટીમાં પ્રોફાઇલ ફોટો", pgCinematic: "સિનેમેટિક પૃષ્ઠભૂમિ", pgTransitions: "પાનાં સંક્રમણ", pSearch: "સેટિંગ્સ શોધો…", pSearchNone: "કોઈ મેળ નથી.", erTypeface: "ટાઇપફેસ", erPage: "પાનાની થીમ", erText: "લખાણનો રંગ", erBg: "પૃષ્ઠભૂમિ", erDefault: "મૂળભૂત (ABS)", erAuto: "આપોઆપ", nrForms: ["વાચક","વાચકો"], nrBooksForms: ["પુસ્તક","પુસ્તકો"], nrSearch: "વાચકો ફિલ્ટર કરો…", nrSortName: "નામ", nrSortBooks: "સૌથી વધુ પુસ્તકો", auForms: ["લેખક","લેખકો"], auSearch: "લેખકો ફિલ્ટર કરો…" , lfByAuthor: "લેખક › શ્રેણી ક્રમ", lfBySeries: "શ્રેણી › ક્રમ" , lfSecFilters: "વધુ ફિલ્ટર", lfSecSort: "બહુ-સ્તરીય ક્રમ", lfAuthor: "લેખક", lfSeries: "શ્રેણી", lfTitle: "શીર્ષક", lfYear: "વર્ષ", lfAdded: "ઉમેરાયું", lfDuration: "અવધિ", lfNarrator: "વાચક", lfGenre: "શૈલી", lfLanguage: "ભાષા", lfProgress: "પ્રગતિ", lfPgFinished: "પૂર્ણ", lfPgInProgress: "ચાલુ", lfPgNot: "શરૂ નથી" },
+    vi: { sbTitle: "Xếp hạng máy chủ", sbWeek: "Tuần", sbMonth: "Tháng", sbYear: "Năm", sbAll: "Mọi lúc", sbBooks: "Sách", sbTopBooks: "Nghe nhiều nhất", sbTotal: "Tổng", sbListeners: "Người nghe", sbAvg: "Trung bình", wkTitle: "Phút nghe — 7 ngày qua", wkAvg: "Trung bình mỗi ngày", wkRow: "Ngày liên tiếp", rpBadge: "Báo cáo sự cố đang mở", rpMenu: "Báo cáo sự cố", rpTitle: "Báo cáo sự cố", rpWhat: "Có vấn đề gì?", rpNote: "Còn gì cần cho quản trị viên biết? (không bắt buộc)", rpSend: "Gửi báo cáo", rpSent: "Đã gửi. Cảm ơn.", rpFail: "Không gửi được", rpMissing: "Nội dung thiếu hoặc chưa đầy đủ", rpQuality: "Chất lượng âm thanh kém", rpPlay: "Không phát được", rpWrong: "Sai sách, bìa hoặc siêu dữ liệu", rpChapters: "Chương sai", rpOther: "Khác", rfRate: "Đánh giá", rfSheet: "Đánh giá cuốn sách này", rfOpen: "Mở trang sách", rfPickHint: "Chọn mức đánh giá", rfTitle: "Đánh giá những gì bạn đã nghe xong", ysFinished: "Vừa hoàn thành", ysAlmost: "Sắp xong", ysMarkDone: "Đánh dấu đã xong", ysEditDate: "Đổi ngày hoàn thành", ysThisWeek: "Tuần này", ysBestDay: "Ngày tốt nhất", ysTitle: "Việc nghe của bạn", fsTitle: "Xếp hạng máy chủ", fsCard: "Xếp hạng máy chủ", fsToggle: "Chia sẻ thống kê nghe của tôi", fsJoin: "Bật “Chia sẻ thống kê nghe của tôi” trong bảng tùy chỉnh để xuất hiện trong xếp hạng máy chủ.", fsWaiting: "Đang bật chia sẻ — bản tóm tắt của bạn sẽ sớm tham gia xếp hạng máy chủ cùng mọi người.", fsHint: "Chia sẻ tóm tắt việc nghe của bạn (tổng và số phút mỗi ngày) với những người khác trên máy chủ này — nó nuôi xếp hạng máy chủ. Bật mặc định. Tắt đi thì bạn rời khỏi xếp hạng và các tổng của nó, dữ liệu đã chia sẻ bị xóa.", yirBtn: "Nhìn lại năm qua", yirTitle: "Năm nghe của bạn", yirYear: "12 tháng qua", yirDays: "Ngày có nghe", yirBest: "Ngày tốt nhất", yirMonths: "Theo tháng", yirNone: "Chưa có dữ liệu nghe.", scmTitle: "Trang bộ sách", scmHint: "Bìa được tạo phía trên tên bộ sách trông thế nào khi chưa tải lên bìa riêng (chỉ trình duyệt này).", scmDeck: "Chồng bìa xếp lớp", scmFirst: "Bìa cuốn đầu tiên", scmGrid: "Lưới bìa (mặc định)", scmOff: "Ẩn" , lsTitle: "Thống kê máy chủ", lsAll: "Tất cả thư viện", lsPlayed: "Sách đã phát", lsBest: "Được đánh giá cao nhất", lsGenres: "Thể loại hàng đầu", srvPick: "Lưu những gì:", srvGRest: "Tính năng và hành vi", aeBtn: "Dọn dẹp tác giả", aeTitle: "Tác giả không có sách", aeNone: "Mọi tác giả ở đây đều có ít nhất một cuốn sách.", aeRemove: "Xóa", aeDone: "Đã xóa", aeWorking: "Đang xóa…", rpCard: "Sự cố đã báo cáo", rpHint: "Sự cố người dùng báo từ trang sách. Giải quyết xong sẽ biến mất khỏi danh sách.", rpEmpty: "Chưa có báo cáo.", rpResolve: "Giải quyết", rpOpen: "Mở sách", apCard: "Phát", apToggle: "Tự động phát cuốn tiếp theo trong bộ", apHint: "Khi một cuốn kết thúc, cuốn tiếp theo cùng bộ tự động bắt đầu. Chỉ những sách bạn đã có và chưa nghe xong.", apNext: "Cuốn tiếp theo trong bộ", fdToggle: "Công cụ sách đã xong trong thống kê", ysNoDate: "không có ngày", hmShowing: "biểu đồ hiển thị", ysStreak: "Chuỗi ngày", ysCurrent: "Hiện tại", ysLongest: "Dài nhất", ysDaysTotal: "Tổng số ngày", ysPace: "Nhịp độ", ysPerDay: "Mỗi ngày nghe", ysWhen: "Bạn nghe khi nào", ysTopBooks: "Sách nghe nhiều nhất", ysTopAuthors: "Tác giả nghe nhiều nhất", ysTopNarrators: "Người đọc nghe nhiều nhất", rfToggle: "Mục “Đánh giá” trên trang chủ", hoTitle: "Thứ tự các mục trang chủ", hoEmpty: "Mở trang chủ một lần rồi quay lại đây.", hoReset: "Khôi phục thứ tự mặc định", ctIcon: "Biểu tượng", ctColour: "Màu nhấn", ctNeedBook: "Audiobookshelf không thể lưu bộ sưu tập trống — chọn ít nhất một cuốn. Sau này bạn có thể thêm bớt thoải mái.", colEditIcon: "Đổi biểu tượng", ciTitle: "Biểu tượng bộ sưu tập", ciReset: "Tự khớp theo tên", colEditDesc: "Sửa mô tả", colBookForms: ["cuốn","cuốn"], colForms: ["Bộ sưu tập","Bộ sưu tập"], ctTitle: "Tạo bộ sưu tập", ctBlank: "Bộ sưu tập trống", ctNew: "Bộ sưu tập mới", ctNewHint: "từ mẫu", ctNamePh: "Tên bộ sưu tập", ctSearch: "Tìm sách hoặc tác giả…", ctCreate: "Tạo", ctBack: "‹ Quay lại", ctAddAll: "Thêm tất cả sách", abTitle: "Thêm sách", abAdd: "Thêm", avRemove: "Xóa ảnh", avSet: "Chọn ảnh…", ugListened: "Đã nghe", ugPhoto: "Ảnh hồ sơ", ugNever: "Chưa bao giờ", ugSeen: "Hoạt động gần nhất", ugEdit: "Sửa người dùng", ugDelete: "Xóa người dùng", ugAdd: "Thêm ảnh", ugChange: "Đổi ảnh", ugSortName: "A–Z", ugSortTime: "Nghe nhiều nhất", ugSortSeen: "Hoạt động gần đây", bsCard: "Liên kết sách", bsHint: "Các nút trên trang sách để tra tựa đề ở nơi khác. Goodreads và trang lớn nhất của ngôn ngữ bạn được bật sẵn.", bsFind: "Tìm trên", bsGlobal: "Mọi nơi", bsLocal: "Cho ngôn ngữ của bạn", bsOther: "Nước khác", pgCard: "Trang được thiết kế lại", pgHint: "Mỗi tùy chọn thay một trang Audiobookshelf bằng bản NanoHive. Tắt để trở về bản gốc.", pgNarrators: "Thẻ người đọc", pgCollections: "Trang bộ sưu tập", pgUsers: "Thẻ người dùng (cài đặt)", pgStats: "Xếp hạng nghe", pgPhoto: "Ảnh hồ sơ trên thanh trên", pgCinematic: "Nền điện ảnh", pgTransitions: "Chuyển trang", pSearch: "Tìm cài đặt…", pSearchNone: "Không có kết quả.", erTypeface: "Kiểu chữ", erPage: "Chủ đề trang", erText: "Màu chữ", erBg: "Nền", erDefault: "Mặc định (ABS)", erAuto: "Tự động", nrForms: ["Người đọc","Người đọc"], nrBooksForms: ["cuốn","cuốn"], nrSearch: "Lọc người đọc…", nrSortName: "Tên", nrSortBooks: "Nhiều sách nhất", auForms: ["Tác giả","Tác giả"], auSearch: "Lọc tác giả…" , lfByAuthor: "Tác giả › thứ tự bộ", lfBySeries: "Bộ sách › thứ tự" , lfSecFilters: "Thêm bộ lọc", lfSecSort: "Sắp xếp nhiều cấp", lfAuthor: "Tác giả", lfSeries: "Bộ sách", lfTitle: "Tựa đề", lfYear: "Năm", lfAdded: "Ngày thêm", lfDuration: "Thời lượng", lfNarrator: "Người đọc", lfGenre: "Thể loại", lfLanguage: "Ngôn ngữ", lfProgress: "Tiến độ", lfPgFinished: "Đã xong", lfPgInProgress: "Đang nghe", lfPgNot: "Chưa bắt đầu" },
+  };
+
   function navLabel() {
     const lang = getUserLanguage().split('-')[0].toLowerCase();
     const map = { en: 'Customizations', pl: 'Personalizacja', de: 'Anpassung', fr: 'Personnalisation' };
@@ -313,8 +571,8 @@
   }
 
   const PANEL_T = {
-    en: {"title": "Theme Customizations", "subtitle": "Personalise the look of your library. Changes save automatically.", "branding": "Branding & Style", "colour": "Colour & Theme", "homeCar": "Home & Carousel", "sidebar": "Sidebar Menus", "appName": "App Name", "appNameHint": "Leave empty for the default name.", "logoUrl": "Custom Logo URL", "logoHint": "Leave empty for the default logo.", "accent": "Accent Colour", "baseTheme": "Base Theme", "mainFont": "Main Font", "carousel": "Carousel Auto-Advance", "carouselHint": "Seconds between slides. Set to 0 to disable.", "customSeries": "Expanded Recent Series", "seriesCount": "Recent Series Count", "seriesCountHint": "How many series to show in the expanded shelf.", "hideShelves": "Hide Homepage Shelves", "sidebarHint": "Hide left-rail entries you don't use.", "showAppName": "Show App Name Text", "colorizeLogo": "Colorize Logo with Accent Colour", "hideSeries": "Hide Series", "hideCollections": "Hide Collections", "hideAuthors": "Hide Authors", "hideNarrators": "Hide Narrators", "hideStats": "Hide Stats", "hideRecentlyAdded": "Hide Recently Added", "hideRecentSeries": "Hide Recent Series", "hideContinueSeries": "Hide Continue Series", "hideListenAgain": "Hide Listen Again", "hideDiscover": "Hide Discover", "hideNewestAuthors": "Hide Newest Authors", "seriesCards": "Stacked Series Covers", "heroCarousel": "Home Carousel", "gearLabel": "Theme", "srvTitle": "Server Defaults", "srvHint": "Save your current settings as the defaults for every user of this server. Users can still personalise their own look on top. Mount a volume at /data/nh in the theme container to keep these across updates.", "srvSave": "Save as server defaults", "srvClear": "Clear server defaults", "srvSaved": "Saved", "srvCleared": "Cleared", "srvErr": "Failed — admin login required", "crMode": "Continue Reading Shelf", "crCombine": "Combine into carousel", "crSeparate": "Keep as separate shelf", "crHide": "Hidden", "logoUpload": "Upload from device…", "logoUploaded": "Uploaded ✓", "logoBadType": "Unsupported image type", "logoTooBig": "Image too large (max 4 MB)", "logoOr": "or", "bookPage": "Book Page", "ratingsToggle": "Community ratings (stars & reviews)", "ratingsHint": "Star ratings with short reviews on each book page, shared with every user of this server."},
-    pl: {"title": "Personalizacja motywu", "subtitle": "Dostosuj wygląd swojej biblioteki. Zmiany zapisują się automatycznie.", "branding": "Marka i styl", "colour": "Kolor i motyw", "homeCar": "Strona główna i karuzela", "sidebar": "Menu boczne", "appName": "Nazwa aplikacji", "appNameHint": "Pozostaw puste, aby użyć domyślnej nazwy.", "logoUrl": "Adres URL własnego logo", "logoHint": "Pozostaw puste, aby użyć domyślnego logo.", "accent": "Kolor akcentu", "baseTheme": "Motyw bazowy", "mainFont": "Czcionka główna", "carousel": "Automatyczne przewijanie karuzeli", "carouselHint": "Sekundy między slajdami. Ustaw 0, aby wyłączyć.", "customSeries": "Rozszerzone ostatnie serie", "seriesCount": "Liczba ostatnich serii", "seriesCountHint": "Ile serii pokazać na rozszerzonej półce.", "hideShelves": "Ukryj półki strony głównej", "sidebarHint": "Ukryj nieużywane pozycje menu bocznego.", "showAppName": "Pokaż nazwę aplikacji", "colorizeLogo": "Pokoloruj logo kolorem akcentu", "hideSeries": "Ukryj Serie", "hideCollections": "Ukryj Kolekcje", "hideAuthors": "Ukryj Autorów", "hideNarrators": "Ukryj Lektorów", "hideStats": "Ukryj Statystyki", "hideRecentlyAdded": "Ukryj Ostatnio dodane", "hideRecentSeries": "Ukryj Ostatnie serie", "hideContinueSeries": "Ukryj Kontynuuj serię", "hideListenAgain": "Ukryj Słuchaj ponownie", "hideDiscover": "Ukryj Odkrywaj", "hideNewestAuthors": "Ukryj Najnowszych autorów", "seriesCards": "Nakładane okładki serii", "heroCarousel": "Karuzela na stronie głównej", "gearLabel": "Motyw", "srvTitle": "Domyślne ustawienia serwera", "srvHint": "Zapisz bieżące ustawienia jako domyślne dla wszystkich użytkowników tego serwera. Użytkownicy nadal mogą personalizować swój wygląd. Zamontuj wolumin w /data/nh w kontenerze motywu, aby zachować je między aktualizacjami.", "srvSave": "Zapisz jako domyślne serwera", "srvClear": "Wyczyść domyślne serwera", "srvSaved": "Zapisano", "srvCleared": "Wyczyszczono", "srvErr": "Błąd — wymagane konto administratora", "crMode": "Półka Kontynuuj czytanie", "crCombine": "Połącz z karuzelą", "crSeparate": "Osobna półka", "crHide": "Ukryta", "logoUpload": "Wgraj z urządzenia…", "logoUploaded": "Wgrano ✓", "logoBadType": "Nieobsługiwany typ obrazu", "logoTooBig": "Obraz za duży (maks. 4 MB)", "logoOr": "lub", "bookPage": "Strona książki", "ratingsToggle": "Oceny społeczności (gwiazdki i recenzje)", "ratingsHint": "Oceny z krótkimi recenzjami na stronie książki, wspólne dla wszystkich użytkowników tego serwera."},
+    en: {"title": "Theme Customizations", "subtitle": "Personalise the look of your library. Changes save automatically.", "branding": "Branding & Style", "colour": "Colour & Theme", "homeCar": "Home & Carousel", "sidebar": "Sidebar Menus", "appName": "App Name", "appNameHint": "Leave empty for the default name.", "logoUrl": "Custom Logo URL", "logoHint": "Leave empty for the default logo.", "accent": "Accent Colour", "baseTheme": "Base Theme", "mainFont": "Main Font", "carousel": "Carousel Auto-Advance", "carouselHint": "Seconds between slides. Set to 0 to disable.", "customSeries": "Expanded Recent Series", "seriesCount": "Recent Series Count", "seriesCountHint": "How many series to show in the expanded shelf.", "hideShelves": "Hide Homepage Shelves", "sidebarHint": "Hide left-rail entries you don't use.", "showAppName": "Show App Name Text", "colorizeLogo": "Colorize Logo with Accent Colour", "hideSeries": "Hide Series", "hideCollections": "Hide Collections", "hideAuthors": "Hide Authors", "hideNarrators": "Hide Narrators", "hideStats": "Hide Stats", "hideRecentlyAdded": "Hide Recently Added", "hideRecentSeries": "Hide Recent Series", "hideContinueSeries": "Hide Continue Series", "hideListenAgain": "Hide Listen Again", "hideDiscover": "Hide Discover", "hideNewestAuthors": "Hide Newest Authors", "seriesCards": "Stacked Series Covers", "heroCarousel": "Home Carousel", "gearLabel": "Theme", "srvTitle": "Server Defaults", "srvHint": "Save your current settings as the defaults for every user of this server. Users can still personalise their own look on top. Mount a volume at /data/nh in the theme container to keep these across updates.", "srvSave": "Save as server defaults", "srvClear": "Clear server defaults", "srvSaved": "Saved", "srvCleared": "Cleared", "srvErr": "Failed — admin login required", "crMode": "Continue Reading Shelf", "crCombine": "Combine into carousel", "crSeparate": "Keep as separate shelf", "crHide": "Hidden", "logoUpload": "Upload from device…", "logoUploaded": "Uploaded ✓", "logoBadType": "Unsupported image type", "logoTooBig": "Image too large (max 4 MB)", "logoOr": "or", "bookPage": "Book Page", "ratingsToggle": "Community ratings (stars & reviews)", "ratingsHint": "Star ratings with short reviews on each book page, shared with every user of this server.", "searchCard": "Search", "gsToggle": "Search all libraries at once", "gsHint": "One merged result list across every library you can access, with a library badge on each match. Turn off to restore the per-library dropdown.", "gsNoResults": "No results", "gsSearching": "Searching…", "gsBooks": "Books", "gsSeries": "Series", "gsAuthors": "Authors", "spTitle": "Start Page", "spHint": "Open the app on a chosen library view every time (this browser only). Direct links are never redirected.", "spDefault": "App default", "spViewHome": "Home", "spViewLibrary": "Library", "spViewSeries": "Series", "spViewCollections": "Collections", "spViewAuthors": "Authors", "scSet": "Set series cover", "scRemove": "Remove series cover", "scEditDesc": "Edit series description", "scmTitle": "Series Page", "scmHint": "How the generated cover above a series title looks when no custom cover was uploaded (this browser only).", "scmDeck": "Layered deck", "scmFirst": "First book's cover", "scmGrid": "Cover grid (default)", "scmOff": "Hidden", "cardStars": "Star badges on book covers", "hoverPolish": "Card hover polish (softer dim, accent play, stars on hover)", "sectUser": "Your settings", "sectAdmin": "Administration", "lockTitle": "Feature switches", "lockHint": "Force-disable a feature for every user of this server. Wins over personal settings; others see it after their next reload.", "lockRatings": "Disable ratings everywhere", "lockCardRatings": "Disable star badges on covers", "lockGlobalSearch": "Disable global search", "lockHoverPolish": "Disable card hover polish", "lockHeroCarousel": "Disable home carousel", "lockedNote": "disabled by admin", "nrBooksForms": ["book", "books"], "nrSearch": "Filter narrators…", "nrSortName": "Name", "nrSortBooks": "Most books", "nrForms": ["Narrator", "Narrators"], "lfSort": "Rating", "lfRated": "Rated", "lfUnrated": "Unrated", "lfClear": "Clear", "lfNone": "No books match", "lfSection": "Rating", "sdSave": "Save", "sdClear": "Restore book description", "sdMore": "Read more", "sdLess": "Show less", "shSeries": "Series", "shBy": "by ", "shMore": " & more", "shBookForms": ["book", "books"], "shAvg": "book avg", "shRated": "rated"},
+    pl: {"title": "Personalizacja motywu", "subtitle": "Dostosuj wygląd swojej biblioteki. Zmiany zapisują się automatycznie.", "branding": "Marka i styl", "colour": "Kolor i motyw", "homeCar": "Strona główna i karuzela", "sidebar": "Menu boczne", "appName": "Nazwa aplikacji", "appNameHint": "Pozostaw puste, aby użyć domyślnej nazwy.", "logoUrl": "Adres URL własnego logo", "logoHint": "Pozostaw puste, aby użyć domyślnego logo.", "accent": "Kolor akcentu", "baseTheme": "Motyw bazowy", "mainFont": "Czcionka główna", "carousel": "Automatyczne przewijanie karuzeli", "carouselHint": "Sekundy między slajdami. Ustaw 0, aby wyłączyć.", "customSeries": "Rozszerzone ostatnie serie", "seriesCount": "Liczba ostatnich serii", "seriesCountHint": "Ile serii pokazać na rozszerzonej półce.", "hideShelves": "Ukryj półki strony głównej", "sidebarHint": "Ukryj nieużywane pozycje menu bocznego.", "showAppName": "Pokaż nazwę aplikacji", "colorizeLogo": "Pokoloruj logo kolorem akcentu", "hideSeries": "Ukryj Serie", "hideCollections": "Ukryj Kolekcje", "hideAuthors": "Ukryj Autorów", "hideNarrators": "Ukryj Lektorów", "hideStats": "Ukryj Statystyki", "hideRecentlyAdded": "Ukryj Ostatnio dodane", "hideRecentSeries": "Ukryj Ostatnie serie", "hideContinueSeries": "Ukryj Kontynuuj serię", "hideListenAgain": "Ukryj Słuchaj ponownie", "hideDiscover": "Ukryj Odkrywaj", "hideNewestAuthors": "Ukryj Najnowszych autorów", "seriesCards": "Nakładane okładki serii", "heroCarousel": "Karuzela na stronie głównej", "gearLabel": "Motyw", "srvTitle": "Domyślne ustawienia serwera", "srvHint": "Zapisz bieżące ustawienia jako domyślne dla wszystkich użytkowników tego serwera. Użytkownicy nadal mogą personalizować swój wygląd. Zamontuj wolumin w /data/nh w kontenerze motywu, aby zachować je między aktualizacjami.", "srvSave": "Zapisz jako domyślne serwera", "srvClear": "Wyczyść domyślne serwera", "srvSaved": "Zapisano", "srvCleared": "Wyczyszczono", "srvErr": "Błąd — wymagane konto administratora", "crMode": "Półka Kontynuuj czytanie", "crCombine": "Połącz z karuzelą", "crSeparate": "Osobna półka", "crHide": "Ukryta", "logoUpload": "Wgraj z urządzenia…", "logoUploaded": "Wgrano ✓", "logoBadType": "Nieobsługiwany typ obrazu", "logoTooBig": "Obraz za duży (maks. 4 MB)", "logoOr": "lub", "bookPage": "Strona książki", "ratingsToggle": "Oceny społeczności (gwiazdki i recenzje)", "ratingsHint": "Oceny z krótkimi recenzjami na stronie książki, wspólne dla wszystkich użytkowników tego serwera.", "searchCard": "Wyszukiwanie", "gsToggle": "Szukaj we wszystkich bibliotekach naraz", "gsHint": "Jedna lista wyników ze wszystkich dostępnych bibliotek, z odznaką biblioteki przy każdym trafieniu. Wyłącz, aby wrócić do wyszukiwania w bieżącej bibliotece.", "gsNoResults": "Brak wyników", "gsSearching": "Szukam…", "gsBooks": "Książki", "gsSeries": "Serie", "gsAuthors": "Autorzy", "spTitle": "Strona startowa", "spHint": "Otwieraj aplikację na wybranym widoku biblioteki (tylko ta przeglądarka). Linki bezpośrednie nie są przekierowywane.", "spDefault": "Domyślna aplikacji", "spViewHome": "Strona główna", "spViewLibrary": "Biblioteka", "spViewSeries": "Serie", "spViewCollections": "Kolekcje", "spViewAuthors": "Autorzy", "scSet": "Ustaw okładkę serii", "scRemove": "Usuń okładkę serii", "scEditDesc": "Edytuj opis serii", "scmTitle": "Strona serii", "scmHint": "Wygląd generowanej okładki nad tytułem serii, gdy nie wgrano własnej okładki (tylko ta przeglądarka).", "scmDeck": "Warstwowa talia", "scmFirst": "Okładka pierwszej książki", "scmGrid": "Siatka okładek (domyślnie)", "scmOff": "Ukryta", "cardStars": "Gwiazdki na okładkach książek", "hoverPolish": "Dopracowany hover kart (mniej przyciemnienia, akcentowy przycisk, gwiazdki po najechaniu)", "sectUser": "Twoje ustawienia", "sectAdmin": "Administracja", "lockTitle": "Przełączniki funkcji", "lockHint": "Wyłącza funkcję dla wszystkich użytkowników tego serwera. Nadpisuje ustawienia osobiste; inni zobaczą zmianę po odświeżeniu.", "lockRatings": "Wyłącz oceny całkowicie", "lockCardRatings": "Wyłącz gwiazdki na okładkach", "lockGlobalSearch": "Wyłącz wyszukiwanie globalne", "lockHoverPolish": "Wyłącz dopracowany hover kart", "lockHeroCarousel": "Wyłącz karuzelę główną", "lockedNote": "wyłączone przez administratora", "nrBooksForms": ["książka", "książki", "książek"], "nrSearch": "Filtruj lektorów…", "nrSortName": "Nazwa", "nrSortBooks": "Najwięcej książek", "nrForms": ["Lektor", "Lektorzy", "Lektorów"], "lfSort": "Ocena", "lfRated": "Ocenione", "lfUnrated": "Nieocenione", "lfClear": "Wyczyść", "lfNone": "Brak pasujących książek", "lfSection": "Ocena", "sdSave": "Zapisz", "sdClear": "Przywróć opis z książki", "sdMore": "Czytaj dalej", "sdLess": "Zwiń", "shSeries": "Seria", "shBy": "", "shMore": " i inni", "shBookForms": ["książka", "książki", "książek"], "shAvg": "śr. ocen książek", "shRated": "ocenionych"},
     de: {"title": "Design-Anpassungen", "subtitle": "Personalisiere das Aussehen deiner Bibliothek. Änderungen werden automatisch gespeichert.", "branding": "Branding & Stil", "colour": "Farbe & Design", "homeCar": "Startseite & Karussell", "sidebar": "Seitenmenüs", "appName": "App-Name", "appNameHint": "Leer lassen für den Standardnamen.", "logoUrl": "Eigene Logo-URL", "logoHint": "Leer lassen für das Standardlogo.", "accent": "Akzentfarbe", "baseTheme": "Basis-Design", "mainFont": "Hauptschriftart", "carousel": "Karussell-Autowechsel", "carouselHint": "Sekunden zwischen Folien. 0 zum Deaktivieren.", "customSeries": "Erweiterte neueste Serien", "seriesCount": "Anzahl neuester Serien", "seriesCountHint": "Wie viele Serien im erweiterten Regal gezeigt werden.", "hideShelves": "Startseiten-Regale ausblenden", "sidebarHint": "Nicht genutzte Menüeinträge ausblenden.", "showAppName": "App-Namen anzeigen", "colorizeLogo": "Logo mit Akzentfarbe einfärben", "hideSeries": "Serien ausblenden", "hideCollections": "Sammlungen ausblenden", "hideAuthors": "Autoren ausblenden", "hideNarrators": "Sprecher ausblenden", "hideStats": "Statistiken ausblenden", "hideRecentlyAdded": "Kürzlich hinzugefügt ausblenden", "hideRecentSeries": "Neueste Serien ausblenden", "hideContinueSeries": "Serie fortsetzen ausblenden", "hideListenAgain": "Erneut anhören ausblenden", "hideDiscover": "Entdecken ausblenden", "hideNewestAuthors": "Neueste Autoren ausblenden", "seriesCards": "Gestapelte Serien-Cover", "heroCarousel": "Startseiten-Karussell", "gearLabel": "Design", "srvTitle": "Server-Standardwerte", "srvHint": "Speichere deine aktuellen Einstellungen als Standard für alle Nutzer dieses Servers. Nutzer können ihren Look weiterhin selbst anpassen. Binde ein Volume unter /data/nh im Theme-Container ein, um sie über Updates hinweg zu behalten.", "srvSave": "Als Server-Standard speichern", "srvClear": "Server-Standard löschen", "srvSaved": "Gespeichert", "srvCleared": "Gelöscht", "srvErr": "Fehlgeschlagen — Admin-Anmeldung erforderlich", "crMode": "Weiterlesen-Regal", "crCombine": "In Karussell integrieren", "crSeparate": "Als eigenes Regal", "crHide": "Ausgeblendet"},
     fr: {"title": "Personnalisation du thème", "subtitle": "Personnalisez l’apparence de votre bibliothèque. Les modifications sont enregistrées automatiquement.", "branding": "Image de marque et style", "colour": "Couleur et thème", "homeCar": "Accueil et carrousel", "sidebar": "Menus latéraux", "appName": "Nom de l’application", "appNameHint": "Laissez vide pour le nom par défaut.", "logoUrl": "URL du logo personnalisé", "logoHint": "Laissez vide pour le logo par défaut.", "accent": "Couleur d’accent", "baseTheme": "Thème de base", "mainFont": "Police principale", "carousel": "Défilement automatique du carrousel", "carouselHint": "Secondes entre les diapositives. 0 pour désactiver.", "customSeries": "Séries récentes étendues", "seriesCount": "Nombre de séries récentes", "seriesCountHint": "Nombre de séries à afficher dans l’étagère étendue.", "hideShelves": "Masquer les étagères d’accueil", "sidebarHint": "Masquer les entrées du menu latéral inutilisées.", "showAppName": "Afficher le nom de l’application", "colorizeLogo": "Coloriser le logo avec la couleur d’accent", "hideSeries": "Masquer les séries", "hideCollections": "Masquer les collections", "hideAuthors": "Masquer les auteurs", "hideNarrators": "Masquer les narrateurs", "hideStats": "Masquer les statistiques", "hideRecentlyAdded": "Masquer Ajouts récents", "hideRecentSeries": "Masquer Séries récentes", "hideContinueSeries": "Masquer Continuer la série", "hideListenAgain": "Masquer Réécouter", "hideDiscover": "Masquer Découvrir", "hideNewestAuthors": "Masquer Nouveaux auteurs", "seriesCards": "Couvertures de séries empilées", "heroCarousel": "Carrousel d’accueil", "gearLabel": "Thème"},
     es: {"title": "Personalización del tema", "subtitle": "Personaliza el aspecto de tu biblioteca. Los cambios se guardan automáticamente.", "branding": "Marca y estilo", "colour": "Color y tema", "homeCar": "Inicio y carrusel", "sidebar": "Menús laterales", "appName": "Nombre de la aplicación", "appNameHint": "Déjalo vacío para el nombre predeterminado.", "logoUrl": "URL de logotipo personalizado", "logoHint": "Déjalo vacío para el logotipo predeterminado.", "accent": "Color de acento", "baseTheme": "Tema base", "mainFont": "Fuente principal", "carousel": "Avance automático del carrusel", "carouselHint": "Segundos entre diapositivas. 0 para desactivar.", "customSeries": "Series recientes ampliadas", "seriesCount": "Número de series recientes", "seriesCountHint": "Cuántas series mostrar en el estante ampliado.", "hideShelves": "Ocultar estantes de inicio", "sidebarHint": "Oculta entradas del menú lateral que no uses.", "showAppName": "Mostrar nombre de la aplicación", "colorizeLogo": "Colorear logotipo con el color de acento", "hideSeries": "Ocultar Series", "hideCollections": "Ocultar Colecciones", "hideAuthors": "Ocultar Autores", "hideNarrators": "Ocultar Narradores", "hideStats": "Ocultar Estadísticas", "hideRecentlyAdded": "Ocultar Añadidos recientemente", "hideRecentSeries": "Ocultar Series recientes", "hideContinueSeries": "Ocultar Continuar serie", "hideListenAgain": "Ocultar Escuchar de nuevo", "hideDiscover": "Ocultar Descubrir", "hideNewestAuthors": "Ocultar Autores más recientes", "seriesCards": "Portadas de series apiladas", "heroCarousel": "Carrusel de inicio", "gearLabel": "Tema"},
@@ -354,21 +612,55 @@
     gu: {"title": "થીમ કસ્ટમાઇઝેશન", "subtitle": "તમારી લાઇબ્રેરીનો દેખાવ વ્યક્તિગત બનાવો. ફેરફારો આપમેળે સાચવાય છે.", "branding": "બ્રાન્ડિંગ અને શૈલી", "colour": "રંગ અને થીમ", "homeCar": "હોમ અને કેરોસેલ", "sidebar": "સાઇડ મેનૂ", "appName": "એપ્લિકેશનનું નામ", "appNameHint": "ડિફૉલ્ટ નામ માટે ખાલી છોડો.", "logoUrl": "કસ્ટમ લોગો URL", "logoHint": "ડિફૉલ્ટ લોગો માટે ખાલી છોડો.", "accent": "એક્સેન્ટ રંગ", "baseTheme": "મૂળ થીમ", "mainFont": "મુખ્ય ફૉન્ટ", "carousel": "કેરોસેલ સ્વયં આગળ વધવું", "carouselHint": "સ્લાઇડ્સ વચ્ચે સેકંડ. બંધ કરવા 0.", "customSeries": "વિસ્તૃત તાજેતરની શ્રેણીઓ", "seriesCount": "તાજેતરની શ્રેણીઓની સંખ્યા", "seriesCountHint": "વિસ્તૃત શેલ્ફમાં કેટલી શ્રેણીઓ બતાવવી.", "hideShelves": "હોમપેજ શેલ્ફ છુપાવો", "sidebarHint": "ન વપરાતી સાઇડ મેનૂ આઇટમ છુપાવો.", "showAppName": "એપ્લિકેશનનું નામ બતાવો", "colorizeLogo": "લોગોને એક્સેન્ટ રંગથી રંગો", "hideSeries": "શ્રેણીઓ છુપાવો", "hideCollections": "સંગ્રહો છુપાવો", "hideAuthors": "લેખકો છુપાવો", "hideNarrators": "વાચકો છુપાવો", "hideStats": "આંકડા છુપાવો", "hideRecentlyAdded": "તાજેતરમાં ઉમેરાયેલ છુપાવો", "hideRecentSeries": "તાજેતરની શ્રેણીઓ છુપાવો", "hideContinueSeries": "શ્રેણી ચાલુ રાખો છુપાવો", "hideListenAgain": "ફરી સાંભળો છુપાવો", "hideDiscover": "શોધો છુપાવો", "hideNewestAuthors": "નવીનતમ લેખકો છુપાવો", "seriesCards": "સ્તરબદ્ધ શ્રેણી કવર", "heroCarousel": "હોમ કેરોસેલ", "gearLabel": "થીમ"},
     vi: {"title": "Tùy chỉnh giao diện", "subtitle": "Cá nhân hóa giao diện thư viện của bạn. Thay đổi được lưu tự động.", "branding": "Thương hiệu & phong cách", "colour": "Màu sắc & giao diện", "homeCar": "Trang chủ & băng chuyền", "sidebar": "Menu bên", "appName": "Tên ứng dụng", "appNameHint": "Để trống để dùng tên mặc định.", "logoUrl": "URL logo tùy chỉnh", "logoHint": "Để trống để dùng logo mặc định.", "accent": "Màu nhấn", "baseTheme": "Giao diện cơ bản", "mainFont": "Phông chữ chính", "carousel": "Tự động chuyển băng chuyền", "carouselHint": "Số giây giữa các slide. 0 để tắt.", "customSeries": "Bộ truyện gần đây mở rộng", "seriesCount": "Số bộ truyện gần đây", "seriesCountHint": "Số bộ truyện hiển thị trên kệ mở rộng.", "hideShelves": "Ẩn các kệ trang chủ", "sidebarHint": "Ẩn các mục menu bên bạn không dùng.", "showAppName": "Hiện tên ứng dụng", "colorizeLogo": "Tô màu logo bằng màu nhấn", "hideSeries": "Ẩn Bộ truyện", "hideCollections": "Ẩn Bộ sưu tập", "hideAuthors": "Ẩn Tác giả", "hideNarrators": "Ẩn Người đọc", "hideStats": "Ẩn Thống kê", "hideRecentlyAdded": "Ẩn Mới thêm gần đây", "hideRecentSeries": "Ẩn Bộ truyện gần đây", "hideContinueSeries": "Ẩn Tiếp tục bộ truyện", "hideListenAgain": "Ẩn Nghe lại", "hideDiscover": "Ẩn Khám phá", "hideNewestAuthors": "Ẩn Tác giả mới nhất", "seriesCards": "Bìa bộ truyện xếp chồng", "heroCarousel": "Băng chuyền trang chủ", "gearLabel": "Giao diện"}
   };
+  // merge the per-language additions (see NH_T_EXTRA above)
+  Object.keys(NH_T_EXTRA).forEach((lang) => {
+    if (PANEL_T[lang]) Object.assign(PANEL_T[lang], NH_T_EXTRA[lang]);
+  });
+
   function panelT() {
     const lang = getUserLanguage().split('-')[0].toLowerCase();
     return PANEL_T[lang] || PANEL_T.en;
   }
+
+  // book-details.js (loaded after this file) reuses the panel dictionary for
+  // its report dialog instead of carrying a second translation table — merged
+  // per key so a language missing one string falls back to English for that
+  // string only.
+  window.__nhPanelT = function () {
+    const T = panelT();
+    if (T === PANEL_T.en) return T;
+    const o = {};
+    Object.keys(PANEL_T.en).forEach((k) => { o[k] = T[k] !== undefined ? T[k] : PANEL_T.en[k]; });
+    Object.keys(T).forEach((k) => { if (o[k] === undefined) o[k] = T[k]; });
+    return o;
+  };
 
   function injectPanelStyles() {
     if (document.getElementById('nh-panel-style')) return;
     const s = document.createElement('style');
     s.id = 'nh-panel-style';
     s.textContent = `
-      #nh-settings-panel { max-width: 1180px; margin: 0 auto; padding: 4px 12px 80px; }
+      #nh-settings-panel { max-width: 1560px; margin: 0 auto; padding: 4px 12px 80px; }
+      /* wide only while the panel is the content; the config sub-rail is FIXED,
+         so the stretch must start right of it or the header slides underneath */
+      .configContent.nh-panel-wide { width: 100% !important; }
+      @media (min-width: 768px) {
+        .configContent.nh-panel-wide { width: calc(100% - 200px) !important; margin-left: 200px !important; }
+      }
       #nh-settings-panel .nh-head { margin-bottom: 30px; }
       #nh-settings-panel .nh-head h1 { font-family: var(--nh-serif); font-size: 2rem; font-weight: 600; color: var(--nh-amber); margin: 0; }
       #nh-settings-panel .nh-head p { color: var(--nh-muted, #9a9085); font-size: 0.95rem; margin: 6px 0 0; }
-      #nh-settings-panel .nh-grid { column-width: 360px; column-gap: 24px; }
+      #nh-settings-panel .nh-grid { column-width: 340px; column-gap: 22px; }
+      /* readability: a filter box in the header, calmer card rhythm */
+      #nh-settings-panel .nh-psearch-wrap { position: relative; margin-top: 16px; max-width: 420px; }
+      #nh-settings-panel .nh-psearch-wrap input { width: 100%; box-sizing: border-box; padding: 10px 34px 10px 38px; border-radius: 999px; border: 1px solid var(--nh-hairline, rgba(255,255,255,0.12)); background: rgba(0,0,0,0.25); color: var(--nh-text-1, #f4eee2); font-family: var(--nh-sans, system-ui); font-size: 0.9rem; }
+      #nh-settings-panel .nh-psearch-wrap input:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
+      #nh-settings-panel .nh-psearch-wrap input::-webkit-search-cancel-button { display: none; }
+      #nh-settings-panel .nh-psearch-ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 1.15rem; color: var(--nh-muted-2, #9a9085); pointer-events: none; }
+      #nh-settings-panel #nh-psearch-x { display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--nh-muted-2, #9a9085); font-size: 1.2rem; line-height: 1; cursor: pointer; padding: 4px 8px; }
+      #nh-settings-panel #nh-psearch-x:hover { color: var(--nh-text-1, #f4eee2); }
+      #nh-settings-panel .nh-psearch-none { display: none; color: var(--nh-muted-2, #9a9085); font-size: 0.9rem; margin: 14px 0 0; }
+      #nh-settings-panel .nh-card-title { display: flex; align-items: center; gap: 8px; }
       #nh-settings-panel .nh-card { background: var(--nh-raised, #221e1a); border: 1px solid var(--nh-hairline, rgba(255,255,255,0.06)); border-radius: 18px; padding: 24px 26px; box-shadow: 0 8px 24px rgba(0,0,0,0.30); width: 100%; box-sizing: border-box; margin-bottom: 24px; break-inside: avoid; -webkit-column-break-inside: avoid; }
       #nh-settings-panel .nh-card-title { font-family: var(--nh-serif); color: var(--nh-amber); font-size: 1.15rem; font-weight: 600; margin: 0 0 18px; padding-bottom: 12px; border-bottom: 1px solid var(--nh-hairline, rgba(255,255,255,0.08)); }
       #nh-settings-panel .nh-field { margin-bottom: 20px; }
@@ -384,13 +676,91 @@
       #nh-settings-panel .nh-divider { border-top: 1px solid var(--nh-hairline, rgba(255,255,255,0.08)); margin: 22px 0; }
       #nh-settings-modal { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; }
       #nh-settings-modal .nh-modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-      #nh-settings-modal .nh-modal-container { position: relative; z-index: 1; width: 90%; max-width: 1100px; max-height: 85vh; background: var(--nh-canvas, #0b1618); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.12)); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.7); }
+      #nh-settings-modal .nh-modal-container { position: relative; z-index: 1; width: 94%; max-width: 1560px; max-height: 85vh; background: var(--nh-canvas, #0b1618); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.12)); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.7); }
       #nh-settings-modal .nh-modal-close-row { display: flex; justify-content: flex-end; padding: 12px 16px 0; }
       #nh-settings-modal .nh-modal-close { background: none; border: none; color: var(--nh-text-2, #d8cfc2); font-size: 1.8rem; cursor: pointer; padding: 4px 12px; border-radius: 8px; line-height: 1; }
       #nh-settings-modal .nh-modal-close:hover { background: rgba(255,255,255,0.1); }
       #nh-settings-modal .nh-modal-body { flex: 1; overflow-y: auto; padding: 0 24px 32px; }
     `;
     document.head.appendChild(s);
+  }
+
+  // ===================== THEMED SELECT (nhSelectify) =====================
+  // A native <select>'s dropdown list is OS chrome — the white system list in
+  // Pawel's screenshot — and no CSS reaches it. Every themed select keeps its
+  // native element (hidden) as the source of truth for value + change events,
+  // and gets a frosted button/menu pair (same chrome as the unified menus).
+  // Handles async option rebuilds (start-page select) and optgroups (fonts).
+  function nhSelectify(sel, inline) {
+    if (!sel || sel.__nhSel) return;
+    sel.__nhSel = true;
+    const wrap = document.createElement('div');
+    wrap.className = 'nh-sel' + (inline ? ' nh-sel-inline' : '');
+    sel.parentNode.insertBefore(wrap, sel);
+    wrap.appendChild(sel);
+    sel.classList.add('nh-sel-native');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nh-sel-btn';
+    btn.setAttribute('aria-haspopup', 'listbox');
+    const lab = document.createElement('span'); lab.className = 'nh-sel-lab';
+    const chev = document.createElement('span'); chev.className = 'nh-sel-chev'; chev.textContent = '▾';
+    btn.appendChild(lab); btn.appendChild(chev);
+    const menu = document.createElement('div');
+    menu.className = 'nh-sel-menu';
+    menu.setAttribute('role', 'listbox');
+    wrap.appendChild(btn); wrap.appendChild(menu);
+
+    const close = () => {
+      wrap.classList.remove('nh-open', 'nh-up');
+      btn.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', outside, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+    const rebuild = () => {
+      const opt = sel.options[sel.selectedIndex];
+      lab.textContent = opt ? opt.textContent : '';
+      menu.textContent = '';
+      const addOpt = (o) => {
+        const row = document.createElement('div');
+        row.className = 'nh-sel-item' + (o.selected ? ' nh-on' : '');
+        row.setAttribute('role', 'option');
+        row.textContent = o.textContent;
+        if (o.style && o.style.fontFamily) row.style.fontFamily = o.style.fontFamily;
+        row.addEventListener('click', () => {
+          sel.value = o.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          rebuild();
+          close();
+        });
+        menu.appendChild(row);
+      };
+      Array.prototype.forEach.call(sel.children, (ch) => {
+        if (ch.tagName === 'OPTGROUP') {
+          const g = document.createElement('div'); g.className = 'nh-sel-group'; g.textContent = ch.label;
+          menu.appendChild(g);
+          Array.prototype.forEach.call(ch.children, addOpt);
+        } else if (ch.tagName === 'OPTION') addOpt(ch);
+      });
+    };
+    btn.addEventListener('click', () => {
+      if (wrap.classList.contains('nh-open')) { close(); return; }
+      rebuild();
+      wrap.classList.add('nh-open');
+      btn.setAttribute('aria-expanded', 'true');
+      // flip up only when there is no room below AND enough above
+      const r = btn.getBoundingClientRect();
+      const mh = Math.min(menu.scrollHeight + 12, Math.min(innerHeight * 0.42, 380));
+      wrap.classList.toggle('nh-up', r.bottom + mh > innerHeight - 10 && r.top - mh > 10);
+      document.addEventListener('pointerdown', outside, true);
+      document.addEventListener('keydown', onKey, true);
+    });
+    sel.addEventListener('change', rebuild);
+    // options that arrive async (start-page libraries) refresh the label
+    try { new MutationObserver(rebuild).observe(sel, { childList: true, subtree: true }); } catch (e) {}
+    rebuild();
   }
 
   function ensureConfigNavItem() {
@@ -417,6 +787,10 @@
 
       item.addEventListener('click', (e) => {
         e.preventDefault();
+        // Non-admins cannot open /config — ABS's guard bounces them to home
+        // (Pawel: "click customizations … brings me back to the home screen").
+        // They get the same modal the appbar gear opens, right where they are.
+        if (!isUserAdmin()) { openSettingsModal(); return; }
         const onConfigRoot = /\/config\/?$/.test(window.location.pathname);
         if (onConfigRoot) {
           if (window.location.hash !== NH_HASH) window.location.hash = NH_HASH;
@@ -467,6 +841,12 @@
       <div class="nh-head">
         <h1>${T.title}</h1>
         <p>${T.subtitle}</p>
+        <div class="nh-psearch-wrap">
+          <span class="material-symbols nh-psearch-ico">search</span>
+          <input type="search" id="nh-psearch" placeholder="${T.pSearch || PANEL_T.en.pSearch}" autocomplete="off">
+          <button type="button" id="nh-psearch-x" aria-label="clear">×</button>
+        </div>
+        <p class="nh-psearch-none" id="nh-psearch-none">${T.pSearchNone || PANEL_T.en.pSearchNone}</p>
       </div>
 
       <div class="nh-grid">
@@ -543,6 +923,49 @@
           <div class="nh-field" id="nh-tog-ratings"></div>
         </section>
 
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.searchCard || PANEL_T.en.searchCard}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.gsHint || PANEL_T.en.gsHint}</p>
+          <div class="nh-field" id="nh-tog-gsearch"></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.pgCard || PANEL_T.en.pgCard}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.pgHint || PANEL_T.en.pgHint}</p>
+          <div class="nh-field" id="nh-tog-pages"></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.bsCard || PANEL_T.en.bsCard}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.bsHint || PANEL_T.en.bsHint}</p>
+          <div class="nh-field" id="nh-booksites"></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.fsCard || PANEL_T.en.fsCard}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.fsHint || PANEL_T.en.fsHint}</p>
+          <div class="nh-field" id="nh-tog-familystats"></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.apCard || PANEL_T.en.apCard}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.apHint || PANEL_T.en.apHint}</p>
+          <div class="nh-field" id="nh-tog-autoplay"></div>
+          <div class="nh-field" id="nh-tog-finishedtools"></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.spTitle || PANEL_T.en.spTitle}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.spHint || PANEL_T.en.spHint}</p>
+          <div class="nh-field"><div id="nh-sel-startpage"></div></div>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.scmTitle || PANEL_T.en.scmTitle}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.scmHint || PANEL_T.en.scmHint}</p>
+          <div class="nh-field"><div id="nh-sel-seriescover"></div></div>
+        </section>
+
       </div>
     `;
 
@@ -568,8 +991,125 @@
     homeTogs.appendChild(createToggle(T.hideListenAgain, 'hideHomeListenAgain'));
     homeTogs.appendChild(createToggle(T.hideDiscover, 'hideHomeDiscover'));
     homeTogs.appendChild(createToggle(T.hideNewestAuthors, 'hideHomeNewAuthors'));
+    homeTogs.appendChild(createToggle(T.rfToggle || PANEL_T.en.rfToggle, 'showRateFinished'));
+    nhHomeOrderUI(homeTogs);
 
     panel.querySelector('#nh-tog-ratings').appendChild(createToggle(T.ratingsToggle || PANEL_T.en.ratingsToggle, 'showRatings'));
+    panel.querySelector('#nh-tog-ratings').appendChild(createToggle(T.cardStars || PANEL_T.en.cardStars, 'showCardRatings'));
+    panel.querySelector('#nh-tog-gsearch').appendChild(createToggle(T.gsToggle || PANEL_T.en.gsToggle, 'globalSearch'));
+    panel.querySelector('#nh-tog-familystats').appendChild(createToggle(T.fsToggle || PANEL_T.en.fsToggle, 'familyStats'));
+    panel.querySelector('#nh-tog-autoplay').appendChild(createToggle(T.apToggle || PANEL_T.en.apToggle, 'autoplaySeries'));
+    panel.querySelector('#nh-tog-finishedtools').appendChild(createToggle(T.fdToggle || PANEL_T.en.fdToggle, 'finishedTools'));
+    // Live filter over the cards: with this many settings, being able to type
+    // "rating" and see only what matters is the difference between usable and not.
+    (function panelSearch() {
+      const box = panel.querySelector('#nh-psearch');
+      const clear = panel.querySelector('#nh-psearch-x');
+      const none = panel.querySelector('#nh-psearch-none');
+      if (!box) return;
+      const run = function () {
+        const q = box.value.trim().toLowerCase();
+        const cards = panel.querySelectorAll('.nh-grid > .nh-card');
+        let shown = 0;
+        cards.forEach(function (c) {
+          const hit = !q || c.textContent.toLowerCase().indexOf(q) !== -1;
+          c.style.display = hit ? '' : 'none';
+          if (hit) shown++;
+        });
+        // section headings only make sense while everything is visible
+        panel.querySelectorAll('.nh-grid > .nh-sect').forEach(function (h) { h.style.display = q ? 'none' : ''; });
+        if (none) none.style.display = (q && !shown) ? 'block' : 'none';
+        if (clear) clear.style.display = q ? 'block' : 'none';
+      };
+      box.addEventListener('input', run);
+      box.addEventListener('search', run);
+      if (clear) clear.addEventListener('click', function () { box.value = ''; run(); box.focus(); });
+      run();
+    })();
+    (function pageToggles() {
+      const host = panel.querySelector('#nh-tog-pages');
+      if (!host) return;
+      [['pgNarrators', 'narratorsCards'], ['pgCollections', 'collectionsPages'], ['pgUsers', 'usersCards'],
+        ['pgStats', 'statsRanking'], ['pgPhoto', 'accountPhoto'], ['pgCinematic', 'cinematicBg'],
+        ['pgTransitions', 'pageTransitions']].forEach(function (o) {
+        host.appendChild(createToggle(T[o[0]] || PANEL_T.en[o[0]], o[1]));
+      });
+    })();
+    (function buildBookSites() {
+      const host = panel.querySelector('#nh-booksites');
+      if (!host) return;
+      const lang = getUserLanguage().split('-')[0].toLowerCase();
+      const chosen = nhBookSitesSelected().slice();
+      const groups = [
+        [T.bsGlobal || PANEL_T.en.bsGlobal, NH_BOOK_SITES.filter((x) => x.langs.indexOf('*') !== -1)],
+        [T.bsLocal || PANEL_T.en.bsLocal, NH_BOOK_SITES.filter((x) => x.langs.indexOf(lang) !== -1)],
+        [T.bsOther || PANEL_T.en.bsOther, NH_BOOK_SITES.filter((x) => x.langs.indexOf('*') === -1 && x.langs.indexOf(lang) === -1)],
+      ];
+      groups.forEach(function (g) {
+        if (!g[1].length) return;
+        const h = document.createElement('div');
+        h.className = 'nh-bs-group';
+        h.textContent = g[0];
+        host.appendChild(h);
+        const wrap = document.createElement('div');
+        wrap.className = 'nh-bs-list';
+        g[1].forEach(function (site) {
+          const lab = document.createElement('label');
+          lab.className = 'nh-bs-check';
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = chosen.indexOf(site.id) !== -1;
+          cb.addEventListener('change', function () {
+            const cur = nhBookSitesSelected().slice();
+            const at = cur.indexOf(site.id);
+            if (cb.checked && at === -1) cur.push(site.id);
+            if (!cb.checked && at !== -1) cur.splice(at, 1);
+            nhSettings.bookSites = cur;
+            saveSettings();
+            document.querySelectorAll('.nh-bs-row').forEach(function (r) { r.dataset.sig = ''; });
+          });
+          const txt = document.createElement('span');
+          txt.textContent = site.name;
+          lab.appendChild(cb); lab.appendChild(txt);
+          wrap.appendChild(lab);
+        });
+        host.appendChild(wrap);
+      });
+    })();
+    (function () {
+      const sel = document.createElement('select');
+      sel.className = 'nh-er-select';
+      const addOpt = (v, txt) => { const o = document.createElement('option'); o.value = v; o.textContent = txt; sel.appendChild(o); };
+      addOpt('', T.spDefault || PANEL_T.en.spDefault);
+      nhGsLibs().then((libs) => {
+        if (!libs) return;
+        const views = [
+          ['home', T.spViewHome || PANEL_T.en.spViewHome],
+          ['bookshelf', T.spViewLibrary || PANEL_T.en.spViewLibrary],
+          ['series', T.spViewSeries || PANEL_T.en.spViewSeries],
+          ['collections', T.spViewCollections || PANEL_T.en.spViewCollections],
+          ['authors', T.spViewAuthors || PANEL_T.en.spViewAuthors]
+        ];
+        libs.forEach((lib) => views.forEach((v) => addOpt(v[0] + ':' + lib.id, lib.name + ' — ' + v[1])));
+        if (nhSettings.startPage && sel.querySelector('option[value="' + nhSettings.startPage + '"]')) sel.value = nhSettings.startPage;
+      });
+      sel.addEventListener('change', () => { nhSettings.startPage = sel.value; saveSettings(); });
+      panel.querySelector('#nh-sel-startpage').appendChild(sel);
+      nhSelectify(sel);
+    })();
+    (function () {
+      const sel = document.createElement('select');
+      sel.className = 'nh-er-select';
+      [['deck', T.scmDeck || PANEL_T.en.scmDeck], ['first', T.scmFirst || PANEL_T.en.scmFirst], ['grid', T.scmGrid || PANEL_T.en.scmGrid], ['off', T.scmOff || PANEL_T.en.scmOff]].forEach((o) => {
+        const opt = document.createElement('option');
+        opt.value = o[0]; opt.textContent = o[1];
+        sel.appendChild(opt);
+      });
+      sel.value = ['deck', 'first', 'grid', 'off'].indexOf(nhSettings.seriesCoverMode) !== -1 ? nhSettings.seriesCoverMode : 'grid';
+      sel.addEventListener('change', () => { nhSettings.seriesCoverMode = sel.value; saveSettings(); });
+      panel.querySelector('#nh-sel-seriescover').appendChild(sel);
+      nhSelectify(sel);
+    })();
 
     const bindInput = (id, key) => {
       const el = panel.querySelector(id);
@@ -648,6 +1188,7 @@
         saveSettings(); applySettings();
       });
       panel.querySelector('#nh-sel-crmode').appendChild(sel);
+      nhSelectify(sel);
     })();
 
     const customPicker = panel.querySelector('#nh-in-color');
@@ -671,10 +1212,22 @@
       if (brandingCard) { const card = brandingCard.closest('.nh-card'); if (card) card.style.display = 'none'; }
     }
 
+    // B6: labelled sections — personal settings above, administration below.
+    const gridEl = panel.querySelector('.nh-grid') || panel;
+    const mkSect = (txt) => {
+      const h = document.createElement('div');
+      h.className = 'nh-sect';
+      h.textContent = txt;
+      return h;
+    };
+    gridEl.insertBefore(mkSect(T.sectUser || PANEL_T.en.sectUser), gridEl.firstChild);
+
+
     // Server defaults — admins, config page only (not the quick modal). Saves the
     // current settings to the proxy (/data/nh volume) via an admin-authenticated PUT;
     // nginx injects the file into every page before first paint.
     if (isConfigPage && isUserAdmin()) {
+      gridEl.appendChild(mkSect(T.sectAdmin || PANEL_T.en.sectAdmin));
       const sec = document.createElement('section');
       sec.className = 'nh-card';
       sec.innerHTML = '<h2 class="nh-card-title">' + (T.srvTitle || PANEL_T.en.srvTitle) + '</h2>' +
@@ -711,8 +1264,66 @@
           flashBtn(btn, r.ok ? okText : (T.srvErr || PANEL_T.en.srvErr));
         }).catch(function () { flashBtn(btn, T.srvErr || PANEL_T.en.srvErr); });
       };
+      // What to include (Pawel): the save used to be all-or-nothing, so making
+      // one thing the server default dragged every other current setting along
+      // with it. Four areas, all on by default; an UNCHECKED area keeps whatever
+      // the server config already holds for those keys rather than overwriting it.
+      const NH_SRV_GROUPS = {
+        look: ['appName', 'showLogoText', 'colorizeLogo', 'logoUrl', 'accentColor', 'baseTheme', 'mainFont', 'fontScale'],
+        home: ['carouselTiming', 'showHeroCarousel', 'showCustomRecentSeries', 'recentSeriesCount', 'customSeriesCards',
+          'continueReadingMode', 'showRateFinished', 'homeOrder',
+          'hideHomeRecentlyAdded', 'hideHomeRecentSeries', 'hideHomeContinueSeries', 'hideHomeListenAgain', 'hideHomeDiscover', 'hideHomeNewAuthors',
+          'hideRailSeries', 'hideRailCollections', 'hideRailAuthors', 'hideRailNarrators', 'hideRailStats'],
+        pages: ['narratorsCards', 'collectionsPages', 'usersCards', 'statsRanking', 'accountPhoto', 'cinematicBg', 'pageTransitions', 'seriesCoverMode'],
+        // rest = every key not claimed above, so new settings are covered
+        // automatically instead of silently never becoming saveable.
+      };
+      const grpRow = document.createElement('div');
+      grpRow.id = 'nh-srv-groups';
+      const grpLbl = document.createElement('p');
+      grpLbl.className = 'nh-hint';
+      grpLbl.style.margin = '10px 0 4px';
+      grpLbl.textContent = T.srvPick || PANEL_T.en.srvPick;
+      const grpChecks = {};
+      const grpNames = [['look', T.branding || PANEL_T.en.branding], ['home', T.homeCar || PANEL_T.en.homeCar],
+        ['pages', T.pgCard || PANEL_T.en.pgCard], ['rest', T.srvGRest || PANEL_T.en.srvGRest]];
+      grpNames.forEach(function (g) {
+        const lab = document.createElement('label');
+        lab.className = 'nh-srv-grp';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox'; cb.checked = true;
+        grpChecks[g[0]] = cb;
+        lab.appendChild(cb);
+        lab.appendChild(document.createTextNode(' ' + g[1]));
+        grpRow.appendChild(lab);
+      });
+      const btnRow = sec.querySelector('#nh-srv-save').parentElement;
+      btnRow.parentElement.insertBefore(grpLbl, btnRow);
+      btnRow.parentElement.insertBefore(grpRow, btnRow);
+
       sec.querySelector('#nh-srv-save').addEventListener('click', function (e) {
-        putServerConfig(nhSettings, e.target, T.srvSaved || PANEL_T.en.srvSaved);
+        const btn = e.target;
+        const claimed = [].concat(NH_SRV_GROUPS.look, NH_SRV_GROUPS.home, NH_SRV_GROUPS.pages);
+        const pickKey = function (k) {
+          if (NH_SRV_GROUPS.look.indexOf(k) >= 0) return grpChecks.look.checked;
+          if (NH_SRV_GROUPS.home.indexOf(k) >= 0) return grpChecks.home.checked;
+          if (NH_SRV_GROUPS.pages.indexOf(k) >= 0) return grpChecks.pages.checked;
+          return grpChecks.rest.checked;
+        };
+        // Merge over what is already saved, so an unchecked area is left alone
+        // instead of vanishing from the server defaults.
+        fetch('/_nh/server-config.json', { headers: { Authorization: 'Bearer ' + nhAbsToken() } })
+          .then(function (r) { return r.ok ? r.json() : {}; })
+          .catch(function () { return {}; })
+          .then(function (existing) {
+            const merged = Object.assign({}, existing && typeof existing === 'object' ? existing : {});
+            Object.keys(nhSettings).forEach(function (k) { if (pickKey(k)) merged[k] = nhSettings[k]; });
+            // keep any active kill-switches alongside the saved defaults
+            Object.keys(NH_LOCKS).forEach(function (lk) { if (uiServerSettings[lk]) merged[lk] = true; });
+            // runtime-only: never persist the build stamp (see uiServerSettings)
+            delete merged.themeVersion;
+            putServerConfig(merged, btn, T.srvSaved || PANEL_T.en.srvSaved);
+          });
       });
       sec.querySelector('#nh-srv-clear').addEventListener('click', function (e) {
         const btn = e.target;
@@ -730,6 +1341,40 @@
           setTimeout(function () { window.location.reload(); }, 700);
         }).catch(function () { flashBtn(btn, T.srvErr || PANEL_T.en.srvErr); });
       });
+
+      // Feature kill-switches (B6): red toggles, applied to THIS session at
+      // once and to everyone else on their next reload.
+      // (The reported-problems queue moved to the ACCOUNT page in round 12 —
+      // the appbar badge's button leads there; see nhAccountReports.)
+      const lockSec = document.createElement('section');
+      lockSec.className = 'nh-card';
+      lockSec.innerHTML = '<h2 class="nh-card-title">' + (T.lockTitle || PANEL_T.en.lockTitle) + '</h2>' +
+        '<p class="nh-hint" style="margin-bottom:8px;">' + (T.lockHint || PANEL_T.en.lockHint) + '</p>' +
+        '<div id="nh-locks"></div><span class="nh-rt-status" id="nh-locks-status"></span>';
+      const locksHost = lockSec.querySelector('#nh-locks');
+      const locksStatus = lockSec.querySelector('#nh-locks-status');
+      const lockBtnCls = (on) => 'border rounded-full flex items-center ' + (on ? 'bg-error border-error justify-end' : 'bg-primary border-black-100 justify-start');
+      Object.keys(NH_LOCKS).forEach(function (lk) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center py-2 cursor-pointer group';
+        row.innerHTML = '<div><button type="button" class="' + lockBtnCls(!!uiServerSettings[lk]) + '" style="width: 40px; transition: all 0.2s;">' +
+          '<span class="rounded-full border border-black-50 shadow-sm bg-white" style="width: 20px; height: 20px;"></span></button></div>' +
+          '<p class="pl-4 text-gray-200 group-hover:text-white transition-colors text-sm"></p>';
+        row.querySelector('p').textContent = T[lk] || PANEL_T.en[lk];
+        row.addEventListener('click', function () {
+          if (uiServerSettings[lk]) delete uiServerSettings[lk];
+          else uiServerSettings[lk] = true;
+          row.querySelector('button').className = lockBtnCls(!!uiServerSettings[lk]);
+          // apply to this session immediately
+          if (uiServerSettings[lk]) nhSettings[NH_LOCKS[lk]] = false;
+          applySettings();
+          // persist: existing server config + lock flags
+          const cfg = Object.assign({}, uiServerSettings);
+          putServerConfig(cfg, locksStatus, '✓');
+        });
+        locksHost.appendChild(row);
+      });
+      gridEl.appendChild(lockSec);
     }
 
     return panel;
@@ -887,6 +1532,10 @@
       }
       if (!panel) return;
       panel.style.display = '';
+      // ABS pins .configContent at 900px — two columns forever. Only while the
+      // panel is the page's content may it stretch (class off again below, so
+      // the native Settings page keeps its stock measure).
+      configPage.classList.add('nh-panel-wide');
       Array.from(configPage.children).forEach(ch => {
         if (ch !== panel && ch.style.display !== 'none') {
           ch.dataset.nhHidden = ch.style.display || '';
@@ -896,6 +1545,7 @@
       setNavActive(true);
     } else {
       if (panel) panel.style.display = 'none';
+      configPage.classList.remove('nh-panel-wide');
       Array.from(configPage.children).forEach(ch => {
         if (ch !== panel && ch.dataset.nhHidden !== undefined) {
           ch.style.display = ch.dataset.nhHidden;
@@ -954,46 +1604,46 @@
   const getTranslations = (langCode) => {
     const baseLang = langCode.split('-')[0].toLowerCase();
     const dictionary = {
-      en: {"morning": "GOOD MORNING", "afternoon": "GOOD AFTERNOON", "evening": "GOOD EVENING", "welcome": "Welcome back", "pickup": "Pick up where you left off", "by": "by", "continue": "Continue", "left": "left", "narratedBy": "Narrated by", "unknown": "Unknown Title", "fallbackDesc": "Resume your current audiobook."},
-      pl: {"morning": "DZIEŃ DOBRY", "afternoon": "DOBREGO POPOŁUDNIA", "evening": "DOBRY WIECZÓR", "welcome": "Witaj ponownie", "pickup": "Wróć do słuchania", "by": "", "continue": "Kontynuuj", "left": "pozostało", "narratedBy": "Czyta", "unknown": "Nieznany tytuł", "fallbackDesc": "Wznów słuchanie obecnego audiobooka."},
-      de: {"morning": "GUTEN MORGEN", "afternoon": "GUTEN TAG", "evening": "GUTEN ABEND", "welcome": "Willkommen zurück", "pickup": "Mache da weiter, wo du aufgehört hast", "by": "von", "continue": "Weiter", "left": "verbleibend", "narratedBy": "Gelesen von", "unknown": "Unbekannter Titel", "fallbackDesc": "Setze dein aktuelles Hörbuch fort."},
-      fr: {"morning": "BONJOUR", "afternoon": "BON APRÈS-MIDI", "evening": "BONSOIR", "welcome": "Bon retour", "pickup": "Reprenez là où vous vous étiez arrêté", "by": "de", "continue": "Continuer", "left": "restant", "narratedBy": "Lu par", "unknown": "Titre inconnu", "fallbackDesc": "Reprenez votre livre audio actuel."},
-      es: {"morning": "BUENOS DÍAS", "afternoon": "BUENAS TARDES", "evening": "BUENAS NOCHES", "welcome": "Bienvenido de nuevo", "pickup": "Continúa donde lo dejaste", "by": "de", "continue": "Continuar", "left": "restante", "narratedBy": "Narrado por", "unknown": "Título desconocido", "fallbackDesc": "Reanuda tu audiolibro actual."},
-      it: {"morning": "BUONGIORNO", "afternoon": "BUON POMERIGGIO", "evening": "BUONASERA", "welcome": "Bentornato", "pickup": "Riprendi da dove avevi interrotto", "by": "di", "continue": "Continua", "left": "rimanente", "narratedBy": "Narrato da", "unknown": "Titolo sconosciuto", "fallbackDesc": "Riprendi il tuo audiolibro attuale."},
-      pt: {"morning": "BOM DIA", "afternoon": "BOA TARDE", "evening": "BOA NOITE", "welcome": "Bem-vindo de volta", "pickup": "Continue de onde parou", "by": "de", "continue": "Continuar", "left": "restante", "narratedBy": "Narrado por", "unknown": "Título desconhecido", "fallbackDesc": "Retome seu audiolivro atual."},
-      nl: {"morning": "GOEDEMORGEN", "afternoon": "GOEDEMIDDAG", "evening": "GOEDENAVOND", "welcome": "Welkom terug", "pickup": "Ga verder waar je gebleven was", "by": "door", "continue": "Doorgaan", "left": "resterend", "narratedBy": "Verteld door", "unknown": "Onbekende titel", "fallbackDesc": "Hervat je huidige luisterboek."},
-      cs: {"morning": "DOBRÉ RÁNO", "afternoon": "DOBRÉ ODPOLEDNE", "evening": "DOBRÝ VEČER", "welcome": "Vítejte zpět", "pickup": "Pokračujte tam, kde jste skončili", "by": "od", "continue": "Pokračovat", "left": "zbývá", "narratedBy": "Čte", "unknown": "Neznámý název", "fallbackDesc": "Pokračujte ve své aktuální audioknize."},
-      sk: {"morning": "DOBRÉ RÁNO", "afternoon": "DOBRÉ POPOLUDNIE", "evening": "DOBRÝ VEČER", "welcome": "Vitajte späť", "pickup": "Pokračujte tam, kde ste skončili", "by": "od", "continue": "Pokračovať", "left": "zostáva", "narratedBy": "Číta", "unknown": "Neznámy názov", "fallbackDesc": "Pokračujte vo svojej aktuálnej audioknihe."},
-      da: {"morning": "GODMORGEN", "afternoon": "GOD EFTERMIDDAG", "evening": "GODAFTEN", "welcome": "Velkommen tilbage", "pickup": "Fortsæt hvor du slap", "by": "af", "continue": "Fortsæt", "left": "tilbage", "narratedBy": "Fortalt af", "unknown": "Ukendt titel", "fallbackDesc": "Genoptag din aktuelle lydbog."},
-      sv: {"morning": "GOD MORGON", "afternoon": "GOD EFTERMIDDAG", "evening": "GOD KVÄLL", "welcome": "Välkommen tillbaka", "pickup": "Fortsätt där du slutade", "by": "av", "continue": "Fortsätt", "left": "kvar", "narratedBy": "Uppläst av", "unknown": "Okänd titel", "fallbackDesc": "Återuppta din nuvarande ljudbok."},
-      no: {"morning": "GOD MORGEN", "afternoon": "GOD ETTERMIDDAG", "evening": "GOD KVELD", "welcome": "Velkommen tilbake", "pickup": "Fortsett der du slapp", "by": "av", "continue": "Fortsett", "left": "igjen", "narratedBy": "Fortalt av", "unknown": "Ukjent tittel", "fallbackDesc": "Gjenoppta din nåværende lydbok."},
-      fi: {"morning": "HYVÄÄ HUOMENTA", "afternoon": "HYVÄÄ PÄIVÄÄ", "evening": "HYVÄÄ ILTAA", "welcome": "Tervetuloa takaisin", "pickup": "Jatka siitä mihin jäit", "by": "–", "continue": "Jatka", "left": "jäljellä", "narratedBy": "Lukija", "unknown": "Tuntematon nimi", "fallbackDesc": "Jatka nykyistä äänikirjaasi."},
-      ru: {"morning": "ДОБРОЕ УТРО", "afternoon": "ДОБРЫЙ ДЕНЬ", "evening": "ДОБРЫЙ ВЕЧЕР", "welcome": "С возвращением", "pickup": "Продолжите с того места, где остановились", "by": "—", "continue": "Продолжить", "left": "осталось", "narratedBy": "Читает", "unknown": "Неизвестное название", "fallbackDesc": "Продолжите текущую аудиокнигу."},
-      uk: {"morning": "ДОБРОГО РАНКУ", "afternoon": "ДОБРОГО ДНЯ", "evening": "ДОБРОГО ВЕЧОРА", "welcome": "З поверненням", "pickup": "Продовжте з того місця, де зупинилися", "by": "—", "continue": "Продовжити", "left": "залишилося", "narratedBy": "Читає", "unknown": "Невідома назва", "fallbackDesc": "Продовжте свою поточну аудіокнигу."},
-      be: {"morning": "ДОБРАЙ РАНІЦЫ", "afternoon": "ДОБРЫ ДЗЕНЬ", "evening": "ДОБРЫ ВЕЧАР", "welcome": "З вяртаннем", "pickup": "Працягніце з таго месца, дзе спыніліся", "by": "—", "continue": "Працягнуць", "left": "засталося", "narratedBy": "Чытае", "unknown": "Невядомая назва", "fallbackDesc": "Працягніце сваю бягучую аўдыякнігу."},
-      bg: {"morning": "ДОБРО УТРО", "afternoon": "ДОБЪР ДЕН", "evening": "ДОБЪР ВЕЧЕР", "welcome": "Добре дошли отново", "pickup": "Продължете откъдето спряхте", "by": "от", "continue": "Продължи", "left": "остават", "narratedBy": "Разказва", "unknown": "Неизвестно заглавие", "fallbackDesc": "Продължете текущата си аудиокнига."},
-      hr: {"morning": "DOBRO JUTRO", "afternoon": "DOBAR DAN", "evening": "DOBRA VEČER", "welcome": "Dobrodošli natrag", "pickup": "Nastavite gdje ste stali", "by": "od", "continue": "Nastavi", "left": "preostalo", "narratedBy": "Pripovijeda", "unknown": "Nepoznat naslov", "fallbackDesc": "Nastavite svoju trenutnu audioknjigu."},
-      sl: {"morning": "DOBRO JUTRO", "afternoon": "DOBER DAN", "evening": "DOBER VEČER", "welcome": "Dobrodošli nazaj", "pickup": "Nadaljujte, kjer ste ostali", "by": "od", "continue": "Nadaljuj", "left": "preostalo", "narratedBy": "Pripoveduje", "unknown": "Neznan naslov", "fallbackDesc": "Nadaljujte svojo trenutno zvočno knjigo."},
-      hu: {"morning": "JÓ REGGELT", "afternoon": "JÓ NAPOT", "evening": "JÓ ESTÉT", "welcome": "Üdvözöljük újra", "pickup": "Folytassa ott, ahol abbahagyta", "by": "–", "continue": "Folytatás", "left": "van hátra", "narratedBy": "Felolvassa", "unknown": "Ismeretlen cím", "fallbackDesc": "Folytassa jelenlegi hangoskönyvét."},
-      ro: {"morning": "BUNĂ DIMINEAȚA", "afternoon": "BUNĂ ZIUA", "evening": "BUNĂ SEARA", "welcome": "Bine ați revenit", "pickup": "Continuați de unde ați rămas", "by": "de", "continue": "Continuă", "left": "rămas", "narratedBy": "Narat de", "unknown": "Titlu necunoscut", "fallbackDesc": "Reluați audiobook-ul curent."},
-      lt: {"morning": "LABAS RYTAS", "afternoon": "LABA DIENA", "evening": "LABAS VAKARAS", "welcome": "Sveiki sugrįžę", "pickup": "Tęskite nuo ten, kur baigėte", "by": "–", "continue": "Tęsti", "left": "liko", "narratedBy": "Skaito", "unknown": "Nežinomas pavadinimas", "fallbackDesc": "Tęskite dabartinę garso knygą."},
-      lv: {"morning": "LABRĪT", "afternoon": "LABDIEN", "evening": "LABVAKAR", "welcome": "Laipni lūdzam atpakaļ", "pickup": "Turpiniet no vietas, kur pārtraucāt", "by": "–", "continue": "Turpināt", "left": "atlicis", "narratedBy": "Lasa", "unknown": "Nezināms nosaukums", "fallbackDesc": "Turpiniet savu pašreizējo audiogrāmatu."},
-      et: {"morning": "TERE HOMMIKUST", "afternoon": "TERE PÄEVAST", "evening": "TERE ÕHTUST", "welcome": "Tere tulemast tagasi", "pickup": "Jätkake sealt, kus pooleli jäite", "by": "–", "continue": "Jätka", "left": "jäänud", "narratedBy": "Loeb", "unknown": "Tundmatu pealkiri", "fallbackDesc": "Jätkake oma praegust audioraamatut."},
-      el: {"morning": "ΚΑΛΗΜΕΡΑ", "afternoon": "ΚΑΛΟ ΑΠΟΓΕΥΜΑ", "evening": "ΚΑΛΗΣΠΕΡΑ", "welcome": "Καλώς ήρθατε ξανά", "pickup": "Συνεχίστε από εκεί που σταματήσατε", "by": "του", "continue": "Συνέχεια", "left": "απομένουν", "narratedBy": "Αφήγηση", "unknown": "Άγνωστος τίτλος", "fallbackDesc": "Συνεχίστε το τρέχον ηχητικό σας βιβλίο."},
-      tr: {"morning": "GÜNAYDIN", "afternoon": "İYİ GÜNLER", "evening": "İYİ AKŞAMLAR", "welcome": "Tekrar hoş geldiniz", "pickup": "Kaldığınız yerden devam edin", "by": "–", "continue": "Devam Et", "left": "kaldı", "narratedBy": "Seslendiren", "unknown": "Bilinmeyen Başlık", "fallbackDesc": "Mevcut sesli kitabınıza devam edin."},
-      ca: {"morning": "BON DIA", "afternoon": "BONA TARDA", "evening": "BONA NIT", "welcome": "Benvingut de nou", "pickup": "Continueu on ho vau deixar", "by": "de", "continue": "Continua", "left": "restant", "narratedBy": "Narrat per", "unknown": "Títol desconegut", "fallbackDesc": "Repreneu el vostre audiollibre actual."},
-      eu: {"morning": "EGUN ON", "afternoon": "ARRATSALDE ON", "evening": "GABON", "welcome": "Ongi etorri berriro", "pickup": "Jarraitu utzi zenuen tokitik", "by": "–", "continue": "Jarraitu", "left": "geratzen da", "narratedBy": "Narratzailea", "unknown": "Izenburu ezezaguna", "fallbackDesc": "Jarraitu zure uneko audioliburua."},
-      is: {"morning": "GÓÐAN DAGINN", "afternoon": "GÓÐAN DAG", "evening": "GOTT KVÖLD", "welcome": "Velkomin aftur", "pickup": "Haltu áfram þar sem frá var horfið", "by": "eftir", "continue": "Halda áfram", "left": "eftir", "narratedBy": "Lesari", "unknown": "Óþekktur titill", "fallbackDesc": "Haltu áfram með núverandi hljóðbók."},
-      ja: {"morning": "おはようございます", "afternoon": "こんにちは", "evening": "こんばんは", "welcome": "おかえりなさい", "pickup": "続きから再開しましょう", "by": "著", "continue": "続きを聴く", "left": "残り", "narratedBy": "朗読", "unknown": "不明なタイトル", "fallbackDesc": "現在のオーディオブックを再開します。"},
-      ko: {"morning": "좋은 아침입니다", "afternoon": "좋은 오후입니다", "evening": "좋은 저녁입니다", "welcome": "다시 오신 것을 환영합니다", "pickup": "멈춘 곳에서 이어서 들어보세요", "by": "저자", "continue": "계속 듣기", "left": "남음", "narratedBy": "낭독", "unknown": "알 수 없는 제목", "fallbackDesc": "현재 오디오북을 이어서 들으세요."},
-      zh: {"morning": "早上好", "afternoon": "下午好", "evening": "晚上好", "welcome": "欢迎回来", "pickup": "从上次的位置继续", "by": "作者", "continue": "继续", "left": "剩余", "narratedBy": "朗读", "unknown": "未知标题", "fallbackDesc": "继续收听当前有声书。"},
-      ar: {"morning": "صباح الخير", "afternoon": "مساء الخير", "evening": "مساء الخير", "welcome": "مرحبًا بعودتك", "pickup": "تابع من حيث توقفت", "by": "لـ", "continue": "متابعة", "left": "متبقٍ", "narratedBy": "بصوت", "unknown": "عنوان غير معروف", "fallbackDesc": "استأنف كتابك الصوتي الحالي."},
-      he: {"morning": "בוקר טוב", "afternoon": "צהריים טובים", "evening": "ערב טוב", "welcome": "ברוך שובך", "pickup": "המשך מהמקום שבו הפסקת", "by": "מאת", "continue": "המשך", "left": "נותרו", "narratedBy": "מקריא", "unknown": "כותרת לא ידועה", "fallbackDesc": "המשך את ספר האודיו הנוכחי שלך."},
-      fa: {"morning": "صبح بخیر", "afternoon": "عصر بخیر", "evening": "شب بخیر", "welcome": "خوش برگشتید", "pickup": "از جایی که رها کردید ادامه دهید", "by": "از", "continue": "ادامه", "left": "باقی‌مانده", "narratedBy": "با صدای", "unknown": "عنوان ناشناخته", "fallbackDesc": "کتاب صوتی فعلی خود را از سر بگیرید."},
-      hi: {"morning": "सुप्रभात", "afternoon": "शुभ दोपहर", "evening": "शुभ संध्या", "welcome": "वापसी पर स्वागत है", "pickup": "जहाँ छोड़ा था वहीं से जारी रखें", "by": "द्वारा", "continue": "जारी रखें", "left": "शेष", "narratedBy": "वाचन", "unknown": "अज्ञात शीर्षक", "fallbackDesc": "अपनी वर्तमान ऑडियोबुक फिर से शुरू करें।"},
-      bn: {"morning": "সুপ্রভাত", "afternoon": "শুভ অপরাহ্ন", "evening": "শুভ সন্ধ্যা", "welcome": "ফিরে আসায় স্বাগতম", "pickup": "যেখানে থেমেছিলেন সেখান থেকে চালিয়ে যান", "by": "লেখক", "continue": "চালিয়ে যান", "left": "বাকি", "narratedBy": "পাঠ করেছেন", "unknown": "অজানা শিরোনাম", "fallbackDesc": "আপনার বর্তমান অডিওবুক আবার শুরু করুন।"},
-      gu: {"morning": "સુપ્રભાત", "afternoon": "શુભ બપોર", "evening": "શુભ સાંજ", "welcome": "પાછા આવવા બદલ સ્વાગત છે", "pickup": "જ્યાં છોડ્યું હતું ત્યાંથી ચાલુ રાખો", "by": "દ્વારા", "continue": "ચાલુ રાખો", "left": "બાકી", "narratedBy": "વાચન", "unknown": "અજાણ્યું શીર્ષક", "fallbackDesc": "તમારી વર્તમાન ઑડિયોબુક ફરી શરૂ કરો."},
-      vi: {"morning": "CHÀO BUỔI SÁNG", "afternoon": "CHÀO BUỔI CHIỀU", "evening": "CHÀO BUỔI TỐI", "welcome": "Chào mừng trở lại", "pickup": "Tiếp tục từ chỗ bạn đã dừng", "by": "của", "continue": "Tiếp tục", "left": "còn lại", "narratedBy": "Người đọc", "unknown": "Tiêu đề không xác định", "fallbackDesc": "Tiếp tục sách nói hiện tại của bạn."}
+      en: {"morning": "GOOD MORNING", "afternoon": "GOOD AFTERNOON", "evening": "GOOD EVENING", "welcome": "Welcome back", "pickup": "Your books are waiting", "by": "by", "continue": "Continue", "left": "left", "narratedBy": "Narrated by", "unknown": "Unknown Title", "fallbackDesc": "Pick up right where you left off."},
+      pl: {"morning": "DZIEŃ DOBRY", "afternoon": "DOBREGO POPOŁUDNIA", "evening": "DOBRY WIECZÓR", "welcome": "Witaj ponownie", "pickup": "Twoje książki czekają", "by": "", "continue": "Kontynuuj", "left": "pozostało", "narratedBy": "Czyta", "unknown": "Nieznany tytuł", "fallbackDesc": "Ciąg dalszy czeka."},
+      de: {"morning": "GUTEN MORGEN", "afternoon": "GUTEN TAG", "evening": "GUTEN ABEND", "welcome": "Willkommen zurück", "pickup": "Deine Bücher warten", "by": "von", "continue": "Weiter", "left": "verbleibend", "narratedBy": "Gelesen von", "unknown": "Unbekannter Titel", "fallbackDesc": "Mach genau dort weiter, wo du aufgehört hast."},
+      fr: {"morning": "BONJOUR", "afternoon": "BON APRÈS-MIDI", "evening": "BONSOIR", "welcome": "Bon retour", "pickup": "Vos livres vous attendent", "by": "de", "continue": "Continuer", "left": "restant", "narratedBy": "Lu par", "unknown": "Titre inconnu", "fallbackDesc": "Reprenez exactement là où vous vous étiez arrêté."},
+      es: {"morning": "BUENOS DÍAS", "afternoon": "BUENAS TARDES", "evening": "BUENAS NOCHES", "welcome": "Bienvenido de nuevo", "pickup": "Tus libros te esperan", "by": "de", "continue": "Continuar", "left": "restante", "narratedBy": "Narrado por", "unknown": "Título desconocido", "fallbackDesc": "Continúa justo donde lo dejaste."},
+      it: {"morning": "BUONGIORNO", "afternoon": "BUON POMERIGGIO", "evening": "BUONASERA", "welcome": "Bentornato", "pickup": "I tuoi libri ti aspettano", "by": "di", "continue": "Continua", "left": "rimanente", "narratedBy": "Narrato da", "unknown": "Titolo sconosciuto", "fallbackDesc": "Riprendi esattamente da dove avevi interrotto."},
+      pt: {"morning": "BOM DIA", "afternoon": "BOA TARDE", "evening": "BOA NOITE", "welcome": "Bem-vindo de volta", "pickup": "Seus livros te esperam", "by": "de", "continue": "Continuar", "left": "restante", "narratedBy": "Narrado por", "unknown": "Título desconhecido", "fallbackDesc": "Continue exatamente de onde parou."},
+      nl: {"morning": "GOEDEMORGEN", "afternoon": "GOEDEMIDDAG", "evening": "GOEDENAVOND", "welcome": "Welkom terug", "pickup": "Je boeken wachten op je", "by": "door", "continue": "Doorgaan", "left": "resterend", "narratedBy": "Verteld door", "unknown": "Onbekende titel", "fallbackDesc": "Ga verder waar je gebleven was."},
+      cs: {"morning": "DOBRÉ RÁNO", "afternoon": "DOBRÉ ODPOLEDNE", "evening": "DOBRÝ VEČER", "welcome": "Vítejte zpět", "pickup": "Vaše knihy čekají", "by": "od", "continue": "Pokračovat", "left": "zbývá", "narratedBy": "Čte", "unknown": "Neznámý název", "fallbackDesc": "Pokračujte přesně tam, kde jste skončili."},
+      sk: {"morning": "DOBRÉ RÁNO", "afternoon": "DOBRÉ POPOLUDNIE", "evening": "DOBRÝ VEČER", "welcome": "Vitajte späť", "pickup": "Vaše knihy čakajú", "by": "od", "continue": "Pokračovať", "left": "zostáva", "narratedBy": "Číta", "unknown": "Neznámy názov", "fallbackDesc": "Pokračujte presne tam, kde ste skončili."},
+      da: {"morning": "GODMORGEN", "afternoon": "GOD EFTERMIDDAG", "evening": "GODAFTEN", "welcome": "Velkommen tilbage", "pickup": "Dine bøger venter", "by": "af", "continue": "Fortsæt", "left": "tilbage", "narratedBy": "Fortalt af", "unknown": "Ukendt titel", "fallbackDesc": "Fortsæt lige hvor du slap."},
+      sv: {"morning": "GOD MORGON", "afternoon": "GOD EFTERMIDDAG", "evening": "GOD KVÄLL", "welcome": "Välkommen tillbaka", "pickup": "Dina böcker väntar", "by": "av", "continue": "Fortsätt", "left": "kvar", "narratedBy": "Uppläst av", "unknown": "Okänd titel", "fallbackDesc": "Fortsätt precis där du slutade."},
+      no: {"morning": "GOD MORGEN", "afternoon": "GOD ETTERMIDDAG", "evening": "GOD KVELD", "welcome": "Velkommen tilbake", "pickup": "Bøkene dine venter", "by": "av", "continue": "Fortsett", "left": "igjen", "narratedBy": "Fortalt av", "unknown": "Ukjent tittel", "fallbackDesc": "Fortsett akkurat der du slapp."},
+      fi: {"morning": "HYVÄÄ HUOMENTA", "afternoon": "HYVÄÄ PÄIVÄÄ", "evening": "HYVÄÄ ILTAA", "welcome": "Tervetuloa takaisin", "pickup": "Kirjasi odottavat", "by": "–", "continue": "Jatka", "left": "jäljellä", "narratedBy": "Lukija", "unknown": "Tuntematon nimi", "fallbackDesc": "Jatka juuri siitä mihin jäit."},
+      ru: {"morning": "ДОБРОЕ УТРО", "afternoon": "ДОБРЫЙ ДЕНЬ", "evening": "ДОБРЫЙ ВЕЧЕР", "welcome": "С возвращением", "pickup": "Ваши книги ждут", "by": "—", "continue": "Продолжить", "left": "осталось", "narratedBy": "Читает", "unknown": "Неизвестное название", "fallbackDesc": "Продолжите с того места, где остановились."},
+      uk: {"morning": "ДОБРОГО РАНКУ", "afternoon": "ДОБРОГО ДНЯ", "evening": "ДОБРОГО ВЕЧОРА", "welcome": "З поверненням", "pickup": "Ваші книги чекають", "by": "—", "continue": "Продовжити", "left": "залишилося", "narratedBy": "Читає", "unknown": "Невідома назва", "fallbackDesc": "Продовжте з того місця, де зупинилися."},
+      be: {"morning": "ДОБРАЙ РАНІЦЫ", "afternoon": "ДОБРЫ ДЗЕНЬ", "evening": "ДОБРЫ ВЕЧАР", "welcome": "З вяртаннем", "pickup": "Вашы кнігі чакаюць", "by": "—", "continue": "Працягнуць", "left": "засталося", "narratedBy": "Чытае", "unknown": "Невядомая назва", "fallbackDesc": "Працягніце з таго месца, дзе спыніліся."},
+      bg: {"morning": "ДОБРО УТРО", "afternoon": "ДОБЪР ДЕН", "evening": "ДОБЪР ВЕЧЕР", "welcome": "Добре дошли отново", "pickup": "Вашите книги чакат", "by": "от", "continue": "Продължи", "left": "остават", "narratedBy": "Разказва", "unknown": "Неизвестно заглавие", "fallbackDesc": "Продължете точно откъдето спряхте."},
+      hr: {"morning": "DOBRO JUTRO", "afternoon": "DOBAR DAN", "evening": "DOBRA VEČER", "welcome": "Dobrodošli natrag", "pickup": "Vaše knjige čekaju", "by": "od", "continue": "Nastavi", "left": "preostalo", "narratedBy": "Pripovijeda", "unknown": "Nepoznat naslov", "fallbackDesc": "Nastavite točno gdje ste stali."},
+      sl: {"morning": "DOBRO JUTRO", "afternoon": "DOBER DAN", "evening": "DOBER VEČER", "welcome": "Dobrodošli nazaj", "pickup": "Vaše knjige čakajo", "by": "od", "continue": "Nadaljuj", "left": "preostalo", "narratedBy": "Pripoveduje", "unknown": "Neznan naslov", "fallbackDesc": "Nadaljujte točno tam, kjer ste ostali."},
+      hu: {"morning": "JÓ REGGELT", "afternoon": "JÓ NAPOT", "evening": "JÓ ESTÉT", "welcome": "Üdvözöljük újra", "pickup": "A könyveid várnak rád", "by": "–", "continue": "Folytatás", "left": "van hátra", "narratedBy": "Felolvassa", "unknown": "Ismeretlen cím", "fallbackDesc": "Folytassa pontosan ott, ahol abbahagyta."},
+      ro: {"morning": "BUNĂ DIMINEAȚA", "afternoon": "BUNĂ ZIUA", "evening": "BUNĂ SEARA", "welcome": "Bine ați revenit", "pickup": "Cărțile tale te așteaptă", "by": "de", "continue": "Continuă", "left": "rămas", "narratedBy": "Narat de", "unknown": "Titlu necunoscut", "fallbackDesc": "Continuați exact de unde ați rămas."},
+      lt: {"morning": "LABAS RYTAS", "afternoon": "LABA DIENA", "evening": "LABAS VAKARAS", "welcome": "Sveiki sugrįžę", "pickup": "Tavo knygos laukia", "by": "–", "continue": "Tęsti", "left": "liko", "narratedBy": "Skaito", "unknown": "Nežinomas pavadinimas", "fallbackDesc": "Tęskite tiksliai nuo ten, kur baigėte."},
+      lv: {"morning": "LABRĪT", "afternoon": "LABDIEN", "evening": "LABVAKAR", "welcome": "Laipni lūdzam atpakaļ", "pickup": "Tavas grāmatas gaida", "by": "–", "continue": "Turpināt", "left": "atlicis", "narratedBy": "Lasa", "unknown": "Nezināms nosaukums", "fallbackDesc": "Turpiniet tieši no vietas, kur pārtraucāt."},
+      et: {"morning": "TERE HOMMIKUST", "afternoon": "TERE PÄEVAST", "evening": "TERE ÕHTUST", "welcome": "Tere tulemast tagasi", "pickup": "Sinu raamatud ootavad", "by": "–", "continue": "Jätka", "left": "jäänud", "narratedBy": "Loeb", "unknown": "Tundmatu pealkiri", "fallbackDesc": "Jätkake täpselt sealt, kus pooleli jäite."},
+      el: {"morning": "ΚΑΛΗΜΕΡΑ", "afternoon": "ΚΑΛΟ ΑΠΟΓΕΥΜΑ", "evening": "ΚΑΛΗΣΠΕΡΑ", "welcome": "Καλώς ήρθατε ξανά", "pickup": "Τα βιβλία σας περιμένουν", "by": "του", "continue": "Συνέχεια", "left": "απομένουν", "narratedBy": "Αφήγηση", "unknown": "Άγνωστος τίτλος", "fallbackDesc": "Συνεχίστε από εκεί που σταματήσατε."},
+      tr: {"morning": "GÜNAYDIN", "afternoon": "İYİ GÜNLER", "evening": "İYİ AKŞAMLAR", "welcome": "Tekrar hoş geldiniz", "pickup": "Kitapların seni bekliyor", "by": "–", "continue": "Devam Et", "left": "kaldı", "narratedBy": "Seslendiren", "unknown": "Bilinmeyen Başlık", "fallbackDesc": "Kaldığınız yerden devam edin."},
+      ca: {"morning": "BON DIA", "afternoon": "BONA TARDA", "evening": "BONA NIT", "welcome": "Benvingut de nou", "pickup": "Els teus llibres t’esperen", "by": "de", "continue": "Continua", "left": "restant", "narratedBy": "Narrat per", "unknown": "Títol desconegut", "fallbackDesc": "Continueu exactament on ho vau deixar."},
+      eu: {"morning": "EGUN ON", "afternoon": "ARRATSALDE ON", "evening": "GABON", "welcome": "Ongi etorri berriro", "pickup": "Zure liburuak zain daude", "by": "–", "continue": "Jarraitu", "left": "geratzen da", "narratedBy": "Narratzailea", "unknown": "Izenburu ezezaguna", "fallbackDesc": "Jarraitu utzi zenuen toki beretik."},
+      is: {"morning": "GÓÐAN DAGINN", "afternoon": "GÓÐAN DAG", "evening": "GOTT KVÖLD", "welcome": "Velkomin aftur", "pickup": "Bækurnar þínar bíða", "by": "eftir", "continue": "Halda áfram", "left": "eftir", "narratedBy": "Lesari", "unknown": "Óþekktur titill", "fallbackDesc": "Haltu áfram þar sem frá var horfið."},
+      ja: {"morning": "おはようございます", "afternoon": "こんにちは", "evening": "こんばんは", "welcome": "おかえりなさい", "pickup": "本があなたを待っています", "by": "著", "continue": "再開する", "left": "残り", "narratedBy": "朗読", "unknown": "不明なタイトル", "fallbackDesc": "続きから再開しましょう。"},
+      ko: {"morning": "좋은 아침입니다", "afternoon": "좋은 오후입니다", "evening": "좋은 저녁입니다", "welcome": "다시 오신 것을 환영합니다", "pickup": "책이 기다리고 있어요", "by": "저자", "continue": "계속하기", "left": "남음", "narratedBy": "낭독", "unknown": "알 수 없는 제목", "fallbackDesc": "멈춘 곳에서 이어서 시작하세요."},
+      zh: {"morning": "早上好", "afternoon": "下午好", "evening": "晚上好", "welcome": "欢迎回来", "pickup": "你的书在等你", "by": "作者", "continue": "继续", "left": "剩余", "narratedBy": "朗读", "unknown": "未知标题", "fallbackDesc": "从上次的位置继续。"},
+      ar: {"morning": "صباح الخير", "afternoon": "مساء الخير", "evening": "مساء الخير", "welcome": "مرحبًا بعودتك", "pickup": "كتبك بانتظارك", "by": "لـ", "continue": "متابعة", "left": "متبقٍ", "narratedBy": "بصوت", "unknown": "عنوان غير معروف", "fallbackDesc": "تابع من حيث توقفت."},
+      he: {"morning": "בוקר טוב", "afternoon": "צהריים טובים", "evening": "ערב טוב", "welcome": "ברוך שובך", "pickup": "הספרים שלך מחכים לך", "by": "מאת", "continue": "המשך", "left": "נותרו", "narratedBy": "מקריא", "unknown": "כותרת לא ידועה", "fallbackDesc": "המשך מהמקום שבו הפסקת."},
+      fa: {"morning": "صبح بخیر", "afternoon": "عصر بخیر", "evening": "شب بخیر", "welcome": "خوش برگشتید", "pickup": "کتاب‌هایت منتظر تو هستند", "by": "از", "continue": "ادامه", "left": "باقی‌مانده", "narratedBy": "با صدای", "unknown": "عنوان ناشناخته", "fallbackDesc": "از جایی که رها کردید ادامه دهید."},
+      hi: {"morning": "सुप्रभात", "afternoon": "शुभ दोपहर", "evening": "शुभ संध्या", "welcome": "वापसी पर स्वागत है", "pickup": "आपकी किताबें आपका इंतज़ार कर रही हैं", "by": "द्वारा", "continue": "जारी रखें", "left": "शेष", "narratedBy": "वाचन", "unknown": "अज्ञात शीर्षक", "fallbackDesc": "जहाँ छोड़ा था वहीं से जारी रखें।"},
+      bn: {"morning": "সুপ্রভাত", "afternoon": "শুভ অপরাহ্ন", "evening": "শুভ সন্ধ্যা", "welcome": "ফিরে আসায় স্বাগতম", "pickup": "আপনার বইগুলি অপেক্ষা করছে", "by": "লেখক", "continue": "চালিয়ে যান", "left": "বাকি", "narratedBy": "পাঠ করেছেন", "unknown": "অজানা শিরোনাম", "fallbackDesc": "যেখানে থেমেছিলেন সেখান থেকে চালিয়ে যান।"},
+      gu: {"morning": "સુપ્રભાત", "afternoon": "શુભ બપોર", "evening": "શુભ સાંજ", "welcome": "પાછા આવવા બદલ સ્વાગત છે", "pickup": "તમારાં પુસ્તકો રાહ જુએ છે", "by": "દ્વારા", "continue": "ચાલુ રાખો", "left": "બાકી", "narratedBy": "વાચન", "unknown": "અજાણ્યું શીર્ષક", "fallbackDesc": "જ્યાં છોડ્યું હતું ત્યાંથી ચાલુ રાખો."},
+      vi: {"morning": "CHÀO BUỔI SÁNG", "afternoon": "CHÀO BUỔI CHIỀU", "evening": "CHÀO BUỔI TỐI", "welcome": "Chào mừng trở lại", "pickup": "Sách của bạn đang chờ", "by": "của", "continue": "Tiếp tục", "left": "còn lại", "narratedBy": "Người đọc", "unknown": "Tiêu đề không xác định", "fallbackDesc": "Tiếp tục từ chỗ bạn đã dừng."}
     };
     return dictionary[baseLang] || dictionary.en;
   };
@@ -1025,6 +1675,32 @@
     });
   }
 
+  // The appbar's account button shows only a name; give it the user's photo
+  // (Pawel). Vue owns that button, so re-check the circle is still there every
+  // tick rather than trusting a stamp.
+  function nhAccountAvatar() {
+    if (nhSettings.accountPhoto === false) return;
+    const link = document.querySelector('a[href$="/account"]');
+    if (!link) return;
+    const nameSpan = link.querySelector('span.items-center') || link.firstElementChild;
+    if (!nameSpan) return;
+    const uid = nhHeroUser();
+    if (!uid) return;
+    nhScFetch(); // avatars map
+    const sig = uid + ':' + ((nhSc.avatars && nhSc.avatars[uid]) || '') + ':' + (nhSc.ts || 0);
+    let av = nameSpan.querySelector('.nh-acc-av');
+    if (av && nameSpan.dataset.nhAv === sig) return;
+    nameSpan.dataset.nhAv = sig;
+    if (av) av.remove();
+    av = document.createElement('span');
+    av.className = 'nh-acc-av';
+    let uname = '';
+    try { uname = (window.$nuxt.$store.state.user.user.username) || ''; } catch (e) {}
+    av.textContent = (uname || '?').charAt(0).toUpperCase();
+    nhAvatarInto(av, uid);
+    nameSpan.insertBefore(av, nameSpan.firstChild);
+  }
+
   function localizeRail() {
     const lang = getUserLanguage().split('-')[0].toLowerCase();
     if (lang !== 'pl') return;
@@ -1045,6 +1721,52 @@
     return `${m}m`;
   }
 
+  // Phones: the hero must fit the first screen whole — no CTA or shadow lip
+  // past the fold (Pawel). The cover is the one flexible block, so overflow is
+  // taken out of it via a CSS var on the CONTAINER (every slide shares it, so
+  // all slides keep one size); an extreme shortfall also tightens the
+  // description to two lines. innerHeight at load is the small viewport
+  // (browser chrome visible), so the worst case is what gets measured.
+  function nhHeroFit(cont) {
+    cont = cont || document.getElementById('nh-hero-container');
+    if (!cont) return;
+    // Two measured passes: the first takes the overflow out of the cover (and
+    // tightens the description when that cannot cover it); the second measures
+    // the REAL post-reflow height and trims the remainder, down to a hard
+    // 64px cover. Bounded — never a resize loop.
+    const overBy = () => {
+      const r = cont.getBoundingClientRect();
+      const scroller = cont.closest('#bookshelf') || document.getElementById('bookshelf');
+      const unscrolledTop = r.top + (scroller ? scroller.scrollTop : 0);
+      return r.height - (innerHeight - unscrolledTop - 12);
+    };
+    const apply = () => {
+      if (!document.contains(cont)) return;
+      cont.style.removeProperty('--nh-hero-cover-h');
+      cont.classList.remove('nh-hero-tight');
+      if (innerWidth > 640) return;
+      const img = cont.querySelector('.nh-hero-banner > div:nth-child(4) img');
+      if (!img) return;
+      const over = overBy();
+      if (over <= 0) return;
+      const ih = img.getBoundingClientRect().height || 0;
+      let target = Math.max(64, ih - over);
+      cont.style.setProperty('--nh-hero-cover-h', Math.round(target) + 'px');
+      if (ih - target < over) cont.classList.add('nh-hero-tight');
+      requestAnimationFrame(() => {
+        if (!document.contains(cont)) return;
+        const still = overBy();
+        if (still > 0) {
+          target = Math.max(64, target - still);
+          cont.style.setProperty('--nh-hero-cover-h', Math.round(target) + 'px');
+        }
+      });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(apply));
+  }
+  let nhHeroFitT = null;
+  window.addEventListener('resize', () => { clearTimeout(nhHeroFitT); nhHeroFitT = setTimeout(() => nhHeroFit(), 200); });
+
   // ==========================================
   // 4. HERO CAROUSEL INJECTION
   // ==========================================
@@ -1054,10 +1776,9 @@
     let coverUrl = "";
     let id = null;
 
+    id = nhCardItemId(card);
     const coverImg = card.querySelector('img[cy-id="coverImage"], img');
     if (coverImg && coverImg.src) {
-      const match = coverImg.src.match(/\/api\/items\/([^/]+)\/cover/);
-      if (match) id = match[1];
       try {
         const urlObj = new URL(coverImg.src, window.location.origin);
         urlObj.searchParams.set('width', '800');
@@ -1183,12 +1904,113 @@
       } catch (e) {}
     }
 
-    return { card, title, author, coverUrl, leftSideText, rightSideText, progressPercent, tagsHtml, description, hasAudio, hasEbook };
+    return { card, id, title, author, coverUrl, leftSideText, rightSideText, progressPercent, tagsHtml, description, hasAudio, hasEbook };
   }
 
-  function slideMarkup(d, t) {
+  // ---- hero snapshot cache (B2) -------------------------------------------
+  // The carousel used to wait a full item-fetch before it could paint. We keep a
+  // per-library localStorage snapshot of the last visit's slides keyed by item id,
+  // paint from it the instant the Continue Listening cards are in the DOM, then
+  // refresh every slide in the background and patch the fields in place.
+  const NH_HERO_CACHE_V = 2;
+  const NH_HERO_CACHE_TTL = 14 * 24 * 3600 * 1000;
+
+  // The card's library-item id, synchronously. The card's own element id is only
+  // positional (`book-card-3`), so the Vue instance is the reliable source; the cover
+  // URL is the fallback, and it is EMPTY for books without a cover (ABS serves
+  // book_placeholder.jpg) — which is why the id has to come from Vue first.
+  function nhCardItemId(card) {
+    if (!card) return null;
+    try {
+      const host = card.id && card.id.indexOf('book-card-') === 0 ? card : (card.closest('[id^="book-card-"]') || card);
+      const vm = host.__vue__;
+      const li = vm && (vm.libraryItem || (vm.$props && vm.$props.libraryItem));
+      if (li && li.id) return li.id;
+    } catch (e) {}
+    const img = card.querySelector('img[cy-id="coverImage"], img');
+    const m = img && img.src && img.src.match(/\/api\/items\/([^/]+)\/cover/);
+    return m ? m[1] : null;
+  }
+
+  function nhHeroCacheKey() { return 'nh-hero-cache:' + (getLibIdNH() || 'default'); }
+
+  // Progress is per user, so a snapshot is only valid for whoever wrote it — on a
+  // shared browser the next user must not see the previous one's position flash by.
+  function nhHeroUser() {
+    try {
+      const u = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.user && window.$nuxt.$store.state.user.user;
+      if (u && (u.id || u.username)) return u.id || u.username;
+      return JSON.parse(localStorage.getItem('vuex') || '{}')?.user?.user?.id || '';
+    } catch (e) { return ''; }
+  }
+
+  // Returns {id: slideData} for the current library, or null. Translated strings are
+  // baked into the records (tags, "left"), so a language switch invalidates the snapshot.
+  function nhHeroCacheRead(langCode) {
+    try {
+      const raw = localStorage.getItem(nhHeroCacheKey());
+      if (!raw) return null;
+      const rec = JSON.parse(raw);
+      if (!rec || rec.v !== NH_HERO_CACHE_V || rec.lang !== langCode) return null;
+      if (rec.user !== nhHeroUser()) return null;
+      if (!rec.ts || Date.now() - rec.ts > NH_HERO_CACHE_TTL) return null;
+      const map = {};
+      (rec.slides || []).forEach(function (s) { if (s && s.id) map[s.id] = s; });
+      return map;
+    } catch (e) { return null; }
+  }
+
+  function nhHeroCacheWrite(langCode, slides) {
+    try {
+      const keep = slides.filter(function (s) { return s && s.id; }).map(function (s) {
+        const c = {};
+        Object.keys(s).forEach(function (k) { if (k !== 'card') c[k] = s[k]; });
+        return c;
+      });
+      if (!keep.length) return;
+      localStorage.setItem(nhHeroCacheKey(), JSON.stringify({ v: NH_HERO_CACHE_V, lang: langCode, user: nhHeroUser(), ts: Date.now(), slides: keep }));
+    } catch (e) {}
+  }
+
+  // Which action buttons a slide carries — the only part patching can't fix in place.
+  function nhHeroSig(d) { return (d.hasAudio ? 'a' : '') + (d.hasEbook ? 'e' : ''); }
+
+  // Update a rendered slide to fresh data without tearing it down (no flicker, no
+  // scroll jump). Falls back to a full re-render when the button set changed.
+  function nhPatchSlide(el, oldD, newD, t, wire) {
+    if (!el) return;
+    if (nhHeroSig(oldD) !== nhHeroSig(newD)) {
+      el.innerHTML = slideInner(newD, t);
+      wire(el, newD);
+      return;
+    }
+    const q = function (sel) { return el.querySelector(sel); };
+    const setText = function (sel, v) {
+      const n = q(sel);
+      if (n && n.textContent.trim() !== String(v)) n.textContent = v;
+    };
+    setText('.nh-hero-title', newD.title);
+    setText('.nh-hero-author', (t.by ? t.by + ' ' : '') + newD.author);
+    setText('.nh-hero-desc', newD.description);
+    setText('.nh-hero-prog-left', newD.leftSideText);
+    setText('.nh-hero-prog-right', newD.rightSideText);
+    const tags = q('.nh-hero-tags');
+    if (tags) {
+      if (tags.innerHTML !== (newD.tagsHtml || '')) tags.innerHTML = newD.tagsHtml || '';
+      tags.style.display = newD.tagsHtml ? 'flex' : 'none';
+    }
+    const prog = q('.nh-hero-prog');
+    if (prog) prog.style.width = newD.progressPercent + '%';
+    if (newD.coverUrl && newD.coverUrl !== oldD.coverUrl) {
+      const img = q('.nh-hero-cover');
+      if (img) img.src = newD.coverUrl;
+      const bg = q('.nh-hero-bg');
+      if (bg) bg.style.backgroundImage = "url('" + newD.coverUrl + "')";
+    }
+  }
+
+  function slideInner(d, t) {
     return `
-      <div class="nh-hero-slide" style="flex: 0 0 100%; min-width: 100%; box-sizing: border-box; display: flex;">
         <div class="nh-hero-banner" style="width: 100%; position: relative; overflow: hidden; background-color: var(--nh-raised); border-radius: 24px; padding: 48px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); cursor: pointer; transition: transform 0.2s ease;">
 
           <div class="nh-hero-bg" style="position: absolute; inset: -12%; background-image: url('${d.coverUrl}'); background-size: cover; background-position: center; filter: blur(60px) brightness(0.5) saturate(1.4); z-index: 0; pointer-events: none;"></div>
@@ -1197,11 +2019,11 @@
           <div style="position: relative; z-index: 2; flex: 1; min-width: 0; padding-right: 64px; display: flex; flex-direction: column;">
             <div style="color: var(--nh-amber); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 16px; font-family: system-ui, sans-serif;">${t.pickup}</div>
             <div class="nh-hero-title" style="font-family: var(--nh-serif); font-size: 3.4rem; font-weight: 600; line-height: 1.2; color: #ffffff; margin-bottom: 8px; padding-bottom: 4px; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0,0,0,0.5); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%;">${d.title}</div>
-            <div style="font-size: 1.25rem; color: #d8cfc2; margin-bottom: 20px; font-family: system-ui, sans-serif;">${t.by ? t.by + ' ' : ''}${d.author}</div>
+            <div class="nh-hero-author" style="font-size: 1.25rem; color: #d8cfc2; margin-bottom: 20px; font-family: system-ui, sans-serif;">${t.by ? t.by + ' ' : ''}${d.author}</div>
 
-            ${d.tagsHtml ? `<div style="display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; font-family: system-ui, sans-serif;">${d.tagsHtml}</div>` : ''}
+            <div class="nh-hero-tags" style="display: ${d.tagsHtml ? 'flex' : 'none'}; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; font-family: system-ui, sans-serif;">${d.tagsHtml || ''}</div>
 
-            <div style="color: #c9bfb1; font-size: 1.15rem; line-height: 1.6; margin-bottom: 32px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-family: system-ui, sans-serif; max-width: 90%; text-shadow: 0 1px 8px rgba(0,0,0,0.5);">
+            <div class="nh-hero-desc" style="color: #c9bfb1; font-size: 1.15rem; line-height: 1.6; margin-bottom: 32px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-family: system-ui, sans-serif; max-width: 90%; text-shadow: 0 1px 8px rgba(0,0,0,0.5);">
               ${d.description}
             </div>
 
@@ -1215,22 +2037,25 @@
 
               <div style="flex: 1; max-width: 320px;">
                 <div style="height: 5px; background: rgba(255,255,255,0.15); border-radius: 3px; margin-bottom: 10px; overflow: hidden;">
-                  <div style="height: 100%; width: ${d.progressPercent}%; background: var(--nh-amber); border-radius: 3px;"></div>
+                  <div class="nh-hero-prog" style="height: 100%; width: ${d.progressPercent}%; background: var(--nh-amber); border-radius: 3px; transition: width 0.4s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #c9bfb1;">
-                  <span style="font-weight: 500;">${d.leftSideText}</span>
-                  <span>${d.rightSideText}</span>
+                  <span class="nh-hero-prog-left" style="font-weight: 500;">${d.leftSideText}</span>
+                  <span class="nh-hero-prog-right">${d.rightSideText}</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div style="position: relative; z-index: 2; flex-shrink: 0; display: flex; align-items: center;">
-            <img src="${d.coverUrl}" style="height: 380px; width: auto; max-width: 420px; object-fit: contain; border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.6);" />
+            <img class="nh-hero-cover" src="${d.coverUrl}" style="height: 380px; width: auto; max-width: 420px; object-fit: contain; border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.6);" />
           </div>
         </div>
-      </div>
     `;
+  }
+
+  function slideMarkup(d, t) {
+    return '<div class="nh-hero-slide" style="flex: 0 0 100%; min-width: 100%; box-sizing: border-box; display: flex;">' + slideInner(d, t) + '</div>';
   }
 
   // ------------------------------------------------------------------
@@ -1366,29 +2191,40 @@
 
     isInjectingHero = true;
 
+    const langCode = getUserLanguage();
+    const t = getTranslations(langCode);
+
+    // B2: last visit's snapshot for this library. If the book on slide 1 is in it we
+    // paint the whole carousel on this tick — no skeleton, no item-fetch wait.
+    const cardIds = cards.map(nhCardItemId);
+    const cacheMap = nhHeroCacheRead(langCode);
+    const cachedFirst = (cacheMap && cardIds[0] && cacheMap[cardIds[0]]) || null;
+
     let nativeChildren = Array.from(row.children);
     if (crCombined) {
       crCombined.dataset.heroInjected = 'true';
       crCombined.style.display = 'none'; // the emptied row still paints its own box
     }
     nativeChildren.forEach(c => { c.style.display = 'none'; });
-    const skeleton = document.createElement('div');
-    skeleton.id = 'nh-hero-skeleton';
-    skeleton.style.marginBottom = '20px';
-    skeleton.innerHTML = `
-      <div style="margin-bottom:24px;padding:0 10px;">
-        <div style="width:180px;height:13px;border-radius:6px;background:var(--nh-raised);opacity:.55;margin-bottom:12px;"></div>
-        <div style="width:320px;height:40px;border-radius:8px;background:var(--nh-raised);opacity:.55;"></div>
-      </div>
-      <div style="height:436px;border-radius:24px;background:var(--nh-raised);position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
-        <div class="nh-skel-shimmer" style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);transform:translateX(-100%);"></div>
-      </div>
-    `;
-    row.appendChild(skeleton);
-    try {
-      const _sh = skeleton.querySelector('.nh-skel-shimmer');
-      if (_sh && _sh.animate) _sh.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(100%)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' });
-    } catch (e) {}
+    if (!cachedFirst) {
+      const skeleton = document.createElement('div');
+      skeleton.id = 'nh-hero-skeleton';
+      skeleton.style.marginBottom = '20px';
+      skeleton.innerHTML = `
+        <div style="margin-bottom:24px;padding:0 10px;">
+          <div style="width:180px;height:13px;border-radius:6px;background:var(--nh-raised);opacity:.55;margin-bottom:12px;"></div>
+          <div style="width:320px;height:40px;border-radius:8px;background:var(--nh-raised);opacity:.55;"></div>
+        </div>
+        <div style="height:436px;border-radius:24px;background:var(--nh-raised);position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.5);">
+          <div class="nh-skel-shimmer" style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);transform:translateX(-100%);"></div>
+        </div>
+      `;
+      row.appendChild(skeleton);
+      try {
+        const _sh = skeleton.querySelector('.nh-skel-shimmer');
+        if (_sh && _sh.animate) _sh.animate([{ transform: 'translateX(-100%)' }, { transform: 'translateX(100%)' }], { duration: 1400, iterations: Infinity, easing: 'ease-in-out' });
+      } catch (e) {}
+    }
 
     const restoreNative = () => {
       const sk = document.getElementById('nh-hero-skeleton');
@@ -1398,17 +2234,40 @@
     };
 
     try {
-      const langCode = getUserLanguage();
-      const t = getTranslations(langCode);
-
-      const slides = (await Promise.all(cards.map(card => buildSlideData(card, t)))).filter(Boolean);
-      if (!slides.length) {
-        restoreNative();
-        const fails = (parseInt(row.dataset.heroFails, 10) || 0) + 1;
-        row.dataset.heroFails = String(fails);
-        if (fails >= 2) row.dataset.heroInjected = 'true'; // stop re-trying; keep the stock shelf
-        return;
+      // Slide 1 comes from the snapshot when we have it (instant); otherwise only
+      // slide 1 is visible at mount, so wait for JUST its data and render the
+      // carousel immediately — the other slides are empty shells filled in the
+      // background — off-screen, so the fill is invisible. This cuts the carousel's
+      // appearance from "all N item fetches" to "one item fetch", or none.
+      const slides = new Array(cards.length).fill(null);
+      let first;
+      if (cachedFirst) {
+        first = Object.assign({}, cachedFirst, { card: cards[0] });
+      } else {
+        first = await buildSlideData(cards[0], t);
+        if (!first) {
+          restoreNative();
+          const fails = (parseInt(row.dataset.heroFails, 10) || 0) + 1;
+          row.dataset.heroFails = String(fails);
+          if (fails >= 2) row.dataset.heroInjected = 'true'; // stop re-trying; keep the stock shelf
+          return;
+        }
       }
+      slides[0] = first;
+      // Any other Continue Listening book we have a snapshot for is DATA now but not
+      // markup yet: only slide 1 is on screen, and building all ten banners up front
+      // costs ~70ms of main thread at exactly the moment the page wants to reveal.
+      // They get filled on the first idle callback instead (and on demand in goTo).
+      if (cacheMap) {
+        for (let n = 1; n < cards.length; n++) {
+          const c = cardIds[n] && cacheMap[cardIds[n]];
+          if (c) slides[n] = Object.assign({}, c, { card: cards[n] });
+        }
+      }
+      // Per-slide markup state: null = empty shell, 'cache' = snapshot markup (patch
+      // it when live data lands), 'live' = built from a fresh fetch.
+      const rendered = new Array(cards.length).fill(null);
+      rendered[0] = cachedFirst ? 'cache' : 'live';
 
       const dateString = new Intl.DateTimeFormat(langCode, { weekday: 'long' }).format(new Date()).toUpperCase();
       const hour = new Date().getHours();
@@ -1425,8 +2284,8 @@
       }
       const welcomeText = username ? `${t.welcome}, ${username}` : t.welcome;
 
-      const multi = slides.length > 1;
-      const dotsHtml = slides.map((_, n) =>
+      const multi = cards.length > 1;
+      const dotsHtml = cards.map((_, n) =>
         `<button class="nh-dot" data-i="${n}" style="border: none; padding: 0; height: 8px; border-radius: 4px; cursor: pointer; background: rgba(255,255,255,0.2); width: 8px; transition: width 0.25s ease, background 0.25s ease;"></button>`
       ).join('');
 
@@ -1456,7 +2315,7 @@
 
         <div id="nh-hero-viewport" style="overflow: hidden; border-radius: 24px;">
           <div id="nh-hero-track" style="display: flex; transition: transform 0.9s ease;">
-            ${slides.map(d => slideMarkup(d, t)).join('')}
+            ${slideMarkup(first, t)}${cards.slice(1).map(() => '<div class="nh-hero-slide" style="flex: 0 0 100%; min-width: 100%; box-sizing: border-box; display: flex;"></div>').join('')}
           </div>
         </div>
 
@@ -1472,18 +2331,26 @@
       requestAnimationFrame(() => { heroContainer.style.opacity = '1'; });
 
       try {
-        const rowPadLeft = getComputedStyle(row).paddingLeft;
-        if (rowPadLeft && parseFloat(rowPadLeft) > 0) {
+        // Compensate only the DIFFERENCE between the row's side paddings. The
+        // old rule added the full left padding as our right inset — right for
+        // desktop shelf rows (padding only on the left, content bleeds right)
+        // but on phones the row pads BOTH sides, so the hero ended up with a
+        // doubled right inset and sat 9px left of centre (Pawel's screenshot).
+        const rcs = getComputedStyle(row);
+        const delta = (parseFloat(rcs.paddingLeft) || 0) - (parseFloat(rcs.paddingRight) || 0);
+        if (delta > 0) {
           heroContainer.style.boxSizing = 'border-box';
           heroContainer.style.width = '100%';
-          heroContainer.style.paddingRight = rowPadLeft;
+          heroContainer.style.paddingRight = delta + 'px';
         }
       } catch (e) {}
+      nhHeroFit(heroContainer);
 
       const slideEls = Array.from(heroContainer.querySelectorAll('.nh-hero-slide'));
-      slideEls.forEach((el, n) => {
-        const card = slides[n].card;
+      const wireSlide = (el, d) => {
+        const card = d.card;
         const banner = el.querySelector('.nh-hero-banner');
+        if (!banner) return;
         // Programmatic .click() fires handlers even on v-show-hidden elements (the
         // hosting card is itself hidden), so no visibility check — routing by cy-id
         // is what keeps audio and ebook actions apart.
@@ -1507,6 +2374,43 @@
         wireBtn(el.querySelector('.nh-hero-read'), '[cy-id="readButton"]');
 
         banner.addEventListener('click', () => card.click());
+      };
+      wireSlide(slideEls[0], first);
+
+      // Paint an off-screen slide from its snapshot. No-op once anything else has
+      // rendered that slot, so it can never clobber fresher markup.
+      const fillFromCache = (i) => {
+        if (rendered[i] || !slides[i] || !slideEls[i]) return;
+        slideEls[i].innerHTML = slideInner(slides[i], t);
+        wireSlide(slideEls[i], slides[i]);
+        rendered[i] = 'cache';
+      };
+      const pendingCached = [];
+      for (let n = 1; n < slides.length; n++) if (slides[n]) pendingCached.push(n);
+      if (pendingCached.length) {
+        const idle = window.requestIdleCallback || function (fn) { return setTimeout(fn, 50); };
+        idle(function () { pendingCached.forEach(fillFromCache); }, { timeout: 400 });
+      }
+
+      // Refresh pass: fill the empty shells and bring every snapshot-rendered slide up
+      // to live data (progress above all) by patching in place — no teardown, no
+      // flicker. buildSlideData never rejects; it degrades to card-DOM values.
+      const refreshed = cards.map((card, i) => {
+        // Slide 1 was already built live when there was no snapshot to paint from.
+        if (i === 0 && !cachedFirst) return Promise.resolve();
+        return buildSlideData(card, t).then((d) => {
+          if (!d || !document.body.contains(heroContainer)) return;
+          const shell = slideEls[i];
+          if (!shell) return;
+          const prev = slides[i];
+          slides[i] = d;
+          if (rendered[i] === 'cache' && prev) nhPatchSlide(shell, prev, d, t, wireSlide);
+          else { shell.innerHTML = slideInner(d, t); wireSlide(shell, d); }
+          rendered[i] = 'live';
+        }).catch(() => {});
+      });
+      Promise.all(refreshed).then(() => {
+        if (document.body.contains(heroContainer)) nhHeroCacheWrite(langCode, slides);
       });
 
       nhHomeCover = slides[0].coverUrl;
@@ -1523,14 +2427,17 @@
           if (!document.body.contains(track)) { clearInterval(timer); return; }
           const len = slides.length;
           idx = ((i % len) + len) % len;
+          fillFromCache(idx); // beat the idle callback if the user gets there first
           track.style.transform = `translateX(-${idx * 100}%)`;
           dots.forEach((d, n) => {
             const active = n === idx;
             d.style.width = active ? '24px' : '8px';
             d.style.background = active ? 'var(--nh-amber)' : 'rgba(255,255,255,0.2)';
           });
-          nhHomeCover = slides[idx].coverUrl;
-          setHomeBg(slides[idx].coverUrl);
+          if (slides[idx]) { // background fill may still be in flight
+            nhHomeCover = slides[idx].coverUrl;
+            setHomeBg(slides[idx].coverUrl);
+          }
         };
 
         const startTimer = () => {
@@ -1586,7 +2493,7 @@
   // 5. HOME CINEMATIC BACKGROUND
   // ==========================================
   function setHomeBg(url) {
-    if (!url) return;
+    if (!url || nhSettings.cinematicBg === false) return;
     let bg = document.getElementById('nh-home-bg');
     if (!bg) {
       bg = document.createElement('div');
@@ -1615,6 +2522,14 @@
   }
 
   function manageCinematic() {
+    if (nhSettings.cinematicBg === false) {
+      // switched off: take down anything already painted (the early shim paints
+      // the cached backdrop before settings are known)
+      const b = document.getElementById('nh-home-bg');
+      if (b) b.remove();
+      document.body.classList.remove('nh-cinematic', 'nh-cinematic-item');
+      return;
+    }
     const path = window.location.pathname;
     const itemPage = document.getElementById('item-page-wrapper');
     const bg = document.getElementById('nh-home-bg');
@@ -1626,22 +2541,47 @@
 
     const widen = (src) => { try { const u = new URL(src, location.origin); u.searchParams.set('width', '800'); return u.toString(); } catch (e) { return src; } };
 
-    // Book item page → its own cover (darker)
-    if (itemPage) {
+    // Book item page → its own cover (darker). The cover URL is derived from the
+    // ROUTE id immediately — waiting for Vue to render its <img> added a visible
+    // beat before the backdrop started changing.
+    const itemMatch = path.match(/\/item\/([^/?#]+)/);
+    if (itemPage || itemMatch) {
       document.body.classList.add('nh-cinematic');
       document.body.classList.add('nh-cinematic-item');
-      const img = itemPage.querySelector('img[src*="/cover"]');
-      if (img && img.src) setHomeBg(widen(img.src));
+      const id = itemMatch && itemMatch[1];
+      const cur = (bg && bg.dataset.url) || '';
+      if (id && cur.indexOf(id) === -1) {
+        const tk = window.__NH_TOKEN || getTokenNH();
+        setHomeBg(location.origin + '/api/items/' + id + '/cover?width=800' + (tk ? '&token=' + encodeURIComponent(tk) : ''));
+      } else if (!id) {
+        const img = itemPage && itemPage.querySelector('img[src*="/cover"]');
+        if (img && img.src) setHomeBg(widen(img.src));
+      }
       if (bg) bg.style.opacity = '1';
       return;
     }
 
-    // Series detail page → first book cover (darker)
+    // Series detail page → the cover of the series' FIRST BOOK (darker).
+    // NOT the first cover <img> in the DOM: the shelf is virtualised, so ABS
+    // recycles those elements as you scroll and the "first" one is simply
+    // whatever is at the top of the viewport — the backdrop changed under you
+    // the whole way down the page. The first entity's id is stable, so the URL
+    // it produces is stable, and setHomeBg then no-ops on every later tick.
     if (isSeriesDetail) {
       document.body.classList.add('nh-cinematic');
       document.body.classList.add('nh-cinematic-item');
-      const img = document.querySelector('#bookshelf img[src*="/cover"], [id^="cover-area-"] img');
-      if (img && img.src) { setHomeBg(widen(img.src)); if (bg) bg.style.opacity = '1'; }
+      let firstId = null;
+      try {
+        const bs = document.getElementById('bookshelf');
+        const ents = bs && bs.__vue__ && bs.__vue__.entities;
+        firstId = ents && ents.length ? ents[0].id : null;
+      } catch (e) {}
+      const cur = (bg && bg.dataset.url) || '';
+      if (firstId && cur.indexOf(firstId) === -1) {
+        const tk = window.__NH_TOKEN || getTokenNH();
+        setHomeBg(location.origin + '/api/items/' + firstId + '/cover?width=800' + (tk ? '&token=' + encodeURIComponent(tk) : ''));
+      }
+      if (bg && firstId) bg.style.opacity = '1';
       return;
     }
 
@@ -1651,6 +2591,22 @@
       document.body.classList.remove('nh-cinematic-item');
       if (nhHomeCover) { setHomeBg(nhHomeCover); try { localStorage.setItem('nh-home-bg', nhHomeCover); } catch (e) {} }
       if (bg) bg.style.opacity = '1';
+      return;
+    }
+
+    // Author page → their first book's cover, in the DARKER item-page mode so
+    // the artwork actually reads (user: "background should follow the first
+    // book's cover"). The author portrait is /api/authors/<id>/image, so the
+    // [src*="/cover"] filter below reliably grabs a BOOK cover instead.
+    const isAuthor = /\/author\/[^/?#]+/.test(path);
+    document.body.classList.toggle('nh-author-page', isAuthor);
+    if (isAuthor) {
+      document.body.classList.add('nh-cinematic');
+      document.body.classList.add('nh-cinematic-item');
+      const img = document.querySelector('#app-content .page img[src*="/cover"]');
+      if (img && img.src) { setHomeBg(widen(img.src)); if (bg) bg.style.opacity = '1'; return; }
+      const url = getHomeBgUrl();
+      if (url) { setHomeBg(url); if (bg) bg.style.opacity = '1'; }
       return;
     }
 
@@ -1674,16 +2630,77 @@
   // ==========================================
   // 6. GOODREADS LINK (book detail)
   // ==========================================
-  function injectGoodreads() {
+  // Look this book up elsewhere. Goodreads is the global default; every language
+  // that has a big local book site gets one too, and the user picks which
+  // buttons they want in the customization panel (Pawel). Text pills, not remote
+  // icons — the old single Goodreads button pulled its logo from a CDN, which is
+  // exactly the kind of outbound dependency an offline server should not need.
+  // `langs` drives BOTH the default selection and the ordering in the panel.
+  const NH_BOOK_SITES = [
+    { id: 'goodreads', name: 'Goodreads', langs: ['*'], url: 'https://www.goodreads.com/search?q=' },
+    { id: 'storygraph', name: 'StoryGraph', langs: ['*'], url: 'https://app.thestorygraph.com/browse?search_term=' },
+    { id: 'openlibrary', name: 'Open Library', langs: ['*'], url: 'https://openlibrary.org/search?q=' },
+    { id: 'lubimyczytac', name: 'Lubimyczytać', langs: ['pl'], url: 'https://lubimyczytac.pl/szukaj/ksiazki?phrase=' },
+    { id: 'lovelybooks', name: 'LovelyBooks', langs: ['de'], url: 'https://www.lovelybooks.de/suche/?searchTerm=' },
+    { id: 'babelio', name: 'Babelio', langs: ['fr'], url: 'https://www.babelio.com/resrecherche.php?Recherche=' },
+    { id: 'casadellibro', name: 'Casa del Libro', langs: ['es'], url: 'https://www.casadellibro.com/busqueda-generica?busqueda=' },
+    { id: 'hebban', name: 'Hebban', langs: ['nl'], url: 'https://www.hebban.nl/zoeken?q=' },
+    { id: 'databazeknih', name: 'Databáze knih', langs: ['cs'], url: 'https://www.databazeknih.cz/search?q=' },
+    { id: 'moly', name: 'Moly', langs: ['hu'], url: 'https://moly.hu/kereses?q=' },
+    { id: 'livelib', name: 'LiveLib', langs: ['ru'], url: 'https://www.livelib.ru/find/' },
+    { id: 'bookmeter', name: 'Bookmeter', langs: ['ja'], url: 'https://bookmeter.com/search?keyword=' },
+    { id: 'douban', name: 'Douban', langs: ['zh'], url: 'https://search.douban.com/book/subject_search?search_text=' },
+    { id: 'kitap1000', name: '1000Kitap', langs: ['tr'], url: 'https://1000kitap.com/arama?q=' },
+    { id: 'amazon_com', name: 'Amazon.com', langs: ['en'], url: 'https://www.amazon.com/s?i=stripbooks&k=' },
+    { id: 'amazon_uk', name: 'Amazon.co.uk', langs: ['en'], url: 'https://www.amazon.co.uk/s?i=stripbooks&k=' },
+    { id: 'amazon_de', name: 'Amazon.de', langs: ['de'], url: 'https://www.amazon.de/s?i=stripbooks&k=' },
+    { id: 'amazon_pl', name: 'Amazon.pl', langs: ['pl'], url: 'https://www.amazon.pl/s?i=stripbooks&k=' },
+    { id: 'amazon_fr', name: 'Amazon.fr', langs: ['fr'], url: 'https://www.amazon.fr/s?i=stripbooks&k=' },
+    { id: 'amazon_es', name: 'Amazon.es', langs: ['es'], url: 'https://www.amazon.es/s?i=stripbooks&k=' },
+    { id: 'amazon_it', name: 'Amazon.it', langs: ['it'], url: 'https://www.amazon.it/s?i=stripbooks&k=' },
+    { id: 'amazon_nl', name: 'Amazon.nl', langs: ['nl'], url: 'https://www.amazon.nl/s?i=stripbooks&k=' },
+    { id: 'amazon_jp', name: 'Amazon.co.jp', langs: ['ja'], url: 'https://www.amazon.co.jp/s?i=stripbooks&k=' },
+    { id: 'amazon_br', name: 'Amazon.com.br', langs: ['pt'], url: 'https://www.amazon.com.br/s?i=stripbooks&k=' },
+    { id: 'audible', name: 'Audible', langs: ['*'], url: 'https://www.audible.com/search?keywords=' },
+  ];
+
+  function nhBookSiteById(id) { return NH_BOOK_SITES.filter((s) => s.id === id)[0] || null; }
+
+  // Default when the user has not chosen: Goodreads plus the biggest local site
+  // for the interface language (Pawel: "goodreads and one local one").
+  function nhBookSitesDefault() {
+    const lang = getUserLanguage().split('-')[0].toLowerCase();
+    const forLang = NH_BOOK_SITES.filter((s) => s.langs.indexOf(lang) !== -1);
+    // Prefer a real local book community (Lubimyczytać, Babelio…); fall back to
+    // that language's Amazon store, which is all some languages have here.
+    const local = forLang.filter((s) => s.id.indexOf('amazon') !== 0)[0] || forLang[0];
+    const ids = ['goodreads'];
+    if (local) ids.push(local.id);
+    return ids;
+  }
+  function nhBookSitesSelected() {
+    const v = nhSettings.bookSites;
+    if (Array.isArray(v)) return v;          // [] is a valid choice: show none
+    return nhBookSitesDefault();
+  }
+
+  // Site ids that have a bundled logo under theme/booksites (served at
+  // /_nh/booksites/<id>.png). Anything not listed falls back to a monogram.
+  const NH_BS_LOGOS = ["amazon_br","amazon_com","amazon_de","amazon_es","amazon_fr","amazon_it","amazon_jp","amazon_nl","amazon_pl","amazon_uk","audible","babelio","bookmeter","casadellibro","databazeknih","douban","goodreads","hebban","kitap1000","livelib","lovelybooks","lubimyczytac","moly","openlibrary","storygraph"];
+
+  function injectBookSites() {
     const wrapper = document.getElementById('item-page-wrapper');
     if (!wrapper) return;
     const h1 = wrapper.querySelector('h1');
     if (!h1) return;
-    const playBtn = wrapper.querySelector('button.abs-btn.bg-success, .abs-btn.bg-success');
+    // The primary action button is `.abs-btn`; only OLDER ABS builds also give
+    // it `.bg-success` (the previous selector required that and quietly did
+    // nothing on current builds).
+    const playBtn = wrapper.querySelector('.abs-btn.bg-success') || wrapper.querySelector('.abs-btn');
     if (!playBtn) return;
 
     let row = playBtn.parentElement;
-    while (row && row !== wrapper && !(row.classList.contains('flex') && row.querySelectorAll('button, a').length >= 2)) {
+    while (row && row !== wrapper && !(row.classList.contains('flex') && row.querySelectorAll('button, a').length >= 1)) {
       row = row.parentElement;
     }
     if (!row || row === wrapper) row = playBtn.closest('.flex');
@@ -1695,21 +2712,65 @@
     const subtitle = subEl ? subEl.textContent.trim() : '';
     const authEl = wrapper.querySelector('p.mb-2 a') || wrapper.querySelector('p.mb-2');
     const author = authEl ? authEl.textContent.trim() : '';
-    const href = 'https://www.goodreads.com/search?q=' + encodeURIComponent([title, subtitle, author].filter(Boolean).join(' '));
+    const q = encodeURIComponent([title, subtitle, author].filter(Boolean).join(' '));
 
-    let a = row.querySelector('a[data-nh-goodreads]');
-    if (!a) {
-      a = document.createElement('a');
+    const old = wrapper.querySelector('a[data-nh-goodreads]'); // the pre-2.0 icon button
+    if (old) old.remove();
+
+    const ids = nhBookSitesSelected();
+    const sig = ids.join(',') + '|' + q;
+    // Pawel: these belong IN the action row as small square icon buttons, the
+    // same shape as the edit pencil — text pills next to it looked bolted on.
+    let box = wrapper.querySelector('.nh-bs-row');
+    if (box && box.dataset.sig === sig) return;
+    if (box) box.remove();
+    if (!ids.length) return;
+    box = document.createElement('span');
+    box.className = 'nh-bs-row';
+    box.dataset.sig = sig;
+    ids.forEach((id) => {
+      const site = nhBookSiteById(id);
+      if (!site) return;
+      const a = document.createElement('a');
+      a.className = 'icon-btn nh-bs-btn';
+      a.href = site.url + q;
       a.target = '_blank';
-      a.rel = 'noopener';
-      a.title = 'Find on Goodreads';
-      a.dataset.nhGoodreads = '1';
-      a.className = 'icon-btn nh-goodreads-btn';
-      a.innerHTML = '<img src="https://cdn.aptoide.com/imgs/8/0/0/800221239eae4d986d53aaeba991e771_icon.png" alt="Goodreads" />';
-      if (row.lastElementChild) row.insertBefore(a, row.lastElementChild);
-      else row.appendChild(a);
-    }
-    a.href = href;
+      a.rel = 'noopener noreferrer';
+      a.title = (nhGsT().bsFind || PANEL_T.en.bsFind) + ' ' + site.name;
+      // A flat one-colour monogram, NOT the service's favicon. The favicons were
+      // full-colour logos on a filled tile, so these two buttons were the only
+      // things in the action row that did not read as outlined icon buttons
+      // (Pawel). Dropping them also removes an outbound request to each site on
+      // every book page, which matters for a server with no internet access.
+      // The site name stays in the title attribute.
+      // Ship a real logo where we have one. The files are white-on-transparent,
+      // so they are used as a CSS MASK rather than an <img>: the glyph then takes
+      // the button's own colour and its amber hover, exactly like the material
+      // icons next to it, instead of being a second visual language. Sites with
+      // no logo keep the monogram.
+      if (NH_BS_LOGOS.indexOf(site.id) !== -1) {
+        const lg = document.createElement('span');
+        lg.className = 'nh-bs-logo';
+        lg.style.setProperty('--nh-bs-logo', 'url("/_nh/booksites/' + site.id + '.png")');
+        a.appendChild(lg);
+      } else {
+        const letter = document.createElement('span');
+        letter.className = 'nh-bs-letter';
+        letter.textContent = site.name.charAt(0).toUpperCase();
+        a.appendChild(letter);
+      }
+      box.appendChild(a);
+    });
+    // Sit directly after "mark as finished" and therefore BEFORE the 3-dot menu,
+    // rather than trailing the whole row. Anchored on the beenhere glyph; if a
+    // build has no such button we fall back to the old append.
+    const finished = Array.prototype.find.call(row.children, (c) => {
+      const g = c.querySelector('.material-symbols');
+      return g && g.textContent.trim() === 'beenhere';
+    });
+    if (finished && finished.nextSibling) row.insertBefore(box, finished.nextSibling);
+    else if (finished) row.appendChild(box);
+    else row.appendChild(box);
   }
 
   // ==========================================
@@ -1746,6 +2807,7 @@
     const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {}, credentials: 'include' });
     if (!res.ok) return null;
     const d = await res.json();
+    await nhScReady(); // custom series covers (A1) — have the map for the first render
     return (d.results || []).map(s => {
       const books = s.books || [];
       const covers = books.slice(0, 3).map(b => `${base}/api/items/${b.id || b.libraryItemId}/cover?width=400`);
@@ -1770,9 +2832,17 @@
     const tq = token ? '&token=' + encodeURIComponent(token) : '';
     const layers = ['c1', 'c2', 'c3'];
     const cards = list.map(s => {
-      const cv = (s.covers || []).slice(0, 3);
+      // Custom series cover (A1): the uploaded image becomes the FRONT of the
+      // stack — books #1/#2 still peek out behind, matching stock series.
+      const custom = nhScUrl(s.id);
+      const base3 = (s.covers || []).slice(0, 3);
+      const cv = custom ? [custom].concat(base3.slice(0, 2)) : base3;
       let inner = cv.length
-        ? cv.map((url, i) => `<div class="nh-rs-cover ${layers[i]}"><i class="nh-rs-bg" style="background-image:url('${url}${tq}')"></i><i class="nh-rs-fg" style="background-image:url('${url}${tq}')"></i></div>`).join('')
+        ? cv.map((url, i) => {
+            const isCustom = custom && i === 0;
+            const q = isCustom ? '' : tq; // custom covers are public, no token needed
+            return `<div class="nh-rs-cover ${layers[i]}${isCustom ? ' custom' : ''}"><i class="nh-rs-bg" style="background-image:url('${url}${q}')"></i><i class="nh-rs-fg" style="background-image:url('${url}${q}')"></i></div>`;
+          }).join('')
         : `<div class="nh-rs-cover c1" style="background:var(--nh-raised)"></div>`;
       const route = `/library/${libId}/series/${s.id}`;
       return `<a class="nh-rs-card" data-route="${route}" href="${base}${route}">
@@ -1793,16 +2863,21 @@
       #nh-recent-series-row .nh-rs-scroll { display: flex; flex-wrap: nowrap; gap: calc(var(--nh-rs-cw, 140px) * 0.076); overflow-x: auto; overflow-y: hidden; padding: 6px 2px 14px; scrollbar-width: none; -ms-overflow-style: none; }
       #nh-recent-series-row .nh-rs-scroll::-webkit-scrollbar { display: none; height: 0; width: 0; }
       #nh-recent-series-row .nh-rs-card { flex: 0 0 auto; width: calc(var(--nh-rs-cw, 140px) * 1.171); text-decoration: none; }
-      #nh-recent-series-row .nh-rs-covers { position: relative; width: var(--nh-rs-cw, 140px); height: var(--nh-rs-cw, 140px); margin-bottom: 36px; overflow: visible; }
+      #nh-recent-series-row .nh-rs-covers { position: relative; width: var(--nh-rs-cw, 140px); height: var(--nh-rs-cw, 140px); margin-bottom: 8px; overflow: visible; }
       #nh-recent-series-row .nh-rs-cover { position: absolute; top: 0; left: 0; width: var(--nh-rs-cw, 140px); height: var(--nh-rs-cw, 140px); border-radius: 12px; overflow: hidden; background-color: var(--nh-raised); box-shadow: 0 10px 24px rgba(0,0,0,0.42); transition: filter .2s ease, box-shadow .2s ease; }
       #nh-recent-series-row .nh-rs-bg, #nh-recent-series-row .nh-rs-fg { position: absolute; inset: 0; display: block; background-position: center; background-repeat: no-repeat; border-radius: inherit; }
       #nh-recent-series-row .nh-rs-bg { background-size: cover; filter: blur(14px) brightness(0.85); transform: scale(1.15); }
       #nh-recent-series-row .nh-rs-fg { background-size: contain; }
+      #nh-recent-series-row .nh-rs-cover.custom .nh-rs-fg { background-size: cover; }
       html.nh-covers-std #nh-recent-series-row .nh-rs-covers { height: calc(var(--nh-rs-cw, 140px) * 1.6); }
       html.nh-covers-std #nh-recent-series-row .nh-rs-cover { height: calc(var(--nh-rs-cw, 140px) * 1.6); }
       #nh-recent-series-row .nh-rs-cover.c1 { transform: translate(0,0); z-index: 3; }
-      #nh-recent-series-row .nh-rs-cover.c2 { transform: translate(calc(var(--nh-rs-cw, 140px) * 0.086), calc(var(--nh-rs-cw, 140px) * 0.086)); z-index: 2; filter: brightness(0.78); }
-      #nh-recent-series-row .nh-rs-cover.c3 { transform: translate(calc(var(--nh-rs-cw, 140px) * 0.171), calc(var(--nh-rs-cw, 140px) * 0.171)); z-index: 1; filter: brightness(0.60); }
+  /* Only the FRONT cover keeps the deep 0 10px 24px shadow. The back layers sit
+     lowest, so theirs is what reached the title — short and tight here, which is
+     what lets the caption ride 10px higher without landing in it (Pawel). */
+  #nh-recent-series-row .nh-rs-cover.c2, #nh-recent-series-row .nh-rs-cover.c3 { box-shadow: 0 4px 10px rgba(0,0,0,0.38); }
+      #nh-recent-series-row .nh-rs-cover.c2 { transform: translate(calc(var(--nh-rs-cw, 140px) * 0.086), 0); z-index: 2; filter: brightness(0.78); }
+      #nh-recent-series-row .nh-rs-cover.c3 { transform: translate(calc(var(--nh-rs-cw, 140px) * 0.171), 0); z-index: 1; filter: brightness(0.60); }
       #nh-recent-series-row .nh-rs-card:hover .nh-rs-cover.c1 { filter: brightness(0.7); box-shadow: 0 10px 24px rgba(0,0,0,0.42); }
       #nh-recent-series-row .nh-rs-count { position: absolute; left: 8px; top: 8px; z-index: 5; background: rgba(255,255,255,0.55); backdrop-filter: blur(10px) brightness(1.2) saturate(1.05); -webkit-backdrop-filter: blur(10px) brightness(1.2) saturate(1.05); border: 1px solid rgba(255,255,255,0.35); box-shadow: 0 2px 8px rgba(0,0,0,0.4); border-radius: 999px; min-width: 1.7em; text-align: center; padding: 0.12em 0.45em; color: #000; font-weight: 700; font-size: clamp(8px, calc(var(--nh-rs-cw, 140px) * 0.078), 12.5px); font-family: var(--nh-sans, system-ui); }
       #nh-recent-series-row .nh-rs-name { font-family: var(--nh-serif) !important; font-weight: 500; color: var(--nh-text-2, #d8cfc2); font-size: var(--nh-rs-fs, 1rem); margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1831,6 +2906,40 @@
       }
     } catch (e) {}
     return false;
+  }
+
+  // Re-centre the ABS virtual grid. ABS lays each card out in a slot that is the
+  // card PLUS a trailing gap, and centres those slots inside a width that also
+  // holds back room for a scrollbar; both live only on the right, so every row
+  // lands left of true centre (measured 17px at 360px/1 column and at
+  // 900px/3 columns alike). The offset is measured, not hardcoded: it depends on
+  // ABS's gap and on whether the scroller is actually showing a scrollbar.
+  // Only the `left` of each card is touched — its inline translate3d and the Vue
+  // sizing chain (entitiesPerShelf / bookshelfMarginLeft) are left alone, since
+  // overriding those broke card widths and collapsed the series view on resize.
+  function nhShelfNudge() {
+    const bs = document.getElementById('bookshelf');
+    if (!bs || document.body.classList.contains('nh-home')) return;
+    let vm = null;
+    try { vm = bs.__vue__; } catch (e) {}
+    // Derived from the shelf's INTENDED geometry (entitiesPerShelf slots), never
+    // from measuring rendered cards. Measuring looked equivalent but was not: a
+    // filtered result of two books got centred as a two-card block, landing at a
+    // different left edge than the unfiltered grid (Pawel's screenshots). The
+    // intended row is eps slots whether or not they are filled, so filtered and
+    // unfiltered margins are now identical by construction — and there is no
+    // measure-apply feedback loop left to converge.
+    if (!vm || !vm.entitiesPerShelf || !vm.totalEntityCardWidth || typeof vm.bookshelfMarginLeft !== 'number') return;
+    const eps = vm.entitiesPerShelf;
+    const tec = vm.totalEntityCardWidth;                    // card + trailing gap
+    const cw = vm.cardWidth || vm.entityWidth || (tec - 24);
+    const block = (eps - 1) * tec + cw;                     // no gap after the last card
+    const want = (bs.clientWidth - block) / 2;
+    // Clamp kept as a guard against a vm caught mid-rebuild reporting nonsense.
+    const next = Math.max(-60, Math.min(60, Math.round(want - vm.bookshelfMarginLeft)));
+    const cur = parseFloat(bs.style.getPropertyValue('--nh-shelf-nudge')) || 0;
+    // 2px deadband — without it a sub-pixel layout oscillates the var every tick.
+    if (Math.abs(next - cur) >= 2) bs.style.setProperty('--nh-shelf-nudge', next + 'px');
   }
 
   function applyRecentSeriesSize() {
@@ -1988,6 +3097,42 @@
     }
   }
 
+  // Series page single-scroll: shift the header up in lockstep with the grid,
+  // capped at the header's own overflow — a short header effectively stays
+  // pinned, a long one (expanded description) scrolls away with the books.
+  function nhSeriesSyncScroll() {
+    const h = document.getElementById('nh-series-header');
+    const bs = document.getElementById('bookshelf');
+    if (!h || !bs) return;
+    if (window.innerWidth < 1024) {
+      if (h.scrollTop) h.scrollTop = 0;
+      if (bs.dataset.nhSpExtra) { bs.style.removeProperty('--nh-sp-extra'); delete bs.dataset.nhSpExtra; }
+      // Phones: the page wrapper scrolls and the shelf is full-height — header
+      // and books are one flow. Nothing to sync, and nothing may be left over
+      // from the desktop path.
+      if (h.style.transform) h.style.transform = '';
+      return;
+    }
+    if (h.style.transform) h.style.transform = '';
+    // The header is a column-height box with hidden internal scroll; we drive
+    // its scrollTop in lockstep with the grid, so the page reads as ONE scroll.
+    const over = Math.max(0, h.scrollHeight - h.clientHeight);
+    // Guarantee the grid can scroll at least `over` px (short shelf + long
+    // description = unreachable header tail). naturalRange is deliberately NOT
+    // clamped: when the grid's content is SHORTER than its viewport it goes
+    // negative, and the spacer must absorb that deficit too.
+    const extra = parseInt(bs.dataset.nhSpExtra || '0', 10) || 0;
+    const naturalRange = (bs.scrollHeight - extra) - bs.clientHeight;
+    const need = Math.max(0, Math.ceil(over - naturalRange));
+    if (Math.abs(need - extra) > 2) {
+      bs.dataset.nhSpExtra = String(need);
+      if (need) bs.style.setProperty('--nh-sp-extra', need + 'px');
+      else bs.style.removeProperty('--nh-sp-extra');
+    }
+    const want = Math.min(bs.scrollTop, over);
+    if (Math.abs(h.scrollTop - want) > 1) h.scrollTop = want;
+  }
+
   // Tag finished covers. Anchored on [id^="cover-area-"], the progressBar's real
   // positioned ancestor — book cards on this build don't carry cy-id="card", which is
   // why the previous card-anchored tagger matched nothing. bg-success is confirmed
@@ -2020,18 +3165,89 @@
       }
       document.documentElement.style.removeProperty('--nh-sh-h');
       document.body.classList.remove('nh-series-page');
+      document.body.classList.remove('nh-series-ready');
+      if (window.__nhRatingsMount) try { window.__nhRatingsMount(null, null); } catch (e) {}
       return;
     }
+    // PHASE 1 — structure, synchronously on the FIRST tick of the route (before any
+    // data): build the header shell with skeleton bars, enter the two-column layout,
+    // and re-measure the shelf ONCE. Books then render at their final width straight
+    // away; the fetched text later fills a column whose size never changes — no more
+    // "everything shifts left once the description arrives".
+    let h = existing;
+    if (!h) {
+      h = document.createElement('div');
+      h.id = 'nh-series-header';
+      h.className = 'nh-sh-loading';
+      h.dataset.born = String(Date.now());
+      h.innerHTML = '<div class="nh-sh-cover"></div><div class="nh-sh-eyebrow"><span class="nh-sh-eyelabel">Series</span><span class="nh-sh-tools"></span></div><h1></h1><div class="nh-sh-author"></div><div class="nh-sh-stats"></div><div class="nh-sh-rate"></div><p class="nh-sh-desc"></p><button type="button" class="nh-sh-more" style="display:none"></button>';
+      bookshelf.parentNode.insertBefore(h, bookshelf);
+    }
+    bookshelf.classList.add('nh-with-series-header');
+    document.body.classList.add('nh-series-page');
+    if (bookshelf.parentNode && bookshelf.parentNode.classList) bookshelf.parentNode.classList.add('nh-series-cols');
+    // The header is always a SIBLING above the shelf: on phones the wrapper
+    // scrolls both as one flow, on desktop it is the left column pane. It lived
+    // inside #bookshelf for one round; that put it at the mercy of ABS's shelf
+    // rebuilds and of a scroller whose position resets on every viewport-height
+    // change (Android URL bar).
+    if (h.parentElement === bookshelf) bookshelf.parentNode.insertBefore(h, bookshelf);
+    document.documentElement.style.setProperty('--nh-sh-h', h.offsetHeight + 'px');
+
+    // ONE scroll surface (user request): the header column has no scrollbar of
+    // its own anymore — it translates in sync with the grid until its overflow
+    // is used up, and wheel input over it drives the grid. ABS's #bookshelf
+    // stays the real scroller (its lazy card mounting depends on it).
+    if (bookshelf.dataset.nhScrollSync !== '1') {
+      bookshelf.dataset.nhScrollSync = '1';
+      bookshelf.addEventListener('scroll', nhSeriesSyncScroll, { passive: true });
+    }
+    if (!h.dataset.nhWheel) {
+      h.dataset.nhWheel = '1';
+      h.addEventListener('wheel', (e) => {
+        const bs = document.getElementById('bookshelf');
+        if (bs && window.innerWidth >= 1024) { bs.scrollTop += e.deltaY; e.preventDefault(); }
+      }, { passive: false });
+    }
+
+    // The column layout changes #bookshelf's width, but ABS only re-measures on real
+    // window resizes or settings changes — nudge one setCardSize + rebuild per route.
+    // Tracked on the BOOKSHELF element (not the header): during a route transition a
+    // tick can catch the OLD page's shelf, and marking the header would stop the NEW
+    // shelf from ever being nudged.
     const vm = bookshelf.__vue__;
+    if (bookshelf.dataset.nhNudged !== location.pathname && vm) {
+      bookshelf.dataset.nhNudged = location.pathname;
+      const nudgedPath = location.pathname;
+      // The reveal must wait for the re-measure to actually LAND, not merely be
+      // requested — ABS applies executeRebuild's layout asynchronously (~200ms),
+      // and revealing early shows the cards hopping to their final positions.
+      const done = () => setTimeout(() => { bookshelf.dataset.nhRebuilt = nudgedPath; }, 280);
+      if (typeof vm.setCardSize === 'function') {
+        Promise.resolve(vm.setCardSize()).then(() => {
+          if (typeof vm.executeRebuild === 'function') vm.executeRebuild();
+          done();
+        }).catch(done);
+      } else {
+        done();
+      }
+    }
+
+    // PHASE 2 — content, once ABS has the series' items.
     const ents = vm && Array.isArray(vm.entities) ? vm.entities.filter(Boolean) : [];
     if (!ents.length) return;
 
+    const sm = location.pathname.match(/\/series\/([^/?#]+)/);
+    const seriesId = sm ? sm[1] : '';
+
     let seriesName = '', best = null, bestScore = Infinity, dur = 0;
     const authors = [];
+    const authorIds = {};
     ents.forEach((e) => {
       const md = (e.media && e.media.metadata) || {};
       if (e.media && e.media.duration) dur += e.media.duration;
       if (md.authorName && authors.indexOf(md.authorName) === -1) authors.push(md.authorName);
+      (md.authors || []).forEach((a) => { if (a && a.id && a.name && !authorIds[a.name]) authorIds[a.name] = a.id; });
       const se = md.series;
       if (se && se.name && !seriesName) seriesName = se.name;
       const q = se ? parseFloat(se.sequence) : NaN;
@@ -2044,46 +3260,5571 @@
     let desc = '';
     try {
       const raw = best && best.media && best.media.metadata && best.media.metadata.description;
-      if (raw) { const t = document.createElement('div'); t.innerHTML = raw; desc = (t.textContent || '').trim(); }
+      if (raw) {
+        const t = document.createElement('div');
+        // Keep paragraph structure: <br>/<p> become newlines, then strip the rest.
+        // .nh-sh-desc renders white-space:pre-line, so these breaks survive —
+        // same treatment the admin's pasted formatting gets.
+        t.innerHTML = String(raw).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
+        desc = (t.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+      }
     } catch (e) {}
+    // Admin-written override wins over book #1's blurb (null while still loading).
+    const customDesc = nhSdText(seriesId);
+    if (customDesc) desc = customDesc;
 
+    const TT = nhGsT();
     const total = (vm.totalEntities && vm.totalEntities > ents.length) ? vm.totalEntities : ents.length;
     const allLoaded = !vm.totalEntities || ents.length >= vm.totalEntities;
     const durStr = allLoaded && dur > 60 ? Math.floor(dur / 3600) + 'h ' + Math.round((dur % 3600) / 60) + 'm' : '';
-    const authStr = authors.slice(0, 2).join(', ') + (authors.length > 2 ? ' & more' : '');
-    const authorLine = authStr ? 'by ' + authStr : '';
-    const statsLine = [total + (total === 1 ? ' book' : ' books'), durStr].filter(Boolean).join(' · ');
+    const statsLine = [total + ' ' + nhWordForm(total, TT.shBookForms || PANEL_T.en.shBookForms), durStr].filter(Boolean).join(' · ');
 
-    let h = existing;
-    if (!h) {
-      h = document.createElement('div');
-      h.id = 'nh-series-header';
-      h.innerHTML = '<div class="nh-sh-eyebrow">Series</div><h1></h1><div class="nh-sh-author"></div><div class="nh-sh-stats"></div><p class="nh-sh-desc"></p>';
-      bookshelf.parentNode.insertBefore(h, bookshelf);
-    }
+    h.classList.remove('nh-sh-loading');
     const set = (sel, txt) => { const el = h.querySelector(sel); if (el && el.textContent !== txt) el.textContent = txt; };
+    set('.nh-sh-eyelabel', TT.shSeries || PANEL_T.en.shSeries);
     set('h1', seriesName);
-    set('.nh-sh-author', authorLine);
     set('.nh-sh-stats', statsLine);
     set('.nh-sh-desc', desc);
-    h.querySelector('.nh-sh-desc').style.display = desc ? '' : 'none';
-    bookshelf.classList.add('nh-with-series-header');
-    document.body.classList.add('nh-series-page');
-    if (bookshelf.parentNode && bookshelf.parentNode.classList) bookshelf.parentNode.classList.add('nh-series-cols');
-    document.documentElement.style.setProperty('--nh-sh-h', h.offsetHeight + 'px');
+    const dEl = h.querySelector('.nh-sh-desc');
+    dEl.style.display = desc ? '' : 'none';
 
-    // Entering the two-column layout changes #bookshelf's width, but ABS only re-measures
-    // on real window resizes or settings changes — nudge one setCardSize + rebuild per route.
-    if (h.dataset.nudged !== location.pathname) {
-      h.dataset.nudged = location.pathname;
-      setTimeout(() => {
+    // Read-more: shown only when the clamp actually cuts the text off.
+    const moreBtn = h.querySelector('.nh-sh-more');
+    if (moreBtn) {
+      if (!moreBtn.dataset.nhInit) {
+        moreBtn.dataset.nhInit = '1';
+        moreBtn.addEventListener('click', () => dEl.classList.toggle('nh-open'));
+      }
+      const openD = dEl.classList.contains('nh-open');
+      const clamped = !openD && !!desc && dEl.scrollHeight > dEl.clientHeight + 2;
+      moreBtn.style.display = (openD || clamped) ? '' : 'none';
+      moreBtn.textContent = openD ? (TT.sdLess || PANEL_T.en.sdLess) : (TT.sdMore || PANEL_T.en.sdMore);
+    }
+
+    // Author line with clickable names (SPA-routed to the author page). Rebuilt
+    // only when the author set changes; names without a resolvable id stay text.
+    const authEl = h.querySelector('.nh-sh-author');
+    if (authEl) {
+      const libm = location.pathname.match(/\/library\/([^/]+)\//);
+      const auMap = nhAuthorIdMap(libm ? libm[1] : '');
+      Object.keys(auMap).forEach((n) => { if (!authorIds[n]) authorIds[n] = auMap[n]; });
+      const sig = authors.slice(0, 2).map((n) => n + ':' + (authorIds[n] || '')).join('|') + (authors.length > 2 ? '|+' : '');
+      if (authEl.dataset.nhSig !== sig) {
+        authEl.dataset.nhSig = sig;
+        authEl.textContent = '';
+        if (authors.length) {
+          const byTxt = typeof TT.shBy === 'string' ? TT.shBy : PANEL_T.en.shBy;
+          if (byTxt) authEl.appendChild(document.createTextNode(byTxt));
+          authors.slice(0, 2).forEach((name, i) => {
+            if (i) authEl.appendChild(document.createTextNode(', '));
+            const aid = authorIds[name];
+            if (aid) {
+              const a = document.createElement('a');
+              a.textContent = name;
+              a.href = getBaseNH() + '/author/' + aid;
+              a.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/author/' + aid); });
+              authEl.appendChild(a);
+            } else {
+              authEl.appendChild(document.createTextNode(name));
+            }
+          });
+          if (authors.length > 2) authEl.appendChild(document.createTextNode(typeof TT.shMore === 'string' ? TT.shMore : PANEL_T.en.shMore));
+        }
+      }
+    }
+
+    // A3 (revised per user): the series rating is DERIVED from the books' own
+    // ratings — there is no separate user-entered series rating. Tear down any
+    // widget instance an older build left mounted, then render the aggregate.
+    if (window.__nhRatingsMount) { try { window.__nhRatingsMount(null, null); } catch (e) {} }
+    nhSeriesBooksAvg(h, ents);
+    nhSeriesHeaderCover(h, seriesId, ents, vm.entities.length);
+    nhSeriesSyncScroll();
+
+    document.documentElement.style.setProperty('--nh-sh-h', h.offsetHeight + 'px');
+  }
+
+  // Books-average line for the series header: mean of each rated book's average
+  // rating, over the series' loaded entities. Needs the WHOLE ratings store —
+  // fetched once per series route (tiny at family scale) and recomputed from
+  // cache on later ticks. Skipped entirely while the ratings widget itself is
+  // disabled or its backend is absent (rtLive=false — same backend, same fate).
+  const nhSrAvg = { path: null, items: null, fetching: false, tries: 0 };
+  function nhSrToken() {
+    if (window.__NH_TOKEN) return window.__NH_TOKEN;
+    try {
+      const st = window.$nuxt && window.$nuxt.$store;
+      const t = st && (st.getters['user/getToken'] || (st.state.user.user && (st.state.user.user.accessToken || st.state.user.user.token)));
+      if (t) return t;
+    } catch (e) {}
+    return '';
+  }
+  function nhSeriesBooksAvg(h, ents) {
+    const slot = h.querySelector('.nh-sh-rate');
+    if (!slot) return;
+    if (nhSrAvg.path !== location.pathname) {
+      nhSrAvg.path = location.pathname;
+      nhSrAvg.items = null;
+      nhSrAvg.tries = 0;
+      slot.textContent = '';
+      delete slot.dataset.nhVal;
+    }
+    if (!nhSrAvg.items) {
+      const path = nhSrAvg.path;
+      const token = nhSrToken();
+      if (!nhSrAvg.fetching && nhSrAvg.tries < 5 && token) {
+        nhSrAvg.fetching = true;
+        nhSrAvg.tries++;
+        fetch('/_nh/api/ratings', { headers: { Authorization: 'Bearer ' + token }, credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            nhSrAvg.fetching = false;
+            if (nhSrAvg.path !== path) return;
+            if (j && j.items) nhSrAvg.items = j.items;
+            else nhSrAvg.tries = 5; // backend said no — stop asking this route
+          })
+          .catch(() => { nhSrAvg.fetching = false; });
+      }
+      return;
+    }
+    let sum = 0, rated = 0;
+    ents.forEach((e) => {
+      const rs = nhSrAvg.items[e.id];
+      if (!rs) return;
+      const stars = Object.keys(rs).map((k) => rs[k] && rs[k].stars).filter((v) => typeof v === 'number');
+      if (!stars.length) return;
+      sum += stars.reduce((a, b) => a + b, 0) / stars.length;
+      rated++;
+    });
+    if (!rated) { slot.textContent = ''; slot.style.display = 'none'; delete slot.dataset.nhVal; return; }
+    const avg = sum / rated;
+    slot.style.display = '';
+    const sig = avg.toFixed(2) + ':' + rated + ':' + ents.length;
+    if (slot.dataset.nhVal === sig) return;
+    slot.dataset.nhVal = sig;
+    slot.textContent = '';
+    const stars = document.createElement('span');
+    stars.className = 'nh-rt-stars';
+    const base = document.createElement('span');
+    base.textContent = '★★★★★';
+    const fill = document.createElement('span');
+    fill.className = 'nh-rt-fill';
+    fill.textContent = '★★★★★';
+    stars.appendChild(base);
+    stars.appendChild(fill);
+    nhStarFill(stars, fill, avg);
+    const score = document.createElement('span');
+    score.className = 'nh-rt-score';
+    score.textContent = String(Number(avg.toFixed(2)));
+    const TT = nhGsT();
+    const txt = document.createElement('span');
+    txt.className = 'nh-sh-rate-note';
+    txt.textContent = rated + '/' + ents.length + ' ' + (TT.shRated || PANEL_T.en.shRated);
+    slot.appendChild(stars);
+    slot.appendChild(score);
+    slot.appendChild(txt);
+  }
+
+  // ===================== GLOBAL CROSS-LIBRARY SEARCH (A2) =====================
+  // Replaces the appbar's per-library search with a fan-out across every library
+  // the user can access (the native panel stays available via the toggle). ABS's
+  // own input is kept — identical look, v-model untouched — we listen on it, hide
+  // the native .globalSearchMenu with a body class, and render our own merged
+  // panel: books deduped by normalized title+author carrying one library chip per
+  // copy; series and authors merged by name the same way. All user strings render
+  // via textContent. /api/libraries is already permission-filtered server-side,
+  // so restricted users only ever fan out over their own libraries.
+  const nhGs = { libs: null, q: '', seq: 0, results: null, flat: [], sel: -1, open: false, timer: null, fetching: false };
+
+  // ABS has no $nuxt.$i18n — language comes from the user's ABS setting via
+  // getUserLanguage(), exactly like the settings panel (panelT). An earlier
+  // version read $i18n.locale, which threw and silently pinned everything
+  // added in v2.0 to English (user report).
+  function nhGsT() { return panelT(); }
+
+  // Pluralize with Polish three-form support: [one, few, many]; two-form
+  // languages pass [one, many]. (Mirror of book-details' nhRtWord.)
+  function nhWordForm(n, forms) {
+    if (!Array.isArray(forms) || !forms.length) return '';
+    if (forms.length === 2) return n === 1 ? forms[0] : forms[1];
+    if (n === 1) return forms[0];
+    const d = n % 10, h = n % 100;
+    if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return forms[1];
+    return forms[2];
+  }
+
+  function nhGsNorm(s) {
+    s = String(s || '').toLowerCase();
+    try { s = s.normalize('NFD').replace(/[̀-ͯ]/g, ''); } catch (e) {}
+    return s.replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  function nhGsLibs() {
+    if (nhGs.libs) return Promise.resolve(nhGs.libs);
+    const tok = nhSrToken();
+    if (!tok) return Promise.resolve(null);
+    return fetch('/api/libraries', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const libs = j && (j.libraries || j);
+        if (Array.isArray(libs) && libs.length) nhGs.libs = libs.map((l) => ({ id: l.id, name: l.name }));
+        return nhGs.libs;
+      })
+      .catch(() => null);
+  }
+
+  function nhGsMerge(res) {
+    const books = new Map(), series = new Map(), authors = new Map();
+    res.forEach((pair) => {
+      const lib = pair.lib, j = pair.j;
+      if (!j) return;
+      (j.book || []).concat(j.podcast || []).forEach((b) => {
+        const li = b.libraryItem;
+        if (!li) return;
+        const md = (li.media && li.media.metadata) || {};
+        const key = nhGsNorm(md.title) + '|' + nhGsNorm(md.authorName || md.author);
+        let row = books.get(key);
+        if (!row) { row = { title: md.title || '?', author: md.authorName || md.author || '', copies: [] }; books.set(key, row); }
+        if (!row.copies.some((c) => c.itemId === li.id)) row.copies.push({ itemId: li.id, lib: lib });
+      });
+      (j.series || []).forEach((s) => {
+        const se = s.series || s;
+        if (!se || !se.name) return;
+        const key = nhGsNorm(se.name);
+        let row = series.get(key);
+        if (!row) { row = { name: se.name, copies: [] }; series.set(key, row); }
+        row.copies.push({ seriesId: se.id, lib: lib });
+      });
+      (j.authors || []).forEach((a) => {
+        if (!a || !a.name) return;
+        const key = nhGsNorm(a.name);
+        let row = authors.get(key);
+        if (!row) { row = { name: a.name, copies: [] }; authors.set(key, row); }
+        row.copies.push({ authorId: a.id, lib: lib });
+      });
+    });
+    const arr = (m) => Array.from(m.values());
+    return { books: arr(books), series: arr(series), authors: arr(authors) };
+  }
+
+  function nhGsRun(q) {
+    const seq = ++nhGs.seq;
+    nhGs.fetching = true;
+    nhRsItems(); // warm the ratings map so result rows can carry stars (A7)
+    nhGsRender();
+    nhGsLibs().then((libs) => {
+      if (!libs || seq !== nhGs.seq) return;
+      const tok = nhSrToken();
+      Promise.all(libs.map((lib) =>
+        fetch('/api/libraries/' + lib.id + '/search?q=' + encodeURIComponent(q) + '&limit=8', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null)
+          .then((j) => ({ lib: lib, j: j }))
+      )).then((res) => {
+        if (seq !== nhGs.seq) return;
+        nhGs.fetching = false;
+        nhGs.results = nhGsMerge(res);
+        nhGs.sel = -1;
+        nhGsRender();
+      });
+    });
+  }
+
+  function nhGsGo(t) {
+    nhGsClose();
+    try {
+      const r = window.$nuxt.$router;
+      if (t.itemId) r.push('/item/' + t.itemId);
+      else if (t.seriesId) r.push('/library/' + t.lib.id + '/series/' + t.seriesId);
+      else if (t.authorId) r.push('/author/' + t.authorId);
+    } catch (e) {}
+  }
+
+  function nhGsClose() {
+    nhGs.open = false;
+    nhGs.sel = -1;
+    const p = document.getElementById('nh-gs-panel');
+    if (p) p.remove();
+  }
+
+  function nhGsChip(target, name, solo) {
+    const chip = document.createElement('span');
+    chip.className = 'nh-gs-chip' + (solo ? ' nh-gs-chip-solo' : '');
+    chip.textContent = name;
+    chip.addEventListener('click', (e) => { e.stopPropagation(); e.preventDefault(); nhGsGo(target); });
+    return chip;
+  }
+
+  function nhGsRender() {
+    if (!nhGs.open) return;
+    const input = document.querySelector('#appbar form[role="search"] input');
+    const wrap = input && input.closest('form') && input.closest('form').parentElement;
+    if (!wrap) return;
+    let panel = document.getElementById('nh-gs-panel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'nh-gs-panel';
+      // mousedown, not click: it fires before the input's blur can close us
+      panel.addEventListener('mousedown', (e) => e.preventDefault());
+      wrap.appendChild(panel);
+    }
+    panel.textContent = '';
+    const T = nhGsT();
+    const multiLib = nhGs.libs && nhGs.libs.length > 1;
+    nhGs.flat = [];
+
+    if (nhGs.fetching && !nhGs.results) {
+      const m = document.createElement('div');
+      m.className = 'nh-gs-msg';
+      m.textContent = T.gsSearching || PANEL_T.en.gsSearching;
+      panel.appendChild(m);
+      return;
+    }
+    const r = nhGs.results || { books: [], series: [], authors: [] };
+    if (!r.books.length && !r.series.length && !r.authors.length) {
+      const m = document.createElement('div');
+      m.className = 'nh-gs-msg';
+      m.textContent = T.gsNoResults || PANEL_T.en.gsNoResults;
+      panel.appendChild(m);
+      return;
+    }
+
+    const addHead = (txt) => {
+      const hd = document.createElement('div');
+      hd.className = 'nh-gs-head';
+      hd.textContent = txt;
+      panel.appendChild(hd);
+    };
+    const addRow = (target, build) => {
+      const row = document.createElement('div');
+      row.className = 'nh-gs-row';
+      row.dataset.idx = String(nhGs.flat.length);
+      nhGs.flat.push(target);
+      build(row);
+      row.addEventListener('click', () => nhGsGo(target));
+      row.addEventListener('mousemove', () => {
+        const i = Number(row.dataset.idx);
+        if (nhGs.sel !== i) { nhGs.sel = i; nhGsMark(); }
+      });
+      panel.appendChild(row);
+    };
+
+    if (r.books.length) {
+      addHead(T.gsBooks || PANEL_T.en.gsBooks);
+      r.books.forEach((b) => {
+        addRow(b.copies[0], (row) => {
+          const img = document.createElement('img');
+          img.className = 'nh-gs-cover';
+          img.loading = 'lazy';
+          img.src = '/api/items/' + b.copies[0].itemId + '/cover?width=120';
+          img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
+          row.appendChild(img);
+          const txt = document.createElement('div');
+          txt.className = 'nh-gs-text';
+          const t1 = document.createElement('p');
+          t1.className = 'nh-gs-title';
+          t1.textContent = b.title;
+          const t2 = document.createElement('p');
+          t2.className = 'nh-gs-sub';
+          t2.textContent = b.author;
+          txt.appendChild(t1);
+          txt.appendChild(t2);
+          if (nhSettings.showRatings !== false && nhSettings.showCardRatings !== false) {
+            const rr = nhRsAvg(b.copies[0].itemId);
+            if (rr) txt.appendChild(nhCrStarsEl(rr, 'nh-gs-stars'));
+          }
+          row.appendChild(txt);
+          if (multiLib) {
+            const chips = document.createElement('div');
+            chips.className = 'nh-gs-chips';
+            b.copies.forEach((c) => chips.appendChild(nhGsChip(c, c.lib.name, b.copies.length === 1)));
+            row.appendChild(chips);
+          }
+        });
+      });
+    }
+    const entitySection = (list, headTxt, icon) => {
+      if (!list.length) return;
+      addHead(headTxt);
+      list.forEach((s) => {
+        addRow(s.copies[0], (row) => {
+          const ic = document.createElement('span');
+          ic.className = 'nh-gs-icon material-symbols';
+          ic.textContent = icon;
+          row.appendChild(ic);
+          const txt = document.createElement('div');
+          txt.className = 'nh-gs-text';
+          const t1 = document.createElement('p');
+          t1.className = 'nh-gs-title';
+          t1.textContent = s.name;
+          txt.appendChild(t1);
+          row.appendChild(txt);
+          if (multiLib) {
+            const chips = document.createElement('div');
+            chips.className = 'nh-gs-chips';
+            s.copies.forEach((c) => chips.appendChild(nhGsChip(c, c.lib.name, s.copies.length === 1)));
+            row.appendChild(chips);
+          }
+        });
+      });
+    };
+    entitySection(r.series, T.gsSeries || PANEL_T.en.gsSeries, 'stacks');
+    entitySection(r.authors, T.gsAuthors || PANEL_T.en.gsAuthors, 'person');
+    nhGsMark();
+  }
+
+  function nhGsMark() {
+    const panel = document.getElementById('nh-gs-panel');
+    if (!panel) return;
+    panel.querySelectorAll('.nh-gs-row').forEach((el) => {
+      const on = Number(el.dataset.idx) === nhGs.sel;
+      el.classList.toggle('nh-gs-sel', on);
+      if (on) el.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  function nhGsOnInput(input) {
+    const q = input.value.trim();
+    nhGs.q = input.value;
+    clearTimeout(nhGs.timer);
+    if (q.length < 2) {
+      nhGs.seq++;
+      nhGs.results = null;
+      nhGs.fetching = false;
+      nhGsClose();
+      return;
+    }
+    nhGs.open = true;
+    nhGs.timer = setTimeout(() => nhGsRun(q), 300);
+    nhGsRender();
+  }
+
+  // Search placeholder override: ABS ships some awkward forms ("Szukanie..") —
+  // replace with the natural imperative where we know it; other languages keep
+  // ABS's native placeholder untouched.
+  const NH_SEARCH_PH = { en: 'Search…', pl: 'Szukaj…', de: 'Suchen…', fr: 'Rechercher…', es: 'Buscar…', it: 'Cerca…', pt: 'Pesquisar…', nl: 'Zoeken…', cs: 'Hledat…', sk: 'Hľadať…', da: 'Søg…', sv: 'Sök…', no: 'Søk…', fi: 'Hae…', ru: 'Искать…', uk: 'Шукати…', be: 'Шукаць…', bg: 'Търсене…', hr: 'Traži…', sl: 'Išči…', hu: 'Keresés…', ro: 'Căutare…', lt: 'Ieškoti…', lv: 'Meklēt…', et: 'Otsi…', el: 'Αναζήτηση…', tr: 'Ara…', ca: 'Cerca…', eu: 'Bilatu…', is: 'Leita…', ja: '検索…', ko: '검색…', zh: '搜索…', ar: 'بحث…', he: 'חיפוש…', fa: 'جستجو…', hi: 'खोजें…', bn: 'খুঁজুন…', gu: 'શોધો…', vi: 'Tìm kiếm…' };
+
+  function nhGlobalSearch() {
+    const on = nhSettings.globalSearch !== false;
+    document.body.classList.toggle('nh-global-search', on);
+    const input = document.querySelector('#appbar form[role="search"] input');
+    if (input) {
+      const ph = NH_SEARCH_PH[getUserLanguage().split('-')[0].toLowerCase()];
+      if (ph && input.placeholder !== ph) input.placeholder = ph;
+    }
+    if (!on) { nhGsClose(); return; }
+    if (!input) { nhGsClose(); return; }
+
+    if (input.dataset.nhGsHooked !== '1') {
+      input.dataset.nhGsHooked = '1';
+      input.addEventListener('input', () => { if (nhSettings.globalSearch !== false) nhGsOnInput(input); });
+      input.addEventListener('focus', () => {
+        if (nhSettings.globalSearch !== false && nhGs.q.trim().length >= 2) { nhGs.open = true; nhGsRender(); }
+      });
+      input.addEventListener('blur', () => setTimeout(() => {
+        if (document.activeElement !== input) nhGsClose();
+      }, 150));
+      input.addEventListener('keydown', (e) => {
+        if (nhSettings.globalSearch !== false) {
+          if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); }
+          if (!nhGs.open) return;
+          if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault(); e.stopPropagation();
+            const n = nhGs.flat.length;
+            if (!n) return;
+            nhGs.sel = e.key === 'ArrowDown' ? (nhGs.sel + 1) % n : (nhGs.sel - 1 + n) % n;
+            nhGsMark();
+          } else if (e.key === 'Enter') {
+            const t = nhGs.flat[nhGs.sel >= 0 ? nhGs.sel : 0];
+            if (t) nhGsGo(t);
+          } else if (e.key === 'Escape') {
+            e.preventDefault(); e.stopPropagation();
+            nhGsClose();
+          }
+        }
+      }, true);
+      const form = input.closest('form');
+      if (form) form.addEventListener('submit', (e) => { if (nhSettings.globalSearch !== false) e.preventDefault(); });
+    }
+
+    // The native clear button (×) empties the input through Vue without firing
+    // an input event at us — resync when the DOM value diverges from ours.
+    if (input.value !== nhGs.q) nhGsOnInput(input);
+  }
+
+  // ===================== SERIES COVERS (A1) =====================
+  // Admin-uploaded custom cover per series, stored in the nh_theme_data volume
+  // (/data/nh/series-covers/<seriesId>.<ext>) via the existing admin DAV path.
+  // Discovery is ONE njs call returning {seriesId: ext} — no per-card probing.
+  // Consumers: series grid cards (tile replaces the stack), the Recent Series
+  // row, and the series header (plus its admin pencil/remove buttons).
+  const nhSc = { map: null, descs: null, avatars: null, descText: {}, fetching: false, tries: 0, ts: 0 };
+
+  function nhScFetch() {
+    if (nhSc.fetching || nhSc.map || nhSc.tries >= 5) return;
+    const tok = nhSrToken();
+    if (!tok) return;
+    nhSc.fetching = true;
+    nhSc.tries++;
+    fetch('/_nh/api/series-meta', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => {
+        if (r.status === 404 || r.status === 405) { nhSc.map = {}; nhSc.descs = {}; nhSc.avatars = {}; nhSc.tries = 99; return null; } // old proxy: feature off, stay quiet
+        return r.ok ? r.json() : null;
+      })
+      .then((j) => {
+        nhSc.fetching = false;
+        if (j && j.covers) { nhSc.map = j.covers; nhSc.descs = j.descs || {}; nhSc.avatars = j.avatars || {}; }
+      })
+      .catch(() => { nhSc.fetching = false; });
+  }
+
+  // Custom series description (admin override, /data/nh/series-desc/<id>.txt).
+  // Returns the text once loaded; triggers a lazy fetch and returns null while
+  // pending — the tick re-renders when it lands. Keyed by ts so saves refresh.
+  function nhSdText(seriesId) {
+    if (!seriesId || !nhSc.descs || !nhSc.descs[seriesId]) return null;
+    const key = seriesId + ':' + nhSc.ts;
+    const cached = nhSc.descText[key];
+    if (cached !== undefined) return cached || null;
+    nhSc.descText[key] = ''; // fetch exactly once per key
+    fetch('/_nh/series-desc/' + seriesId + '.txt' + (nhSc.ts ? '?v=' + nhSc.ts : ''))
+      .then((r) => (r.ok ? r.text() : ''))
+      .then((t) => { nhSc.descText[key] = String(t || '').trim(); })
+      .catch(() => {});
+    return null;
+  }
+
+  function nhSdSave(sid, text, cb) {
+    const body = String(text || '').trim().slice(0, 5000);
+    if (!body) return nhSdClear(sid, cb);
+    fetch('/_nh/data/series-desc/' + sid + '.txt', { method: 'PUT', headers: { Authorization: 'Bearer ' + nhSrToken(), 'Content-Type': 'text/plain; charset=utf-8' }, body: body })
+      .then((r) => {
+        if (!r.ok) { if (cb) cb(false); return; }
+        if (!nhSc.descs) nhSc.descs = {};
+        nhSc.descs[sid] = 1;
+        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhSc.descText[sid + ':' + nhSc.ts] = body;
+        if (cb) cb(true);
+      })
+      .catch(() => { if (cb) cb(false); });
+  }
+
+  function nhSdClear(sid, cb) {
+    fetch('/_nh/data/series-desc/' + sid + '.txt', { method: 'DELETE', headers: { Authorization: 'Bearer ' + nhSrToken() } })
+      .then((r) => {
+        const good = r.ok || r.status === 404;
+        if (good && nhSc.descs) { delete nhSc.descs[sid]; nhSc.ts = (nhSc.ts || 1) + 1; }
+        if (cb) cb(good);
+      })
+      .catch(() => { if (cb) cb(false); });
+  }
+
+  // Small editor modal (reuses the ratings popup chrome). Save writes the
+  // override; "Restore book description" deletes it and the header falls back
+  // to book #1's blurb on the next tick.
+  function nhSdOpenEditor(sid) {
+    const T = nhGsT();
+    const old = document.getElementById('nh-sd-modal');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'nh-sd-modal';
+    const bg = document.createElement('div');
+    bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div');
+    box.className = 'nh-rt-modal-box';
+    const closeModal = () => overlay.remove();
+    bg.addEventListener('click', closeModal);
+    const head = document.createElement('div');
+    head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span');
+    title.textContent = T.scEditDesc || PANEL_T.en.scEditDesc;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'nh-rt-modal-x';
+    x.textContent = '×';
+    x.addEventListener('click', closeModal);
+    head.appendChild(title);
+    head.appendChild(x);
+    box.appendChild(head);
+    const ta = document.createElement('textarea');
+    ta.className = 'nh-sd-ta';
+    ta.maxLength = 5000;
+    const hdrDesc = document.querySelector('#nh-series-header .nh-sh-desc');
+    ta.value = (nhSdText(sid) || (hdrDesc ? hdrDesc.textContent : '') || '').trim();
+    box.appendChild(ta);
+    const row = document.createElement('div');
+    row.className = 'nh-rt-actions';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'nh-rt-btn';
+    save.textContent = T.sdSave || PANEL_T.en.sdSave;
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'nh-rt-link';
+    clear.textContent = T.sdClear || PANEL_T.en.sdClear;
+    const status = document.createElement('span');
+    status.className = 'nh-rt-status';
+    save.addEventListener('click', () => { status.textContent = '…'; nhSdSave(sid, ta.value, (ok2) => { if (ok2) closeModal(); else status.textContent = '✗'; }); });
+    clear.addEventListener('click', () => { status.textContent = '…'; nhSdClear(sid, (ok2) => { if (ok2) closeModal(); else status.textContent = '✗'; }); });
+    row.appendChild(save);
+    row.appendChild(clear);
+    row.appendChild(status);
+    box.appendChild(row);
+    overlay.appendChild(bg);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    ta.focus();
+  }
+
+  // Resolves once the cover map is loaded (or after ~1.5s) — lets the Recent
+  // Series row render with custom covers on the first pass.
+  function nhScReady() {
+    return new Promise((res) => {
+      const t0 = Date.now();
+      (function chk() {
+        if (nhSc.map || Date.now() - t0 > 1500) return res();
+        nhScFetch();
+        setTimeout(chk, 150);
+      })();
+    });
+  }
+
+  function nhScUrl(seriesId) {
+    const ext = nhSc.map && seriesId ? nhSc.map[seriesId] : null;
+    return ext ? '/_nh/series-covers/' + seriesId + '.' + ext + (nhSc.ts ? '?v=' + nhSc.ts : '') : null;
+  }
+
+  // Series grid cards: swap the stacked tile for the uploaded cover.
+  function nhSeriesCardCovers() {
+    const cards = document.querySelectorAll('[id^="series-card-"]');
+    if (!cards.length) return;
+    if (!nhSc.map) { nhScFetch(); return; }
+    cards.forEach((card) => {
+      let sid = card.dataset.nhSid;
+      if (!sid) {
+        try { sid = card.__vue__ && card.__vue__.series && card.__vue__.series.id; } catch (e) {}
+        if (sid) card.dataset.nhSid = sid;
+      }
+      if (!sid) return;
+      const url = nhScUrl(sid);
+      let tile = card.querySelector('.nh-sc-tile');
+      if (url) {
+        card.classList.add('nh-has-custom');
+        const area = card.querySelector('[cy-id="covers-area"]');
+        if (!tile && area) {
+          tile = document.createElement('div');
+          tile.className = 'nh-sc-tile';
+          area.appendChild(tile);
+        }
+        if (tile) {
+          const bg = 'url("' + url + '")';
+          // Re-assert via COMPUTED style too: a Vue card re-mount can clone the
+          // tile without its inline style, leaving a blank fallback-colored box.
+          if (tile.dataset.nhBg !== url || getComputedStyle(tile).backgroundImage === 'none') {
+            tile.style.backgroundImage = bg;
+            tile.dataset.nhBg = url;
+          }
+        }
+      } else {
+        card.classList.remove('nh-has-custom');
+        if (tile) tile.remove();
+      }
+    });
+  }
+
+  function nhScUpload(fileInput, sid, statusEl) {
+    const f = fileInput.files && fileInput.files[0];
+    if (!f || !sid) return;
+    const byMime = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif' };
+    let ext = byMime[f.type] || (f.name.split('.').pop() || '').toLowerCase();
+    if (ext === 'jpeg') ext = 'jpg';
+    if (!/^(png|jpg|webp|gif|avif)$/.test(ext)) { if (statusEl) statusEl.textContent = '✗'; fileInput.value = ''; return; }
+    if (f.size > 4 * 1024 * 1024) { if (statusEl) statusEl.textContent = '✗ 4MB'; fileInput.value = ''; return; }
+    if (statusEl) statusEl.textContent = '…';
+    const tok = nhSrToken();
+    fetch('/_nh/data/series-covers/' + sid + '.' + ext, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok }, body: f })
+      .then((r) => {
+        if (!r.ok) throw new Error(r.status);
+        const old = nhSc.map && nhSc.map[sid];
+        if (old && old !== ext) {
+          fetch('/_nh/data/series-covers/' + sid + '.' + old, { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } }).catch(() => {});
+        }
+        if (!nhSc.map) nhSc.map = {};
+        nhSc.map[sid] = ext;
+        nhSc.ts = (nhSc.ts || 1) + 1; // cache-bust every consumer
+        if (statusEl) statusEl.textContent = '';
+        fileInput.value = '';
+      })
+      .catch(() => { if (statusEl) statusEl.textContent = '✗'; fileInput.value = ''; });
+  }
+
+  function nhScDelete(sid, statusEl) {
+    const ext = nhSc.map && nhSc.map[sid];
+    if (!ext) return;
+    fetch('/_nh/data/series-covers/' + sid + '.' + ext, { method: 'DELETE', headers: { Authorization: 'Bearer ' + nhSrToken() } })
+      .then((r) => {
+        if (r.ok || r.status === 404) { delete nhSc.map[sid]; nhSc.ts = (nhSc.ts || 1) + 1; }
+        else if (statusEl) statusEl.textContent = '✗';
+      })
+      .catch(() => { if (statusEl) statusEl.textContent = '✗'; });
+  }
+
+  // Author name -> id map for the header's clickable author links. The series
+  // page's bookshelf entities are MINIFIED (authorName string only, no authors[]
+  // with ids), so ids come from the library's authors list, fetched once per
+  // library and cached. Family-scale libraries make this a small payload.
+  const nhAu = { libId: null, map: null, fetching: false };
+  function nhAuthorIdMap(libId) {
+    if (!libId) return {};
+    if (nhAu.libId === libId && nhAu.map) return nhAu.map;
+    if (nhAu.libId !== libId) { nhAu.libId = libId; nhAu.map = null; }
+    if (!nhAu.fetching) {
+      const tok = nhSrToken();
+      if (tok) {
+        nhAu.fetching = true;
+        fetch('/api/libraries/' + libId + '/authors', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            nhAu.fetching = false;
+            if (j && Array.isArray(j.authors) && nhAu.libId === libId) {
+              const m = {};
+              j.authors.forEach((a) => { if (a && a.id && a.name) m[a.name] = a.id; });
+              nhAu.map = m;
+            }
+          })
+          .catch(() => { nhAu.fetching = false; });
+      }
+    }
+    return nhAu.map || {};
+  }
+
+  // Composite header cover: when a series has NO uploaded artwork, collage the
+  // first few book covers on a canvas (client-side, cached per session).
+  // Header-only — cards and the recent-series row keep the stacked look unless
+  // an admin uploads a real cover (user request). The seriesCoverMode setting
+  // (A6) picks the fallback layout: 'deck' (layered diagonal), 'grid' (2×2),
+  // 'first' (book #1's cover, no canvas), or 'off'.
+  const nhScComp = {};
+  const nhScCompTries = {};
+  function nhScCompositeUrl(seriesId, ents, mode, total) {
+    const grid = mode === 'grid';
+    const key = (grid ? 'g:' : 'd:') + seriesId;
+    const cur = nhScComp[key];
+    if (cur === 'pending') return null;
+    if (cur) return cur === 'none' ? null : cur;
+    const ids = [];
+    const max = grid ? 4 : 3;
+    // Over-collect: books without a cover file 404 at load time, so extras keep
+    // the layout full (first `max` that actually load are used).
+    (ents || []).forEach((e) => { if (e && e.id && ids.length < max + 4 && ids.indexOf(e.id) === -1) ids.push(e.id); });
+    if (!ids.length) return null;
+    // The shelf loads entities lazily, so an early tick can see fewer books than
+    // the layout wants (grid especially). Wait a few ticks for the rest before
+    // committing to the session cache; render with what's there if they never come.
+    const want = Math.min(max, total || ids.length);
+    if (ids.length < want && (nhScCompTries[key] = (nhScCompTries[key] || 0) + 1) < 12) return null;
+    nhScComp[key] = 'pending';
+    const std = document.documentElement.classList.contains('nh-covers-std');
+    // Sized for HiDPI/ultrawide displays: 1200px sources into a 1400px canvas at
+    // JPEG .9 — the earlier 600px/900px/.82 pipeline read visibly soft on 5K.
+    const W = 1400, H = std ? 2240 : 1400;
+    const tk = window.__NH_TOKEN || getTokenNH();
+    const tq = tk ? '&token=' + encodeURIComponent(tk) : '';
+    Promise.all(ids.map((id) => new Promise((res) => {
+      const im = new Image();
+      im.onload = () => res(im);
+      im.onerror = () => res(null);
+      im.src = '/api/items/' + id + '/cover?width=1200' + tq;
+    }))).then((imgs) => {
+      const good = imgs.filter(Boolean).slice(0, max);
+      if (!good.length) { nhScComp[key] = 'none'; return; }
+      try {
+        const cv = document.createElement('canvas');
+        cv.width = W;
+        cv.height = H;
+        const ctx = cv.getContext('2d');
+        const n = good.length;
+        // object-fit: cover crop of im into a dw×dh destination
+        const coverFit = (im, dw, dh) => {
+          const sRatio = im.width / im.height, dRatio = dw / dh;
+          let sx = 0, sy = 0, sW = im.width, sH = im.height;
+          if (sRatio > dRatio) { sW = im.height * dRatio; sx = (im.width - sW) / 2; }
+          else { sH = im.width / dRatio; sy = (im.height - sH) / 2; }
+          return [sx, sy, sW, sH];
+        };
+        if (grid) {
+          // COVER GRID: 2×2 with thin gaps; fewer books degrade gracefully
+          // (3 = two up top + one full-width, 2 = side by side, 1 = full bleed).
+          const G = 10;
+          ctx.fillStyle = '#141414';
+          ctx.fillRect(0, 0, W, H);
+          const cw = (W - G) / 2, ch = (H - G) / 2;
+          const cells =
+            n >= 4 ? [[0, 0, cw, ch], [cw + G, 0, cw, ch], [0, ch + G, cw, ch], [cw + G, ch + G, cw, ch]] :
+            n === 3 ? [[0, 0, cw, ch], [cw + G, 0, cw, ch], [0, ch + G, W, ch]] :
+            n === 2 ? [[0, 0, cw, H], [cw + G, 0, cw, H]] :
+            [[0, 0, W, H]];
+          cells.forEach((c, idx) => {
+            const im = good[idx];
+            const f = coverFit(im, c[2], c[3]);
+            ctx.drawImage(im, f[0], f[1], f[2], f[3], c[0], c[1], c[2], c[3]);
+          });
+        } else {
+          // LAYERED diagonal deck (user request): every cover is drawn FULL-BLEED
+          // on its own layer; each successive layer is clipped from its slanted
+          // boundary to the right edge, so the cut reveals the layer beneath —
+          // with a soft shadow cast along the cut for real depth.
+          const sw = W / n;
+          const k = W * 0.08;
+          const topX = (i) => i * sw + k;
+          const botX = (i) => i * sw - k;
+          good.forEach((im, idx) => {
+            ctx.save();
+            if (idx > 0) {
+              ctx.beginPath();
+              ctx.moveTo(topX(idx), 0);
+              ctx.lineTo(W, 0);
+              ctx.lineTo(W, H);
+              ctx.lineTo(botX(idx), H);
+              ctx.closePath();
+              ctx.clip();
+            }
+            const f = coverFit(im, W, H);
+            ctx.drawImage(im, f[0], f[1], f[2], f[3], 0, 0, W, H);
+            if (idx > 0) {
+              // uniform-width shadow hugging the slanted cut: gradient axis runs
+              // perpendicular to the boundary line
+              const L = Math.sqrt(H * H + 4 * k * k), sh = 90;
+              const g = ctx.createLinearGradient(topX(idx), 0, topX(idx) + sh * H / L, sh * 2 * k / L);
+              g.addColorStop(0, 'rgba(0,0,0,0.55)');
+              g.addColorStop(1, 'rgba(0,0,0,0)');
+              ctx.fillStyle = g;
+              ctx.fillRect(0, 0, W, H); // clip confines it to this layer
+            }
+            ctx.restore();
+          });
+        }
+        nhScComp[key] = cv.toDataURL('image/jpeg', 0.9);
+      } catch (e) { nhScComp[key] = 'none'; }
+    });
+    return null;
+  }
+
+  // Header cover, run from nhSeriesHeader phase 2 each tick. Admin actions live in
+  // the series toolbar kebab menu (user request) — the header only hosts the hidden
+  // file input and a tiny status glyph. Custom upload wins; otherwise the user's
+  // seriesCoverMode picks the generated fallback (deck / grid / first book / off).
+  function nhSeriesHeaderCover(h, seriesId, ents, total) {
+    const cov = h.querySelector('.nh-sh-cover');
+    if (!cov) return;
+    nhScFetch();
+    const mode = ['deck', 'first', 'grid', 'off'].indexOf(nhSettings.seriesCoverMode) !== -1 ? nhSettings.seriesCoverMode : 'grid';
+    let url = nhScUrl(seriesId);
+    if (!url && mode !== 'off') {
+      if (mode === 'first') {
+        const first = (ents || []).filter((e) => e && e.id)[0];
+        if (first) {
+          const tk = window.__NH_TOKEN || getTokenNH();
+          url = '/api/items/' + first.id + '/cover?width=1200' + (tk ? '&token=' + encodeURIComponent(tk) : '');
+        }
+      } else {
+        url = nhScCompositeUrl(seriesId, ents, mode, total);
+      }
+    }
+    cov.classList.toggle('nh-on', !!url);
+    if (url) {
+      const bg = 'url("' + url + '")';
+      if (cov.style.backgroundImage !== bg || getComputedStyle(cov).backgroundImage === 'none') cov.style.backgroundImage = bg;
+    } else {
+      cov.style.backgroundImage = '';
+    }
+    const tools = h.querySelector('.nh-sh-tools');
+    if (!tools || !isUserAdmin()) return;
+    tools.dataset.sid = seriesId;
+    if (!tools.dataset.nhInit) {
+      tools.dataset.nhInit = '1';
+      const file = document.createElement('input');
+      file.type = 'file';
+      file.accept = 'image/png,image/jpeg,image/webp,image/gif,image/avif';
+      file.style.display = 'none';
+      file.className = 'nh-sc-file';
+      const status = document.createElement('span');
+      status.className = 'nh-sh-editstatus';
+      file.addEventListener('change', () => nhScUpload(file, tools.dataset.sid, status));
+      tools.appendChild(status);
+      tools.appendChild(file);
+    }
+    nhScMenuItems(seriesId, tools);
+  }
+
+  // Inject "Set/Remove series cover" into the series-page toolbar kebab (the same
+  // three-dot menu that has Mark as Finished etc). Rows copy the native item
+  // markup so the unified menu CSS styles them identically; the tick re-adds them
+  // if a Vue re-render wipes the menu. Closing is done by toggling the kebab's own
+  // trigger button so Vue's showMenu state stays in sync.
+  function nhScMenuItems(seriesId, tools) {
+    const kebab = document.querySelector('body.nh-series-page #toolbar button[aria-haspopup="menu"]');
+    const menu = kebab && kebab.parentElement && kebab.parentElement.querySelector('[role="menu"]');
+    if (!menu) return;
+    if (!menu.querySelector('.nh-sc-mi-set')) {
+      const T = nhGsT();
+      const mk = (cls, label) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('role', 'menuitem');
+        b.className = 'flex items-center px-2 py-1.5 hover:bg-white/5 text-white text-xs cursor-pointer w-full ' + cls;
+        const pp = document.createElement('p');
+        pp.className = 'text-left';
+        pp.textContent = label;
+        b.appendChild(pp);
+        return b;
+      };
+      const close = () => { try { kebab.click(); } catch (e) {} };
+      const set = mk('nh-sc-mi-set', T.scSet || PANEL_T.en.scSet);
+      const rem = mk('nh-sc-mi-rem', T.scRemove || PANEL_T.en.scRemove);
+      const edd = mk('nh-sc-mi-desc', T.scEditDesc || PANEL_T.en.scEditDesc);
+      set.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close();
+        const f = tools.querySelector('.nh-sc-file');
+        if (f) f.click();
+      });
+      rem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close();
+        nhScDelete(tools.dataset.sid, tools.querySelector('.nh-sh-editstatus'));
+      });
+      edd.addEventListener('click', (e) => {
+        e.stopPropagation();
+        close();
+        nhSdOpenEditor(tools.dataset.sid);
+      });
+      menu.appendChild(set);
+      menu.appendChild(rem);
+      menu.appendChild(edd);
+    }
+    const rem = menu.querySelector('.nh-sc-mi-rem');
+    if (rem) rem.style.display = nhScUrl(seriesId) ? '' : 'none';
+  }
+
+  // ===================== SHARED RATINGS MAP + CARD BADGES (A7) =====================
+  // ONE session-wide copy of the whole ratings store feeds every browse surface:
+  // card badges, global-search rows, the library rating filter (A8), and the
+  // series header aggregate. Refreshed in the background when >60s old so other
+  // users' ratings drift in; local saves patch it instantly via the
+  // 'nh-rating-change' event book-details fires (no refetch).
+  const nhRs = { items: null, at: 0, fetching: false, tries: 0, dead: false };
+  function nhRsItems() {
+    if (nhRs.dead) return nhRs.items;
+    const stale = Date.now() - nhRs.at > 60000;
+    if ((!nhRs.items || stale) && !nhRs.fetching && nhRs.tries < 5) {
+      const tok = nhSrToken();
+      if (tok) {
+        nhRs.fetching = true;
+        nhRs.tries++;
+        fetch('/_nh/api/ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => {
+            if (r.status === 404 || r.status === 405) { nhRs.dead = true; return null; } // old proxy: feature off
+            return r.ok ? r.json() : null;
+          })
+          .then((j) => {
+            nhRs.fetching = false;
+            if (j && j.items) { nhRs.items = j.items; nhRs.at = Date.now(); nhRs.tries = 0; }
+          })
+          .catch(() => { nhRs.fetching = false; });
+      }
+    }
+    return nhRs.items;
+  }
+
+  function nhRsAvg(itemId) {
+    const rs = nhRs.items && itemId ? nhRs.items[itemId] : null;
+    if (!rs) return null;
+    let sum = 0, n = 0;
+    Object.keys(rs).forEach((k) => {
+      const v = rs[k] && rs[k].stars;
+      if (typeof v === 'number') { sum += v; n++; }
+    });
+    return n ? { avg: sum / n, n: n } : null;
+  }
+
+  window.addEventListener('nh-rating-change', (e) => {
+    const d = (e && e.detail) || {};
+    if (!d.itemId || !nhRs.items) return;
+    if (d.ratings && Object.keys(d.ratings).length) nhRs.items[d.itemId] = d.ratings;
+    else delete nhRs.items[d.itemId];
+    nhRs.at = Date.now();
+    // wipe render signatures so the next tick redraws badges + the A8 panel
+    document.querySelectorAll('.nh-cr').forEach((b) => { delete b.dataset.nhCrSig; });
+    nhLf.viewSig = '';
+  });
+
+  // ===================== STAR-FILL GEOMETRY (shared) =====================
+  // Every star widget is two text layers ('★★★★★' grey + amber) with the amber
+  // one clipped by width. Clipping at value/5 of the ROW lands mid-BOX of the
+  // fractional glyph — but the ★ ink sits left of its box middle (side bearings,
+  // plus trailing letter-spacing, which Chrome counts into the row and Firefox
+  // does not) so a half star read visibly past its middle (Pawel's screenshot).
+  // This clips at the fractional glyph's INK instead: char boxes via Range
+  // (engine truth in both browsers), ink span via canvas, cached per font|size.
+  // Exposed as window.__nhStarFill for book-details.js (loaded after this file).
+  const nhStarInkCache = {};
+  function nhStarInkFor(cs) {
+    const key = cs.fontFamily + '|' + cs.fontSize + '|' + cs.fontWeight;
+    let m = nhStarInkCache[key];
+    if (m) return m;
+    try {
+      const px = Math.max(12, Math.min(96, parseFloat(cs.fontSize) || 16));
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(px * 3); cv.height = Math.ceil(px * 2);
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.font = (cs.fontStyle || 'normal') + ' ' + (cs.fontWeight || '400') + ' ' + px + 'px ' + (cs.fontFamily || 'sans-serif');
+      ctx.textBaseline = 'top';
+      const x0 = Math.ceil(px / 2);
+      ctx.fillText('★', x0, Math.ceil(px / 4));
+      const adv = ctx.measureText('★').width;
+      const d = ctx.getImageData(0, 0, cv.width, cv.height).data;
+      let minX = -1, maxX = -1;
+      for (let x = 0; x < cv.width; x++) {
+        for (let y = 0; y < cv.height; y++) {
+          if (d[(y * cv.width + x) * 4 + 3] > 16) { if (minX < 0) minX = x; maxX = x; break; }
+        }
+      }
+      m = (adv > 0 && minX >= 0) ? { adv: adv / px, l: (minX - x0) / adv, w: (maxX + 1 - minX) / adv } : null;
+    } catch (e) { m = null; }
+    nhStarInkCache[key] = m || { adv: 1, l: 0, w: 1 }; // degenerate → same as naive
+    return nhStarInkCache[key];
+  }
+
+  function nhStarFill(starsEl, fillEl, v) {
+    v = Math.max(0, Math.min(5, +v || 0));
+    const n = Math.floor(v), f = v - n;
+    if (!f) { fillEl.style.width = (n / 5 * 100) + '%'; return; }
+    let done = false;
+    try {
+      const base = starsEl.firstElementChild;
+      const tn = base && base.firstChild;
+      if (tn && tn.nodeType === 3 && tn.textContent.length >= n + 1) {
+        const sr = starsEl.getBoundingClientRect();
+        if (sr.width > 0) {
+          const rg = document.createRange();
+          rg.setStart(tn, n); rg.setEnd(tn, n + 1);
+          const b = rg.getBoundingClientRect();
+          if (b.width > 0) {
+            const cs = getComputedStyle(base);
+            const ink = nhStarInkFor(cs);
+            const advPx = ink.adv * (parseFloat(cs.fontSize) || 16);
+            const clip = (b.left - sr.left) + (ink.l + f * ink.w) * advPx;
+            fillEl.style.width = Math.max(0, clip).toFixed(1) + 'px';
+            fillEl.__nhSfN = 0;
+            done = true;
+          }
+        }
+      }
+    } catch (e) {}
+    if (!done) {
+      // Detached or hidden right now (badges are built before being appended):
+      // naive % as a stopgap, then a few frame-delayed retries once measurable.
+      fillEl.style.width = (v / 5 * 100) + '%';
+      const tries = fillEl.__nhSfN = (fillEl.__nhSfN || 0) + 1;
+      if (tries <= 4) requestAnimationFrame(() => nhStarFill(starsEl, fillEl, v));
+    }
+  }
+  window.__nhStarFill = nhStarFill;
+
+  // Small reusable stars element. Default: "★★★★☆ (3)" (stars + review count,
+  // used in search rows). noCount: "4.5 ★★★★☆" (avg number + stars — the card
+  // badge form, user request).
+  function nhCrStarsEl(r, cls, noCount) {
+    const wrap = document.createElement('span');
+    wrap.className = 'nh-cr-wrap' + (cls ? ' ' + cls : '');
+    if (noCount) {
+      const num = document.createElement('span');
+      num.className = 'nh-cr-num';
+      num.textContent = String(Math.round(r.avg * 10) / 10);
+      wrap.appendChild(num);
+    }
+    const stars = document.createElement('span');
+    stars.className = 'nh-rt-stars nh-cr-stars';
+    const base = document.createElement('span');
+    base.textContent = '★★★★★';
+    const fill = document.createElement('span');
+    fill.className = 'nh-rt-fill';
+    fill.textContent = '★★★★★';
+    stars.appendChild(base);
+    stars.appendChild(fill);
+    nhStarFill(stars, fill, r.avg);
+    wrap.appendChild(stars);
+    if (!noCount) {
+      const n = document.createElement('span');
+      n.className = 'nh-cr-n';
+      n.textContent = '(' + r.n + ')';
+      wrap.appendChild(n);
+    }
+    return wrap;
+  }
+
+  // Tick decorator: star badge over every rated book cover (library grid, home
+  // shelves, series page, search results page). Cards are VIRTUAL — ABS recycles
+  // the same book-card-<n> element for different books while scrolling — so the
+  // badge is re-validated against the card vm's CURRENT item id each tick.
+  // Paints (or clears) the caption badge for one card. `host` is the caption box
+  // ABS already renders -- the badge is absolutely positioned inside it, so the
+  // card keeps the height Vue computed for it. `anchor` is the truncating text
+  // line the badge shares; it gets a measured padding-right so the two never
+  // overlap. A fixed reserve cannot work: the badge scales with the cover-size
+  // control, so its width is only knowable after it is in the DOM.
+  function nhCrPaint(host, anchor, r, sig) {
+    let badge = host.querySelector('.nh-cr');
+    if (!r) {
+      if (badge) badge.remove();
+      if (anchor && anchor.style.paddingRight) anchor.style.paddingRight = '';
+      return;
+    }
+    if (badge && badge.dataset.nhCrSig === sig) return;
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'nh-cr';
+      host.appendChild(badge);
+    }
+    badge.dataset.nhCrSig = sig;
+    badge.textContent = '';
+    badge.appendChild(nhCrStarsEl(r, '', true));
+    badge.title = (Math.round(r.avg * 10) / 10) + ' / 5 (' + r.n + ')';
+    if (anchor) {
+      // Only on a signature change, so this forced measure runs about as often
+      // as a card is recycled -- not every tick.
+      const w = Math.ceil(badge.getBoundingClientRect().width);
+      if (w > 0) anchor.style.paddingRight = (w + 8) + 'px';
+    }
+  }
+
+  function nhCardRatings() {
+    const on = nhSettings.showRatings !== false && nhSettings.showCardRatings !== false;
+    if (!on) {
+      document.querySelectorAll('.nh-cr').forEach((b) => b.remove());
+      document.querySelectorAll('[cy-id="line2"][style*="padding-right"], [cy-id="detailBottomDisplayTitle"][style*="padding-right"]')
+        .forEach((el) => { el.style.paddingRight = ''; });
+      return;
+    }
+    if (!nhRsItems()) return;
+    // series cards: derived rating = mean of the member books' averages (same
+    // math as the series header/A8 filter), on the caption's title line
+    document.querySelectorAll('[id^="series-card-"]').forEach((card) => {
+      const host = card.querySelector('[cy-id="detailBottomText"]');
+      if (!host) return;
+      let s = null;
+      try { s = card.__vue__ && card.__vue__.series; } catch (e) {}
+      let sum = 0, n = 0;
+      if (s && Array.isArray(s.books)) s.books.forEach((bk) => { const r2 = nhRsAvg(bk.id); if (r2) { sum += r2.avg; n++; } });
+      const r = n ? { avg: sum / n, n: n } : null;
+      nhCrPaint(host, host.querySelector('[cy-id="detailBottomDisplayTitle"]'), r, (s && s.id ? s.id : '') + ':' + (r ? r.avg.toFixed(2) : '') + ':' + n);
+    });
+    // our own book tiles on a collection page: the author row is a flex line, so
+    // the badge is a sibling and needs no measured reserve
+    document.querySelectorAll('.nh-col-tile').forEach((tile) => {
+      const host = tile.querySelector('.nh-col-arow');
+      if (!host) return;
+      const id = ((tile.getAttribute('href') || '').split('/item/')[1] || '').split(/[?#]/)[0];
+      const r = id ? nhRsAvg(id) : null;
+      nhCrPaint(host, null, r, id + ':' + (r ? r.avg.toFixed(2) + ':' + r.n : 'none'));
+    });
+    const cards = document.querySelectorAll('[id^="book-card-"]');
+    if (!cards.length) return;
+    cards.forEach((card) => {
+      const host = card.querySelector('[id^="description-area-"]');
+      if (!host) return;
+      let id = null;
+      try { id = card.__vue__ && card.__vue__.libraryItem && card.__vue__.libraryItem.id; } catch (e) {}
+      const r = id ? nhRsAvg(id) : null;
+      // line2 is the author; on a card with no author it is absent and the title
+      // row is the last line, so that becomes the anchor instead.
+      const anchor = host.querySelector('[cy-id="line2"]') || host.querySelector('[cy-id="title"]');
+      nhCrPaint(host, anchor, r, id + ':' + (r ? r.avg.toFixed(2) + ':' + r.n : 'none'));
+    });
+  }
+
+  // Swap the card-hover play triangle for the rounder play_circle glyph (user
+  // request; the read button's auto_stories glyph stays). The overlay markup is
+  // always in the DOM (hover only reveals it), so the swap never flashes. CSS
+  // can't select by ligature text, hence JS.
+  function nhCardPlayIcon() {
+    // Unconditional now that the hover-polish toggle is gone (see the CSS block
+    // in applySettings for why the removed key must not be read here either).
+    document.querySelectorAll('[id^="cover-area-"] div[class*="hover:scale-110"] .material-symbols').forEach((s) => {
+      if (s.textContent === 'play_arrow') s.textContent = 'play_circle';
+    });
+    // Hide the ebook-format tag (epub/pdf, hover overlay) on books that HAVE
+    // audio — it reads like the whole book is an ebook (user report). Cards are
+    // recycled, so re-assert against the CURRENT item every tick.
+    document.querySelectorAll('[id^="book-card-"]').forEach((card) => {
+      const ca = card.querySelector('[id^="cover-area-"]');
+      if (!ca) return;
+      let hasAudio = false;
+      try {
+        const md = card.__vue__ && card.__vue__.libraryItem && card.__vue__.libraryItem.media;
+        hasAudio = !!(md && (md.numTracks || md.numEpisodes || md.duration));
+      } catch (e) {}
+      const fmt = ca.querySelector('div[class*="absolute"] > span[class*="text-white/80"]');
+      if (fmt && fmt.parentElement) fmt.parentElement.style.display = hasAudio ? 'none' : '';
+    });
+  }
+
+  // ===================== LIBRARY RATING SORT & FILTER (A8 v2) =====================
+  // Rating options live INSIDE the native Filter/Sort dropdowns (user request —
+  // one control surface, not two): a "Rating" section injected into the filter
+  // menu and a "Rating" entry in the sort menu, rows cloned from native markup.
+  // They COMPOSE with the native state: the overlay grid fetches with the user's
+  // current filterBy/orderBy applied server-side (genre filter + rated-only works
+  // together; native order is kept unless rating sort is chosen). While active
+  // the dropdown button labels carry the combined state; clearing every rating
+  // option hands straight back to the untouched native shelf.
+  // sorts: ORDERED list of levels [{d, dir}] — pick order = precedence, each
+  // click cycles ↑ → ↓ → off. filters: {dim: [values]} — OR within a dimension,
+  // AND across dimensions, AND with ABS's native filter (server-side) and the
+  // rating quick-filters. nhLf.sort stays a derived STRING signature so every
+  // existing truthiness/signature check keeps working unchanged.
+  const nhLf = { mode: 'items', sort: '', sorts: [], filter: '', filters: {}, sub: null, libId: null, items: null, itemsKey: '', fetching: false, view: null, viewSig: '', needReset: false, libTotal: null, libTotalKey: '', libTotalFetching: false };
+  const NH_LF_FILTERS = ['rated', 'min4', 'min3', 'unrated'];
+  const NH_LF_SORT_DIMS = ['author', 'series', 'title', 'year', 'added', 'duration', 'narrator', 'rating'];
+  const NH_LF_FILTER_DIMS = ['genre', 'author', 'narrator', 'language', 'decade', 'progress'];
+
+  function nhLfSyncSortSig() {
+    nhLf.sort = nhLf.sorts.map((s) => s.d + (s.dir < 0 ? '-' : '+')).join(',');
+  }
+  function nhLfFxSig() {
+    const ks = Object.keys(nhLf.filters).filter((k) => nhLf.filters[k] && nhLf.filters[k].length);
+    return ks.sort().map((k) => k + ':' + nhLf.filters[k].slice().sort().join('|')).join(';');
+  }
+  function nhLfFxCount() {
+    return Object.keys(nhLf.filters).reduce((n, k) => n + ((nhLf.filters[k] || []).length), 0);
+  }
+  function nhLfDimLabel(T, d) {
+    const K = {
+      author: 'lfAuthor', series: 'lfSeries', title: 'lfTitle', year: 'lfYear', added: 'lfAdded',
+      duration: 'lfDuration', narrator: 'lfNarrator', rating: 'lfSort', genre: 'lfGenre',
+      language: 'lfLanguage', decade: 'lfYear', progress: 'lfProgress',
+    }[d];
+    return T[K] || PANEL_T.en[K] || d;
+  }
+  function nhLfMeta(li) { return (li.media && li.media.metadata) || {}; }
+  function nhLfSeriesKey(md) {
+    // seriesName is "Name #2" ("A #1, B #4" for multi-series — first wins);
+    // a standalone book interleaves by TITLE where a series name would sort.
+    const first = String(md.seriesName || '').split(', ')[0];
+    const m2 = first.match(/^(.*?)\s+#([\d.]+)$/);
+    return {
+      group: (m2 ? m2[1] : (first || String(md.title || ''))).toLowerCase(),
+      seq: m2 ? parseFloat(m2[2]) : Infinity,
+    };
+  }
+  function nhLfProgressOf(pgMap, id) { return pgMap[id] || 'none'; }
+  function nhLfProgressMap() {
+    const map = {};
+    try {
+      (window.$nuxt.$store.state.user.user.mediaProgress || []).forEach((p) => {
+        if (!p || !p.libraryItemId) return;
+        map[p.libraryItemId] = p.isFinished ? 'finished' : ((p.progress || 0) > 0 ? 'progress' : 'none');
+      });
+    } catch (e) {}
+    return map;
+  }
+  // value catalog for a filter dimension, with counts, from the fetched items
+  function nhLfValues(dim, T) {
+    const cnt = new Map();
+    const add = (v) => { if (v) cnt.set(v, (cnt.get(v) || 0) + 1); };
+    const pg = dim === 'progress' ? nhLfProgressMap() : null;
+    (nhLf.items || []).forEach((li) => {
+      const md = nhLfMeta(li);
+      if (dim === 'genre') (md.genres || []).forEach(add);
+      else if (dim === 'author') String(md.authorName || '').split(', ').forEach(add);
+      else if (dim === 'narrator') String(md.narratorName || '').split(', ').forEach(add);
+      else if (dim === 'language') add(md.language);
+      else if (dim === 'decade') { const y = parseInt(md.publishedYear, 10); if (y) add(Math.floor(y / 10) * 10 + 's'); }
+      else if (dim === 'progress') add(nhLfProgressOf(pg, li.id));
+    });
+    let vals = [...cnt.entries()].map(([v, n]) => ({ v: v, n: n }));
+    if (dim === 'progress') {
+      const order = { finished: 0, progress: 1, none: 2 };
+      vals.sort((a, b) => (order[a.v] || 0) - (order[b.v] || 0));
+    } else if (dim === 'decade') vals.sort((a, b) => b.v.localeCompare(a.v));
+    else vals.sort((a, b) => (b.n - a.n) || a.v.localeCompare(b.v));
+    return vals.slice(0, 60);
+  }
+  function nhLfValueLabel(T, dim, v) {
+    if (dim !== 'progress') return v;
+    return v === 'finished' ? (T.lfPgFinished || PANEL_T.en.lfPgFinished)
+      : v === 'progress' ? (T.lfPgInProgress || PANEL_T.en.lfPgInProgress)
+      : (T.lfPgNot || PANEL_T.en.lfPgNot);
+  }
+
+  // Restore the shelf's own fetcher and refresh it back to native data.
+  function nhLfRelease(vm) {
+    if (vm && vm.__nhLfPatched) {
+      if (vm.__nhOrigFetch) vm.fetchEntites = vm.__nhOrigFetch;
+      vm.__nhLfPatched = false;
+      try { vm.resetEntities(); } catch (e) {} // patched ⇒ we were serving; refresh to native
+    }
+    nhLf.viewSig = '';
+    nhLf.view = null;
+  }
+
+  function nhLfReset() {
+    document.querySelectorAll('#toolbar .nh-lf-count, #toolbar .nh-lf-clearx').forEach((el) => el.remove());
+    nhLf.sort = '';
+    nhLf.sorts = [];
+    nhLf.filter = '';
+    nhLf.filters = {};
+    nhLf.sub = null;
+    // Clear the native signature too. nhLfNative() returns a DIFFERENT default per
+    // mode ('name' for series vs 'media.metadata.title' for items), so a stale
+    // signature from the previous mode made a plain Books<->Series navigation look
+    // like a filter change and fired the relayout below on every such hop.
+    nhLf.natSig = undefined;
+    const bs = document.getElementById('bookshelf');
+    nhLfRelease(bs && bs.__vue__);
+    // The no-match panel is only maintained by the ACTIVE-filter render path, so
+    // clearing the filter left it (and the body class hiding the shelf) in place
+    // forever — the Clear button looked dead (Pawel). Tear it down here, where
+    // every clear route converges.
+    nhLfEmptyState(false);
+  }
+
+  function nhLfFilterLabel(T) {
+    return nhLf.filter === 'rated' ? (T.lfRated || PANEL_T.en.lfRated) :
+      nhLf.filter === 'unrated' ? (T.lfUnrated || PANEL_T.en.lfUnrated) :
+      nhLf.filter === 'min4' ? '4★+' : nhLf.filter === 'min3' ? '3★+' : '';
+  }
+
+  // The two toolbar dropdowns: [0] = filter, [1] = sort (the kebab comes later).
+  function nhLfDropdowns(toolbar) {
+    const btns = Array.from(toolbar.querySelectorAll('button[aria-haspopup="menu"]'));
+    return { filter: btns[0] || null, sort: btns[1] || null };
+  }
+
+  // Fetch (once per native filter/sort state) the full item list the overlay
+  // composes over. Also called the moment a dropdown OPENS, so on big libraries
+  // the list is usually already loaded by the time a rating option is picked.
+  // Mode-aware native state: the items page and the series page keep their
+  // sort/filter under different user-settings keys.
+  function nhLfNative() {
+    let st = {};
+    try { st = window.$nuxt.$store.state.user.settings || {}; } catch (e) {}
+    if (nhLf.mode === 'series') {
+      return { fb: st.seriesFilterBy || 'all', ob: st.seriesSortBy || 'name', od: !!st.seriesSortDesc, fbKey: 'seriesFilterBy' };
+    }
+    return { fb: st.filterBy || 'all', ob: st.orderBy || 'media.metadata.title', od: !!st.orderDesc, fbKey: 'filterBy' };
+  }
+
+  // Unfiltered library total (denominator for the count pill when only a
+  // NATIVE filter is active — the shelf itself then holds the filtered count).
+  function nhLfEnsureLibTotal(libId) {
+    const key = nhLf.mode + '|' + libId;
+    if (nhLf.libTotalKey === key && nhLf.libTotal !== null) return;
+    if (nhLf.libTotalKey !== key) { nhLf.libTotalKey = key; nhLf.libTotal = null; }
+    if (nhLf.libTotalFetching) return;
+    const tok = nhSrToken();
+    if (!tok) return;
+    nhLf.libTotalFetching = true;
+    fetch('/api/libraries/' + libId + '/' + (nhLf.mode === 'series' ? 'series' : 'items') + '?limit=1', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        nhLf.libTotalFetching = false;
+        if (j && typeof j.total === 'number' && nhLf.libTotalKey === key) nhLf.libTotal = j.total;
+      })
+      .catch(() => { nhLf.libTotalFetching = false; });
+  }
+
+  function nhLfEnsureItems(libId) {
+    const nat = nhLfNative();
+    const key = nhLf.mode + '|' + libId + '|' + nat.fb + '|' + nat.ob + '|' + (nat.od ? 1 : 0);
+    if (nhLf.itemsKey !== key) {
+      nhLf.itemsKey = key;
+      nhLf.items = null;
+      nhLf.fetching = false;
+    }
+    if (!nhLf.items && !nhLf.fetching) {
+      const tok = nhSrToken();
+      if (tok) {
+        nhLf.fetching = true;
+        // items: limit=0 = unlimited; series: limit=0 returns ZERO rows — use a big cap
+        const url = '/api/libraries/' + libId + '/' + (nhLf.mode === 'series' ? 'series?limit=100000' : 'items?limit=0') +
+          '&filter=' + encodeURIComponent(nat.fb) + '&sort=' + encodeURIComponent(nat.ob) + '&desc=' + (nat.od ? 1 : 0);
+        fetch(url, { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            nhLf.fetching = false;
+            if (j && Array.isArray(j.results) && nhLf.itemsKey === key) nhLf.items = j.results;
+          })
+          .catch(() => { nhLf.fetching = false; });
+      }
+    }
+    return { key: key, nat: nat };
+  }
+
+  // Build a menu row that matches the native listbox markup: li AND inner text
+  // span classes are cloned from a real native row so typography/padding always
+  // match. The active mark is a plain ✓/↓/↑ character — the material-symbols
+  // ligature does NOT reliably apply to injected spans (renders as the literal
+  // word "check" on some builds).
+  function nhLfMenuItem(ul, key, label, mark, onPick) {
+    // clone from a NON-selected native row — the first row is usually the
+    // active one and carries a selected-state bg- class we must not inherit.
+    // `mark` is the right-side character(s): '✓', '1↑', '›', '' for none —
+    // plain characters only (material-symbols ligatures don't apply reliably
+    // to injected spans).
+    const lis = ul.querySelectorAll('li:not(.nh-lf-mi):not(.nh-lf-mhead)');
+    const nativeLi = Array.prototype.find.call(lis, (el) => !/(^|\s)bg-/.test(String(el.className))) || lis[0] || null;
+    const nativeSpan = nativeLi ? nativeLi.querySelector('span:not(.material-symbols)') : null;
+    // Vue SCOPED styles key off data-v-* attributes — classes alone aren't
+    // enough, without the scope attribute the native row background/padding
+    // rules never match the injected rows.
+    const cloneScope = (from, to) => {
+      if (!from) return;
+      Array.prototype.forEach.call(from.attributes, (at) => {
+        if (at.name.indexOf('data-v-') === 0) to.setAttribute(at.name, at.value);
+      });
+    };
+    const li = document.createElement('li');
+    li.className = (nativeLi ? nativeLi.className : 'select-none relative py-2 pr-9 cursor-pointer hover:bg-white/5') + ' nh-lf-mi';
+    cloneScope(nativeLi, li);
+    li.dataset.key = key;
+    const txt = document.createElement('span');
+    txt.className = (nativeSpan ? nativeSpan.className : 'font-normal block truncate') + ' nh-lf-mtxt';
+    cloneScope(nativeSpan, txt);
+    txt.textContent = label;
+    li.appendChild(txt);
+    if (mark) {
+      const chk = document.createElement('span');
+      chk.className = 'nh-lf-mcheck';
+      chk.textContent = mark;
+      li.appendChild(chk);
+    }
+    li.addEventListener('click', (e) => { e.stopPropagation(); onPick(); });
+    return li;
+  }
+
+  // Inject/refresh the Rating section in an open dropdown menu. Menus are
+  // Vue-rendered on open and swapped for submenus, so this runs each tick and
+  // rebuilds our rows whenever they are missing or stale.
+  function nhLfInjectMenus(toolbar, T) {
+    const dd = nhLfDropdowns(toolbar);
+    [['filter', dd.filter], ['sort', dd.sort]].forEach((pair) => {
+      const kind = pair[0], btn = pair[1];
+      if (!btn) return;
+      if (!btn.dataset.nhLfWarm) {
+        btn.dataset.nhLfWarm = '1';
+        btn.addEventListener('click', () => {
+          if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+          // a fresh open always starts at the MAIN list — a submenu drill-down
+          // must not survive the close. Vue's own toggle ran first (its
+          // listener predates ours), so showMenu already holds the new state.
+          let r2 = btn.parentElement;
+          while (r2 && !/(^|\s)w-36(\s|$)/.test(String(r2.className))) r2 = r2.parentElement;
+          if (r2 && r2.__vue__ && r2.__vue__.showMenu) nhLf.sub = null;
+        });
+      }
+      // the dropdown's OUTER wrapper (w-36 sm:w-44 md:w-48) holds both the
+      // button and its menu; btn.closest('.relative') is an inner box without it
+      let rel = btn.parentElement;
+      while (rel && rel !== toolbar && !/(^|\s)w-36(\s|$)/.test(String(rel.className))) rel = rel.parentElement;
+      if (!rel || rel === toolbar) return;
+      // the filter dropdown has a main list AND a submenu page (first row =
+      // arrow_left "Back") — only ever inject into the main one. The items
+      // page's sort menu is ul.librarySortMenu; the series page's sort menu is
+      // a plain listbox, hence the fallback.
+      const isNatSub = (u) => {
+        const g = u.firstElementChild && u.firstElementChild.querySelector('.material-symbols');
+        return !!(g && g.textContent.trim() === 'arrow_left');
+      };
+      // Tag ABS's own value lists (compact styling hook that does not depend on
+      // :has support) in their OWN pass — find() below short-circuits on the
+      // main list and would never reach the submenu sitting after it.
+      Array.prototype.forEach.call(rel.querySelectorAll('ul:not(.librarySortMenu)'), (u) => {
+        u.classList.toggle('nh-lf-natsub', isNatSub(u));
+      });
+      const pickUl = () => Array.prototype.find.call(rel.querySelectorAll('ul:not(.librarySortMenu)'), (u) => !isNatSub(u)) || null;
+      const ul = kind === 'sort' ? (rel.querySelector('ul.librarySortMenu') || pickUl()) : pickUl();
+      // menu closed (unmounted, or v-show hidden)? a submenu drill-down must
+      // not survive into the next open — reopening lands on the main list.
+      if (kind === 'filter' && nhLf.sub && (!ul || !ul.getBoundingClientRect().height)) nhLf.sub = null;
+      if (!ul) return;
+      // rebuild our rows when missing or when the active state changed (menus
+      // are re-rendered by Vue on open and swapped for submenu pages)
+      const cur = nhLf.sort + '|' + nhLf.filter + '|' + nhLfFxSig() + '|' + (nhLf.sub || '') + '|' + ((nhLf.items || []).length ? 1 : 0);
+      if (ul.querySelector('.nh-lf-mi') && ul.dataset.nhLfState === cur) return;
+      ul.querySelectorAll('.nh-lf-mi, .nh-lf-mhead').forEach((n) => n.remove());
+      ul.dataset.nhLfState = cur;
+      const mkHead = (txt) => {
+        const h = document.createElement('li');
+        h.className = 'nh-lf-mhead';
+        h.textContent = txt;
+        return h;
+      };
+      // clicks mutate state and let the next tick redraw the rows in place —
+      // the menu STAYS OPEN so several levels/values can be stacked in one go
+      const touch = () => { nhLf.viewSig = ''; };
+      if (kind === 'filter') {
+        // native submenu page? (content replaced, e.g. genre list) — detect by
+        // the "All" row being absent; skip injecting there
+        const first = ul.querySelector('li');
+        if (!first) return;
+        const natives = () => Array.prototype.filter.call(ul.children, (n) => !/nh-lf-/.test(n.className));
+        if (nhLf.sub) {
+          ul.classList.add('nh-lf-subopen');
+          // OUR value submenu: native rows give way (restored on Back/close)
+          natives().forEach((n) => { if (!n.dataset.nhLfHid) { n.dataset.nhLfHid = n.style.display || ''; n.style.display = 'none'; } });
+          ul.style.maxHeight = '360px';
+          ul.style.overflowY = 'auto';
+          const dim = nhLf.sub;
+          ul.appendChild(mkHead(nhLfDimLabel(T, dim)));
+          ul.appendChild(nhLfMenuItem(ul, 'back', (T.ctBack || PANEL_T.en.ctBack), '', () => {
+            nhLf.sub = null;
+          }));
+          nhLfValues(dim, T).forEach((o) => {
+            const on = (nhLf.filters[dim] || []).indexOf(o.v) >= 0;
+            ul.appendChild(nhLfMenuItem(ul, 'v:' + o.v, nhLfValueLabel(T, dim, o.v) + '  (' + o.n + ')', on ? '✓' : '', () => {
+              const arr = nhLf.filters[dim] = (nhLf.filters[dim] || []);
+              const i2 = arr.indexOf(o.v);
+              if (i2 >= 0) arr.splice(i2, 1); else arr.push(o.v);
+              touch();
+            }));
+          });
+          if (!(nhLf.items || []).length) ul.appendChild(mkHead('…'));
+          return;
+        }
+        ul.classList.remove('nh-lf-subopen');
+        natives().forEach((n) => { if (n.dataset.nhLfHid !== undefined) { n.style.display = n.dataset.nhLfHid; delete n.dataset.nhLfHid; } });
+        ul.style.maxHeight = '';
+        ul.style.overflowY = '';
+        ul.appendChild(mkHead(T.lfSecFilters || PANEL_T.en.lfSecFilters));
+        NH_LF_FILTERS.forEach((key) => {
+          const label = key === 'rated' ? (T.lfRated || PANEL_T.en.lfRated) : key === 'unrated' ? (T.lfUnrated || PANEL_T.en.lfUnrated) : key === 'min4' ? '4★+' : '3★+';
+          ul.appendChild(nhLfMenuItem(ul, key, label, nhLf.filter === key ? '✓' : '', () => {
+            nhLf.filter = nhLf.filter === key ? '' : key;
+            touch();
+          }));
+        });
+        // stackable dimension filters (items page only): value submenus, OR
+        // within a dimension, AND across dimensions and with the native filter
+        if (nhLf.mode !== 'series') {
+          NH_LF_FILTER_DIMS.forEach((dim) => {
+            const nOn = (nhLf.filters[dim] || []).length;
+            ul.appendChild(nhLfMenuItem(ul, 'dim:' + dim, nhLfDimLabel(T, dim) + (nOn ? '  (' + nOn + ')' : ''), '›', () => {
+              nhLf.sub = dim;
+              if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+            }));
+          });
+        }
+      } else {
+        // SORT: a multi-level builder. Every dimension is a row; clicking
+        // cycles ↑ → ↓ → off; pick order = precedence, shown as "1↑".
+        ul.appendChild(mkHead(T.lfSecSort || PANEL_T.en.lfSecSort));
+        const dims = nhLf.mode === 'series' ? ['rating'] : NH_LF_SORT_DIMS;
+        dims.forEach((d) => {
+          const idx = nhLf.sorts.findIndex((s) => s.d === d);
+          const lvl = idx >= 0 ? nhLf.sorts[idx] : null;
+          const mark = lvl ? (idx + 1) + (lvl.dir < 0 ? '↓' : '↑') : '';
+          // rating starts DESCENDING (best first) — everything else A→Z first
+          const def = d === 'rating' ? -1 : 1;
+          ul.appendChild(nhLfMenuItem(ul, 's:' + d, nhLfDimLabel(T, d), mark, () => {
+            if (!lvl) nhLf.sorts.push({ d: d, dir: def });
+            else if (lvl.dir === def) lvl.dir = -def;
+            else nhLf.sorts.splice(idx, 1);
+            nhLfSyncSortSig();
+            touch();
+          }));
+        });
+      }
+    });
+  }
+
+  // Reflect the combined state on the dropdown buttons' labels. NEVER mutate
+  // Vue's own text node (replacing it detaches it from the vdom and future
+  // native updates silently patch the orphan): the native span is only hidden,
+  // and a sibling span of ours shows the combined text, re-derived from the
+  // still-live hidden native label each tick.
+  // A funnel on the filter button, arrows on the sort button — the two
+  // dropdowns were indistinguishable (Pawel). Inline SVG, never the icon font
+  // (ligatures don't apply to injected spans on some builds).
+  const NH_LF_ICONS = {
+    filter: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M3 5h18l-7 8.4V19l-4 2.2v-7.8L3 5z"/></svg>',
+    sort: '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M7.5 4 3.5 9h3v11h2V9h3l-4-5zm9 16 4-5h-3V4h-2v11h-3l4 5z"/></svg>',
+  };
+  function nhLfButtonLabels(toolbar, T) {
+    const dd = nhLfDropdowns(toolbar);
+    const ensureIcon = (btn, kind) => {
+      if (!btn || btn.querySelector('.nh-lf-ico')) return;
+      // INSIDE the button's flex span, as a flex item — the button itself is
+      // inline-block, so a sibling span pushed the (block) label row to a
+      // second line, rendering it under the pill (Pawel's phone screenshot).
+      const host = btn.querySelector(':scope > .flex') || btn;
+      host.classList.add('nh-lf-hasico');
+      const ico = document.createElement('span');
+      ico.className = 'nh-lf-ico';
+      ico.innerHTML = NH_LF_ICONS[kind];
+      host.insertBefore(ico, host.firstChild);
+    };
+    ensureIcon(dd.filter, 'filter');
+    ensureIcon(dd.sort, 'sort');
+    const apply = (btn, activeLabel, replaceEntirely) => {
+      if (!btn) return;
+      const span = btn.querySelector('.truncate:not(.nh-lf-lbl)');
+      if (!span) return;
+      let ours = btn.querySelector('.nh-lf-lbl');
+      if (activeLabel) {
+        if (!ours) {
+          ours = document.createElement('span');
+          ours.className = span.className + ' nh-lf-lbl';
+          span.parentElement.insertBefore(ours, span.nextSibling);
+        }
+        span.style.display = 'none';
+        const text = replaceEntirely ? activeLabel : span.textContent.trim() + ' · ' + activeLabel;
+        if (ours.textContent !== text) ours.textContent = text;
+      } else {
+        if (ours) ours.remove();
+        span.style.display = '';
+      }
+    };
+    // filter button: native label (+ rating quick-filter) (+ how many stacked
+    // dimension values are active, e.g. "+2")
+    const fxN = nhLfFxCount();
+    const fParts = [];
+    if (nhLf.filter) fParts.push(nhLfFilterLabel(T));
+    if (fxN) fParts.push('+' + fxN);
+    const fLbl = fParts.join(' · ');
+    apply(dd.filter, fLbl, nhLfNative().fb === 'all');
+    // sort button: the level chain, e.g. "Author ↑ · Series ↑"
+    const sLbl = nhLf.sorts.length
+      ? nhLf.sorts.map((s) => nhLfDimLabel(T, s.d) + (s.dir < 0 ? ' ↓' : ' ↑')).join(' · ')
+      : '';
+    apply(dd.sort, sLbl, true);
+  }
+
+  function nhLibFilter() {
+    const m = location.pathname.match(/\/library\/([^/]+)\/bookshelf(\/series)?\/?$/);
+    if (!m || nhSettings.showRatings === false || nhRs.dead) { nhLfReset(); return; }
+    const libId = m[1];
+    const mode = m[2] ? 'series' : 'items';
+    if (nhLf.libId !== libId || nhLf.mode !== mode) {
+      nhLf.libId = libId;
+      nhLf.mode = mode;
+      nhLf.items = null;
+      nhLf.itemsKey = '';
+      nhLf.fetching = false;
+      nhLfReset();
+    }
+    const toolbar = document.getElementById('toolbar');
+    const bookshelf = document.getElementById('bookshelf');
+    if (!toolbar || !bookshelf) return;
+    const T = nhGsT();
+
+    nhLfInjectMenus(toolbar, T);
+    nhLfButtonLabels(toolbar, T);
+
+    const active = !!(nhLf.sort || nhLf.filter || nhLfFxSig());
+    const vm = bookshelf.__vue__;
+    const natNow = nhLfNative();
+
+    // Pawel: after applying a filter the grid sometimes sits with far too much side
+    // margin, and applying a second one puts it right — a stale column/padding
+    // calculation in ABS's LazyBookshelf, which only recomputes on resize.
+    //
+    // This used to fire a GLOBAL synthetic window resize 320ms later. That was the
+    // "everything shows and then reloads all elements" flicker: 320ms lands AFTER the
+    // page mask has lifted, and ABS answers a resize by destroying and re-creating
+    // every card and every cover <img> in full view (measured: 36 tagged cards and 36
+    // tagged imgs all replaced). On a real server that also re-requests every visible
+    // cover. A global resize additionally re-lays the appbar, player and modals.
+    //
+    // Now: nudge ONLY this shelf, promptly, and behind the shelf mask so the rebuild
+    // is never seen. The underlying stale-width cause is separately prevented by
+    // `scrollbar-gutter: stable` (core.js) — this stays as belt-and-braces for
+    // browsers that lack scrollbar-gutter support.
+    // natNow exposes `od`, not `desc` — the old `natNow.desc` was permanently
+    // undefined, so sort-direction changes never registered here at all.
+    const natSig = natNow.fb + '|' + natNow.ob + '|' + (natNow.od ? 1 : 0) + '|' + (nhLf.filter || '') + '|' + (nhLf.sort || '') + '|' + nhLfFxSig();
+    if (nhLf.natSig !== undefined && nhLf.natSig !== natSig) {
+      clearTimeout(nhLf.relayoutT);
+      nhLf.relayoutT = setTimeout(() => {
         try {
-          const vm2 = bookshelf.__vue__;
-          if (vm2 && typeof vm2.setCardSize === 'function') {
-            Promise.resolve(vm2.setCardSize()).then(() => { if (typeof vm2.executeRebuild === 'function') vm2.executeRebuild(); }).catch(() => {});
+          const bs2 = document.getElementById('bookshelf');
+          const v = bs2 && bs2.__vue__;
+          if (!v) return;
+          nhMaskShelfForRebuild();
+          if (typeof v.setCardSize === 'function') {
+            Promise.resolve(v.setCardSize())
+              .then(() => { try { if (v.executeRebuild) v.executeRebuild(); } catch (e) {} })
+              .catch(() => {});
+          } else if (typeof v.executeRebuild === 'function') {
+            v.executeRebuild();
           }
         } catch (e) {}
-      }, 80);
+      }, 60);
+    }
+    nhLf.natSig = natSig;
+
+    // pill host: directly LEFT of the filter dropdown
+    const hostEl = (function () {
+      const fBtn2 = nhLfDropdowns(toolbar).filter;
+      let host = fBtn2 ? fBtn2.parentElement : null;
+      while (host && host !== toolbar && !/(^|\s)w-36(\s|$)/.test(String(host.className))) host = host.parentElement;
+      return (host && host !== toolbar && host.parentElement) ? host : null;
+    })();
+
+    // clear-all ✕: shown whenever ANY filter is active (rating or native)
+    let clr = toolbar.querySelector('.nh-lf-clearx');
+    const showClear = !!(active || natNow.fb !== 'all');
+    if (showClear && !clr && hostEl) {
+      clr = document.createElement('button');
+      clr.type = 'button';
+      clr.className = 'nh-lf-clearx';
+      clr.textContent = '✕';
+      clr.title = T.lfClear || PANEL_T.en.lfClear;
+      clr.addEventListener('click', () => {
+        nhLf.sort = '';
+        nhLf.sorts = [];
+        nhLf.filter = '';
+        nhLf.filters = {};
+        nhLf.sub = null;
+        nhLf.viewSig = '';
+        const nat2 = nhLfNative();
+        if (nat2.fb !== 'all') {
+          const patch = {};
+          patch[nat2.fbKey] = 'all';
+          try { window.$nuxt.$store.dispatch('user/updateUserSettings', patch); } catch (e) {}
+        }
+        nhLibFilter();
+      });
+      hostEl.parentElement.insertBefore(clr, hostEl);
+    } else if (!showClear && clr) {
+      clr.remove();
+    }
+
+    // count pill shows for RATING filters and for native filters alike (user
+    // request — the N / M readout shouldn't disappear for plain native filters)
+    let cnt = toolbar.querySelector('.nh-lf-count');
+    const showCnt = !!(active || natNow.fb !== 'all');
+    if (!showCnt && cnt) { cnt.remove(); cnt = null; }
+    if (showCnt && !cnt) {
+      cnt = document.createElement('span');
+      cnt.className = 'nh-lf-count';
+      if (hostEl) hostEl.parentElement.insertBefore(cnt, clr && clr.parentElement ? clr : hostEl);
+      else toolbar.appendChild(cnt);
+    }
+    if (!active) {
+      if (cnt) {
+        // native-only filter: shelf total / library total
+        nhLfEnsureLibTotal(libId);
+        const shown = vm && typeof vm.totalEntities === 'number' ? vm.totalEntities : '…';
+        cnt.textContent = shown + ' / ' + (nhLf.libTotal === null ? '…' : nhLf.libTotal);
+      }
+      nhLfRelease(vm);
+      return;
+    }
+
+    // items list composed WITH the native filter/sort (server-side)
+    const key = nhLfEnsureItems(libId).key;
+    if (!nhLf.items || !nhRsItems()) { cnt.textContent = '…'; return; } // native shelf stays until ready
+    if (!vm || typeof vm.fetchEntites !== 'function' || typeof vm.resetEntities !== 'function') return;
+
+    // Build the composed view (full minified item objects — the same shape the
+    // shelf fetches itself, so it can render them natively).
+    const viewSig = key + '|' + nhLf.sort + '|' + nhLf.filter + '|' + nhLfFxSig() + '|' + nhRs.at;
+    if (nhLf.viewSig !== viewSig) {
+      nhLf.viewSig = viewSig;
+      // series rating = mean of its rated books' averages (same math as the
+      // series header); n = how many of its books are rated
+      let list = nhLf.items.map((li) => {
+        if (nhLf.mode === 'series') {
+          let sum = 0, n = 0;
+          (li.books || []).forEach((bk) => {
+            const r2 = nhRsAvg(bk.id);
+            if (r2) { sum += r2.avg; n++; }
+          });
+          return { e: li, t: li.name || '', avg: n ? sum / n : -1, n: n };
+        }
+        const r = nhRsAvg(li.id);
+        return { e: li, t: ((li.media && li.media.metadata) || {}).title || '', avg: r ? r.avg : -1, n: r ? r.n : 0 };
+      });
+      // Stacked dimension filters: OR within a dimension, AND across dimensions
+      // (and with the native filter, applied server-side in the items fetch).
+      const fxKeys = Object.keys(nhLf.filters).filter((k) => nhLf.filters[k] && nhLf.filters[k].length);
+      if (fxKeys.length && nhLf.mode !== 'series') {
+        const pg = fxKeys.indexOf('progress') >= 0 ? nhLfProgressMap() : null;
+        list = list.filter((x) => fxKeys.every((k) => {
+          const vals = nhLf.filters[k];
+          const md = nhLfMeta(x.e);
+          if (k === 'genre') return (md.genres || []).some((g) => vals.indexOf(g) >= 0);
+          if (k === 'author') return String(md.authorName || '').split(', ').some((a) => vals.indexOf(a) >= 0);
+          if (k === 'narrator') return String(md.narratorName || '').split(', ').some((a) => vals.indexOf(a) >= 0);
+          if (k === 'language') return vals.indexOf(md.language) >= 0;
+          if (k === 'decade') { const y = parseInt(md.publishedYear, 10); return !!y && vals.indexOf(Math.floor(y / 10) * 10 + 's') >= 0; }
+          if (k === 'progress') return vals.indexOf(nhLfProgressOf(pg, x.e.id)) >= 0;
+          return true;
+        }));
+      }
+      if (nhLf.filter === 'rated') list = list.filter((x) => x.n);
+      else if (nhLf.filter === 'unrated') list = list.filter((x) => !x.n);
+      else if (nhLf.filter === 'min4') list = list.filter((x) => x.avg >= 4);
+      else if (nhLf.filter === 'min3') list = list.filter((x) => x.avg >= 3);
+      // Multi-level sort: compare level by level in pick order; final tiebreak
+      // is title A→Z. Series is a composite level (name, then sequence, with
+      // standalones interleaving by title — Plex-style); a book with no value
+      // for a level sorts last within it.
+      if (nhLf.sorts.length) {
+        list.forEach((x) => {
+          const md = nhLfMeta(x.e);
+          const sk = nhLfSeriesKey(md);
+          x.k = {
+            author: String(md.authorNameLF || md.authorName || '').toLowerCase(),
+            seriesG: sk.group, seriesQ: sk.seq,
+            title: String(md.titleIgnorePrefix || md.title || x.t || '').toLowerCase(),
+            year: parseInt(md.publishedYear, 10) || Infinity,
+            added: x.e.addedAt || 0,
+            duration: (x.e.media && x.e.media.duration) || 0,
+            narrator: String(md.narratorName || '').toLowerCase() || '￿',
+            rating: x.avg,
+          };
+        });
+        const one = (a, b, d) => {
+          if (d === 'series') return a.k.seriesG.localeCompare(b.k.seriesG) || (a.k.seriesQ === b.k.seriesQ ? 0 : (a.k.seriesQ < b.k.seriesQ ? -1 : 1)) || a.k.title.localeCompare(b.k.title);
+          if (d === 'author' || d === 'narrator' || d === 'title') return a.k[d].localeCompare(b.k[d]);
+          return a.k[d] === b.k[d] ? 0 : (a.k[d] < b.k[d] ? -1 : 1);
+        };
+        list.sort((a, b) => {
+          for (const s2 of nhLf.sorts) {
+            const c = one(a, b, s2.d) * (s2.dir < 0 ? -1 : 1);
+            if (c) return c;
+          }
+          return String(a.t).localeCompare(String(b.t));
+        });
+      }
+      nhLf.view = list.map((x) => x.e);
+      nhLf.needReset = true;
+    }
+    cnt.textContent = nhLf.view.length + ' / ' + nhLf.items.length;
+
+    // NATIVE-SHELF TAKEOVER: patch the shelf's own page fetcher so it renders
+    // OUR list — every card is a real LazyBookCard (hover overlay, play/read,
+    // edit, multi-select, kebab all native). The patch swaps $axios.$get only
+    // for the duration of the original fetch call and only answers the shelf's
+    // own items request; everything else passes through. Inactive state falls
+    // back to the original fetcher, so clearing = one resetEntities().
+    if (!vm.__nhLfPatched) {
+      vm.__nhLfPatched = true;
+      vm.__nhOrigFetch = vm.fetchEntites;
+      vm.fetchEntites = async function (page) {
+        if (!((nhLf.sort || nhLf.filter || nhLfFxSig()) && nhLf.view)) return vm.__nhOrigFetch.call(this, page);
+        const ax = this.$axios;
+        const orig = ax.$get;
+        const self = this;
+        ax.$get = async function (url) {
+          if (String(url).indexOf('/' + self.entityName + '?') !== -1) {
+            const bpf = self.booksPerFetch || 36;
+            return { results: nhLf.view.slice(page * bpf, page * bpf + bpf), total: nhLf.view.length, page: page };
+          }
+          return orig.apply(ax, arguments);
+        };
+        try { return await vm.__nhOrigFetch.call(this, page); } finally { ax.$get = orig; }
+      };
+    }
+    if (nhLf.needReset) {
+      nhLf.needReset = false;
+      try { vm.resetEntities(); } catch (e) {}
+    }
+    nhLfEmptyState(nhLf.view.length === 0);
+  }
+
+  // A filter that matches nothing is not an empty library. ABS only knows the
+  // shelf came back with no rows, so it offers "scan" and "add books" — wrong and
+  // alarming when you simply filtered to rated books and have not rated any.
+  // Ours says what actually happened and offers the one useful action.
+  function nhLfEmptyState(on) {
+    const bs = document.getElementById('bookshelf');
+    document.body.classList.toggle('nh-lf-none', !!on);
+    let el = document.getElementById('nh-lf-none');
+    if (!on || !bs) { if (el) el.remove(); return; }
+    if (el && el.parentElement === bs) return;
+    const T = nhGsT();
+    el = el || document.createElement('div');
+    el.id = 'nh-lf-none';
+    el.textContent = '';
+    const p = document.createElement('p');
+    p.className = 'nh-lf-none-t';
+    p.textContent = T.lfNone || PANEL_T.en.lfNone;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'nh-lf-none-btn';
+    b.textContent = T.lfClear || PANEL_T.en.lfClear;
+    // Clear means ALL of it: a native filter (Progress etc.) kept the shelf
+    // empty after our rating filter was gone, and the button looked broken.
+    b.addEventListener('click', () => {
+      try {
+        const nat = nhLfNative();
+        if (nat.fb !== 'all') {
+          const patch = {};
+          patch[nat.fbKey] = 'all';
+          window.$nuxt.$store.dispatch('user/updateUserSettings', patch);
+        }
+      } catch (e) {}
+      try { nhLfReset(); } catch (e) {}
+    });
+    el.appendChild(p); el.appendChild(b);
+    bs.appendChild(el);
+  }
+
+  // ===================== NARRATORS PAGE REDESIGN (A9) =====================
+  // The stock narrators page is a bare two-column table. Replace it with a card
+  // grid: cover collage from the narrator's books, name, localized book count;
+  // click lands on the library pre-filtered to that narrator (the same URL the
+  // native table rows link to). Native table stays in the DOM, just hidden —
+  // zero risk to stock behavior.
+  const nhNr = { libId: null, list: null, fetching: false, byName: null, itemsFetching: false, sig: '', q: '', sort: 'books', tints: {}, qTimer: null };
+
+  // average-color tint from the first cover → subtle per-card background
+  function nhNrTint(name, img, card) {
+    const cached = nhNr.tints[name];
+    if (cached) { card.style.background = cached; return; }
+    try {
+      const cv = document.createElement('canvas');
+      cv.width = 4; cv.height = 4;
+      const ctx = cv.getContext('2d');
+      ctx.drawImage(img, 0, 0, 4, 4);
+      const d = ctx.getImageData(0, 0, 4, 4).data;
+      let r = 0, g = 0, bl = 0;
+      for (let k = 0; k < d.length; k += 4) { r += d[k]; g += d[k + 1]; bl += d[k + 2]; }
+      const n2 = d.length / 4;
+      r = Math.round(r / n2); g = Math.round(g / n2); bl = Math.round(bl / n2);
+      const bg = 'linear-gradient(160deg, rgba(' + r + ',' + g + ',' + bl + ',0.26) 0%, rgba(' + r + ',' + g + ',' + bl + ',0.07) 70%)';
+      nhNr.tints[name] = bg;
+      card.style.background = bg;
+    } catch (e) {}
+  }
+
+  function nhNarratorsPage() {
+    if (nhSettings.narratorsCards === false) return;
+    const m = location.pathname.match(/\/library\/([^/]+)\/narrators\/?$/);
+    if (!m) {
+      document.body.classList.remove('nh-narrators-page');
+      document.querySelectorAll('#nh-narrators, #nh-nr-bar, #toolbar .nh-nr-count').forEach((el) => el.remove());
+      return;
+    }
+    const libId = m[1];
+    document.body.classList.add('nh-narrators-page');
+    if (nhNr.libId !== libId) {
+      nhNr.libId = libId;
+      nhNr.list = null;
+      nhNr.fetching = false;
+      nhNr.byName = null;
+      nhNr.itemsFetching = false;
+      nhNr.sig = '';
+      nhNr.q = '';
+    }
+    const page = document.querySelector('#app-content .page');
+    if (!page) return;
+    const T = nhGsT();
+    const tok = nhSrToken();
+    if (!nhNr.list && !nhNr.fetching && tok) {
+      nhNr.fetching = true;
+      fetch('/api/libraries/' + libId + '/narrators', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          nhNr.fetching = false;
+          if (j && Array.isArray(j.narrators) && nhNr.libId === libId) nhNr.list = j.narrators;
+        })
+        .catch(() => { nhNr.fetching = false; });
+    }
+    // ONE items fetch builds every collage (narratorName is on minified items —
+    // per-narrator requests took 15s+ on big libraries)
+    if (!nhNr.byName && !nhNr.itemsFetching && tok) {
+      nhNr.itemsFetching = true;
+      fetch('/api/libraries/' + libId + '/items?limit=0&sort=media.metadata.title', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (!(j && Array.isArray(j.results)) || nhNr.libId !== libId) { nhNr.itemsFetching = false; return; }
+          const map = {};
+          j.results.forEach((it) => {
+            const nn = ((it.media && it.media.metadata && it.media.metadata.narratorName) || '');
+            if (!nn) return;
+            nn.split(', ').forEach((nm) => {
+              if (!map[nm]) map[nm] = [];
+              if (map[nm].length < 3) map[nm].push(it.id);
+            });
+          });
+          nhNr.byName = map;
+          nhNr.itemsFetching = false;
+        })
+        .catch(() => { nhNr.itemsFetching = false; });
+    }
+    if (!nhNr.list) return;
+
+    // toolbar: count as LEFT text (like "156 Serie"), right side gets the name
+    // filter + a THEMED sort dropdown — a native <select> pops the white OS
+    // menu, nothing like the reskinned dropdowns on the other pages
+    const toolbar = document.getElementById('toolbar');
+    if (toolbar && !document.getElementById('nh-nr-bar')) {
+      const cnt = document.createElement('p');
+      cnt.className = 'nh-nr-count';
+      toolbar.insertBefore(cnt, toolbar.firstChild);
+      const bar = document.createElement('div');
+      bar.id = 'nh-nr-bar';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'nh-nr-search';
+      inp.placeholder = T.nrSearch || PANEL_T.en.nrSearch;
+      inp.addEventListener('input', () => {
+        clearTimeout(nhNr.qTimer);
+        nhNr.qTimer = setTimeout(() => { nhNr.q = inp.value.trim().toLowerCase(); nhNarratorsPage(); }, 150);
+      });
+      const dd = document.createElement('div');
+      dd.className = 'nh-nr-dd';
+      const opts = [['books', T.nrSortBooks || PANEL_T.en.nrSortBooks], ['name', T.nrSortName || PANEL_T.en.nrSortName]];
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'nh-nr-dd-btn';
+      const lbl = document.createElement('span');
+      lbl.textContent = (opts.find((o) => o[0] === nhNr.sort) || opts[0])[1];
+      const chev = document.createElement('span');
+      chev.className = 'nh-nr-dd-chev';
+      chev.textContent = '⌄';
+      btn.appendChild(lbl);
+      btn.appendChild(chev);
+      const menu = document.createElement('div');
+      menu.className = 'nh-nr-dd-menu';
+      opts.forEach((o) => {
+        const row = document.createElement('div');
+        row.className = 'nh-nr-dd-row';
+        row.dataset.val = o[0];
+        const t2 = document.createElement('span');
+        t2.textContent = o[1];
+        const chk = document.createElement('span');
+        chk.className = 'nh-nr-dd-check';
+        chk.textContent = '✓';
+        row.appendChild(t2);
+        row.appendChild(chk);
+        row.addEventListener('click', (e) => {
+          e.stopPropagation();
+          nhNr.sort = o[0];
+          lbl.textContent = o[1];
+          dd.classList.remove('nh-open');
+          menu.querySelectorAll('.nh-nr-dd-row').forEach((r2) => r2.classList.toggle('nh-active', r2.dataset.val === nhNr.sort));
+          nhNarratorsPage();
+        });
+        if (o[0] === nhNr.sort) row.classList.add('nh-active');
+        menu.appendChild(row);
+      });
+      btn.addEventListener('click', (e) => { e.stopPropagation(); dd.classList.toggle('nh-open'); });
+      document.addEventListener('click', (e) => { if (!dd.contains(e.target)) dd.classList.remove('nh-open'); });
+      dd.appendChild(btn);
+      dd.appendChild(menu);
+      bar.appendChild(inp);
+      bar.appendChild(dd);
+      toolbar.appendChild(bar);
+    }
+
+    let list = nhNr.list;
+    if (nhNr.q) list = list.filter((n) => String(n.name || '').toLowerCase().indexOf(nhNr.q) !== -1);
+    list = list.slice();
+    if (nhNr.sort === 'books') list.sort((a, b) => (b.numBooks - a.numBooks) || String(a.name).localeCompare(String(b.name)));
+    else list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const cntEl = document.querySelector('#toolbar .nh-nr-count');
+    if (cntEl) {
+      const nf = T.nrForms || PANEL_T.en.nrForms;
+      cntEl.textContent = (nhNr.q ? list.length + ' / ' : '') + nhNr.list.length + ' ' + nhWordForm(nhNr.list.length, nf);
+    }
+
+    const sig = libId + '|' + list.length + '|' + nhNr.q + '|' + nhNr.sort + '|' + (nhNr.byName ? 1 : 0);
+    if (nhNr.sig === sig && document.getElementById('nh-narrators')) return;
+    nhNr.sig = sig;
+
+    let grid = document.getElementById('nh-narrators');
+    if (!grid) {
+      grid = document.createElement('div');
+      grid.id = 'nh-narrators';
+      // the (hidden) table lives inside a full-height #bookshelf scroller —
+      // the grid must render inside it, not below it
+      (page.querySelector('#bookshelf') || page).appendChild(grid);
+    }
+    grid.textContent = '';
+    const forms = T.nrBooksForms || PANEL_T.en.nrBooksForms;
+    list.forEach((n) => {
+      const card = document.createElement('a');
+      card.className = 'nh-nr-card';
+      card.href = getBaseNH() + '/library/' + libId + '/bookshelf?filter=narrators.' + n.id;
+      card.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/library/' + libId + '/bookshelf?filter=narrators.' + n.id); });
+      if (nhNr.tints[n.name]) card.style.background = nhNr.tints[n.name];
+      const cov = document.createElement('div');
+      cov.className = 'nh-nr-covers';
+      // initials medallion always renders as the base layer — covers stack on
+      // top of it, and if they 404 (or there are none) the medallion shows
+      const ph = document.createElement('span');
+      ph.className = 'nh-nr-ph';
+      ph.textContent = (n.name || '?').trim().charAt(0).toUpperCase();
+      cov.appendChild(ph);
+      const ids = (nhNr.byName && nhNr.byName[n.name]) || [];
+      ids.slice(0, 3).forEach((iid, idx) => {
+        const box = document.createElement('span');
+        box.className = 'nh-nr-cbox nh-nr-c' + idx;
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.crossOrigin = 'anonymous';
+        img.src = '/api/items/' + iid + '/cover?width=300';
+        img.addEventListener('error', () => box.remove());
+        if (idx === 0) img.addEventListener('load', () => nhNrTint(n.name, img, card));
+        box.appendChild(img);
+        cov.appendChild(box);
+      });
+      const nm = document.createElement('p');
+      nm.className = 'nh-nr-name';
+      nm.textContent = n.name;
+      const ct = document.createElement('p');
+      ct.className = 'nh-nr-count2';
+      ct.textContent = n.numBooks + ' ' + nhWordForm(n.numBooks, forms);
+      card.appendChild(cov);
+      card.appendChild(nm);
+      card.appendChild(ct);
+      grid.appendChild(card);
+    });
+  }
+
+  // ===================== AUTHORS PAGE TOOLBAR (A9 companion) =====================
+  // Same toolbar treatment as narrators: localized count text on the left and a
+  // themed name-filter input on the right. Filtering drives the NATIVE authors
+  // shelf through the proven fetcher takeover (authors are virtualized — hiding
+  // cards would leave holes in the grid).
+  const nhAuF = { libId: null, list: null, fetching: false, q: '', qTimer: null, view: null, needReset: false };
+
+  function nhAuRelease(vm) {
+    if (vm && vm.__nhAuPatched) {
+      if (vm.__nhAuOrig) vm.fetchEntites = vm.__nhAuOrig;
+      vm.__nhAuPatched = false;
+      try { vm.resetEntities(); } catch (e) {}
+    }
+    nhAuF.view = null;
+  }
+
+  // Admin tool: authors left behind with no books. Always lists them and asks
+  // first — this deletes records in ABS, so it must never be one careless click.
+  function nhAuthorTidy(libId) {
+    const T = nhGsT();
+    const tok = nhSrToken();
+    if (!tok || !libId) return;
+    const old = document.getElementById('nh-ae-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-ae-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const ttl = document.createElement('span'); ttl.textContent = T.aeTitle || PANEL_T.en.aeTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×';
+    x.addEventListener('click', close);
+    head.appendChild(ttl); head.appendChild(x); box.appendChild(head);
+    const body = document.createElement('div'); body.className = 'nh-ae-body';
+    body.textContent = '…';
+    box.appendChild(body);
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+
+    fetch('/api/libraries/' + libId + '/authors', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const all = (j && (j.authors || j.results)) || [];
+        const empty = all.filter((a) => a && a.numBooks === 0);
+        body.textContent = '';
+        if (!empty.length) {
+          const p = document.createElement('p'); p.className = 'nh-sb-empty';
+          p.textContent = T.aeNone || PANEL_T.en.aeNone;
+          body.appendChild(p);
+          return;
+        }
+        const list = document.createElement('div'); list.className = 'nh-ae-list';
+        empty.forEach((a) => {
+          const row = document.createElement('div'); row.className = 'nh-ae-row';
+          row.textContent = a.name || a.id;
+          list.appendChild(row);
+        });
+        body.appendChild(list);
+        const acts = document.createElement('div'); acts.className = 'nh-rt-actions';
+        const go = document.createElement('button'); go.type = 'button'; go.className = 'nh-rt-btn';
+        go.textContent = (T.aeRemove || PANEL_T.en.aeRemove) + ' (' + empty.length + ')';
+        const status = document.createElement('span'); status.className = 'nh-rt-status';
+        go.addEventListener('click', () => {
+          go.disabled = true;
+          status.textContent = T.aeWorking || PANEL_T.en.aeWorking;
+          let done = 0;
+          Promise.all(empty.map((a) => fetch('/api/authors/' + a.id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+            .then((r) => { if (r.ok) done++; }).catch(() => {})))
+            .then(() => {
+              status.textContent = (T.aeDone || PANEL_T.en.aeDone) + ' ' + done + '/' + empty.length;
+              nhAuF.list = null;              // the cached author list is stale now
+              setTimeout(() => { close(); try { location.reload(); } catch (e) {} }, 900);
+            });
+        });
+        acts.appendChild(go); acts.appendChild(status);
+        body.appendChild(acts);
+      })
+      .catch(() => { body.textContent = '✗'; });
+  }
+
+  // Admin list of problem reports. Reads through the admin-gated twin route —
+  // the queue carries other users' names, so it must not be world-readable.
+  const NH_RP_LABELS = { missing: 'rpMissing', quality: 'rpQuality', play: 'rpPlay', wrong: 'rpWrong', chapters: 'rpChapters', other: 'rpOther' };
+  function nhReportsAdminRender(host) {
+    if (!host) return;
+    const T = nhGsT();
+    const tok = nhSrToken();
+    host.textContent = '…';
+    if (!tok) { host.textContent = ''; return; }
+    fetch('/_nh/api/reports-admin', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const rows = (j && j.reports) || [];
+        nhRb.count = rows.length; nhRb.ts = Date.now(); // keep the appbar badge honest
+        host.textContent = '';
+        if (!rows.length) {
+          const p = document.createElement('p'); p.className = 'nh-hint'; p.style.margin = '0';
+          p.textContent = T.rpEmpty || PANEL_T.en.rpEmpty;
+          host.appendChild(p);
+          return;
+        }
+        rows.forEach((rp) => {
+          const row = document.createElement('div'); row.className = 'nh-rp-row';
+          const main = document.createElement('div'); main.className = 'nh-rp-main';
+          const t = document.createElement('a'); t.className = 'nh-rp-t';
+          t.textContent = rp.title || rp.itemId;
+          t.href = getBaseNH() + '/item/' + rp.itemId;
+          t.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/item/' + rp.itemId); });
+          const meta = document.createElement('div'); meta.className = 'nh-rp-meta';
+          const key = NH_RP_LABELS[rp.reason] || 'rpOther';
+          const when = rp.ts ? new Date(rp.ts).toLocaleDateString(getUserLanguage()) : '';
+          meta.textContent = (T[key] || PANEL_T.en[key]) + ' · ' + (rp.user || '?') + (when ? ' · ' + when : '');
+          main.appendChild(t); main.appendChild(meta);
+          if (rp.note) {
+            const n = document.createElement('div'); n.className = 'nh-rp-note-txt'; n.textContent = rp.note;
+            main.appendChild(n);
+          }
+          const done = document.createElement('button');
+          done.type = 'button'; done.className = 'nh-rt-link nh-rp-done';
+          done.textContent = T.rpResolve || PANEL_T.en.rpResolve;
+          done.addEventListener('click', () => {
+            done.disabled = true;
+            fetch('/_nh/api/reports-admin?id=' + encodeURIComponent(rp.id), { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+              .then((r) => {
+                if (!r.ok) { done.disabled = false; return; }
+                row.remove();
+                nhRb.count = Math.max(0, (nhRb.count || 1) - 1); nhRb.ts = Date.now();
+              })
+              .catch(() => { done.disabled = false; });
+          });
+          row.appendChild(main); row.appendChild(done);
+          host.appendChild(row);
+        });
+      })
+      .catch(() => { host.textContent = ''; });
+  }
+
+  // Book page: make every author name clickable.
+  // ABS only links an author it holds a record for. When a book carries just an
+  // `authorName` string — imported without matching author records, which is
+  // common — it renders flat text, and that is the "sometimes not clickable"
+  // Pawel hit. The item's own metadata says which names have ids: those become
+  // real author links, and the rest link to a search for the name so the click
+  // still goes somewhere useful.
+  const nhBaCache = {};
+  function nhBookAuthorLinks() {
+    const m = location.pathname.match(/\/item\/([^/?#]+)/);
+    const host = document.querySelector('.nh-metadata-container');
+    if (!m || !host) return;
+    const id = m[1];
+    if (nhBaCache[id] === undefined) {
+      nhBaCache[id] = null;
+      const tok = nhSrToken();
+      if (tok) {
+        fetch('/api/items/' + id, { headers: { Authorization: 'Bearer ' + tok } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            const md = (j && j.media && j.media.metadata) || {};
+            nhBaCache[id] = {
+              authors: (md.authors || []).filter((a) => a && a.name),
+              authorName: md.authorName || '',
+              libraryId: (j && j.libraryId) || '',
+            };
+          })
+          .catch(() => { nhBaCache[id] = null; });
+      } else { nhBaCache[id] = undefined; }   // no token yet — try again next tick
+      return;
+    }
+    const info = nhBaCache[id];
+    if (!info) return;
+    const names = info.authors.length ? info.authors.map((a) => a.name) : (info.authorName ? info.authorName.split(',').map((x) => x.trim()) : []);
+    if (!names.length) return;
+    const joined = names.join(', ');
+    // Find the metadata cell whose text IS the author list — language-independent,
+    // no reliance on the label wording.
+    const cells = host.querySelectorAll(':scope > div > div:last-child, :scope > div');
+    for (const cell of cells) {
+      const txt = (cell.textContent || '').trim();
+      if (txt !== joined || cell.dataset.nhAu === joined) continue;
+      if (cell.querySelector('a')) { cell.dataset.nhAu = joined; continue; } // ABS already linked it
+      cell.dataset.nhAu = joined;
+      cell.textContent = '';
+      names.forEach((nm, i) => {
+        if (i) cell.appendChild(document.createTextNode(', '));
+        const rec = info.authors.find((a) => a.name === nm);
+        const a = document.createElement('a');
+        a.textContent = nm;
+        a.className = 'nh-bd-au';
+        if (rec && rec.id) {
+          a.href = getBaseNH() + '/author/' + rec.id;
+          a.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/author/' + rec.id); });
+        } else if (info.libraryId) {
+          // No author record: fall back to a library search for the name.
+          const q = '/library/' + info.libraryId + '/search?q=' + encodeURIComponent(nm);
+          a.href = getBaseNH() + q;
+          a.title = nm;
+          a.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush(q); });
+        }
+        cell.appendChild(a);
+      });
+      break;
+    }
+  }
+
+  function nhAuthorsBar() {
+    const m = location.pathname.match(/\/library\/([^/]+)\/bookshelf\/authors\/?$/);
+    const bs = document.getElementById('bookshelf');
+    if (!m) {
+      document.body.classList.remove('nh-authors-list');
+      document.querySelectorAll('#nh-au-bar, #toolbar .nh-au-count').forEach((el) => el.remove());
+      document.querySelectorAll('#toolbar [data-nh-au-hidden]').forEach((el) => { el.style.display = ''; delete el.dataset.nhAuHidden; });
+      if (bs && bs.__vue__ && bs.__vue__.__nhAuPatched) nhAuRelease(bs.__vue__);
+      nhAuF.q = '';
+      return;
+    }
+    const libId = m[1];
+    // Scopes the author-card skin below. NOT 'nh-authors-page' — the author
+    // DETAIL page already owns 'nh-author-page' (singular) and a one-character
+    // difference would silently kill one of the two rule sets.
+    document.body.classList.add('nh-authors-list');
+    if (nhAuF.libId !== libId) {
+      nhAuF.libId = libId;
+      nhAuF.list = null;
+      nhAuF.fetching = false;
+      nhAuF.q = '';
+      nhAuF.view = null;
+    }
+    const toolbar = document.getElementById('toolbar');
+    if (!toolbar || !bs) return;
+    const vm = bs.__vue__;
+    const T = nhGsT();
+    if (!document.getElementById('nh-au-bar')) {
+      const cnt = document.createElement('p');
+      cnt.className = 'nh-au-count';
+      toolbar.insertBefore(cnt, toolbar.firstChild);
+      // the authors toolbar has its own count <p> — ours replaces it
+      Array.prototype.forEach.call(toolbar.querySelectorAll(':scope > p:not(.nh-au-count)'), (el) => {
+        el.dataset.nhAuHidden = '1';
+        el.style.display = 'none';
+      });
+      const bar = document.createElement('div');
+      bar.id = 'nh-au-bar';
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.className = 'nh-nr-search';
+      inp.placeholder = T.auSearch || PANEL_T.en.auSearch;
+      inp.addEventListener('input', () => {
+        clearTimeout(nhAuF.qTimer);
+        nhAuF.qTimer = setTimeout(() => { nhAuF.q = inp.value.trim().toLowerCase(); nhAuthorsBar(); }, 150);
+      });
+      bar.appendChild(inp);
+      // Admin-only: ABS keeps an author record after its last book is removed or
+      // re-tagged, so libraries accumulate authors with nothing behind them.
+      if (isUserAdmin()) {
+        const tidy = document.createElement('button');
+        tidy.type = 'button';
+        tidy.className = 'nh-au-tidy';
+        tidy.textContent = T.aeBtn || PANEL_T.en.aeBtn;
+        tidy.addEventListener('click', () => nhAuthorTidy(libId));
+        bar.appendChild(tidy);
+      }
+      toolbar.appendChild(bar);
+    }
+    const cntEl = toolbar.querySelector('.nh-au-count');
+    const forms = T.auForms || PANEL_T.en.auForms;
+    if (!nhAuF.q) {
+      if (vm && vm.__nhAuPatched) { nhAuRelease(vm); }
+      if (cntEl && vm && typeof vm.totalEntities === 'number') cntEl.textContent = vm.totalEntities + ' ' + nhWordForm(vm.totalEntities, forms);
+      return;
+    }
+    // full list once per library, then serve filtered slices natively
+    const tok = nhSrToken();
+    if (!nhAuF.list && !nhAuF.fetching && tok) {
+      nhAuF.fetching = true;
+      fetch('/api/libraries/' + libId + '/authors', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          nhAuF.fetching = false;
+          if (j && Array.isArray(j.authors) && nhAuF.libId === libId) nhAuF.list = j.authors;
+        })
+        .catch(() => { nhAuF.fetching = false; });
+    }
+    if (!nhAuF.list || !vm || typeof vm.fetchEntites !== 'function' || typeof vm.resetEntities !== 'function') {
+      if (cntEl) cntEl.textContent = '…';
+      return;
+    }
+    const view = nhAuF.list.filter((a) => String(a.name || '').toLowerCase().indexOf(nhAuF.q) !== -1);
+    const viewIds = view.map((a) => a.id).join(',');
+    if (!nhAuF.view || nhAuF.view.ids !== viewIds) {
+      nhAuF.view = { ids: viewIds, rows: view };
+      nhAuF.needReset = true;
+    }
+    if (cntEl) cntEl.textContent = view.length + ' / ' + nhAuF.list.length + ' ' + nhWordForm(nhAuF.list.length, forms);
+    if (!vm.__nhAuPatched) {
+      vm.__nhAuPatched = true;
+      vm.__nhAuOrig = vm.fetchEntites;
+      vm.fetchEntites = async function (page) {
+        if (!(nhAuF.q && nhAuF.view)) return vm.__nhAuOrig.call(this, page);
+        const ax = this.$axios;
+        const orig = ax.$get;
+        const self = this;
+        ax.$get = async function (url) {
+          if (String(url).indexOf('/' + self.entityName + '?') !== -1) {
+            const bpf = self.booksPerFetch || 36;
+            return { results: nhAuF.view.rows.slice(page * bpf, page * bpf + bpf), total: nhAuF.view.rows.length, page: page };
+          }
+          return orig.apply(ax, arguments);
+        };
+        try { return await vm.__nhAuOrig.call(this, page); } finally { ax.$get = orig; }
+      };
+    }
+    if (nhAuF.needReset) {
+      nhAuF.needReset = false;
+      try { vm.resetEntities(); } catch (e) {}
+    }
+  }
+
+  // ===================== COLLECTION DETAIL PAGE (A10) =====================
+  // ABS gives collections a native detail page at /collection/<id> (route name
+  // collection-id): a two-column skeleton (stacked cover left, content right)
+  // whose books render through tables-collection-books-table, which is slow on
+  // big collections ("loads forever" — Pawel). We (E1) widen the page to the
+  // same axis the series page uses, (E2) replace the table with a fast cover
+  // grid built client-side from the page vm's own book list, and (E3) give
+  // admins an inline description editor. Collections carry a REAL description
+  // field in ABS (unlike series), so the edit just PATCHes /api/collections/<id>
+  // — no proxy store needed. The page root #page-wrapper is shared with other
+  // routes, so every path guards on vm.collectionId + vm.bookItems.
+  const nhCol = { sig: '' };
+
+  function nhColOff() {
+    document.body.classList.remove('nh-collection-page');
+    const g = document.getElementById('nh-col-grid'); if (g) g.remove();
+    const er = document.getElementById('nh-col-editrow'); if (er) er.remove();
+    document.querySelectorAll('.nh-col-native-hide').forEach((el) => el.classList.remove('nh-col-native-hide'));
+    nhCol.sig = '';
+  }
+
+  // Change a collection's tile art. Same modal shell as nhColEditDesc.
+  function nhColEditArt(col) {
+    const T = nhGsT();
+    const old = document.getElementById('nh-col-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-col-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.ciTitle || PANEL_T.en.ciTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×'; x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x); box.appendChild(head);
+
+    const cur = nhColArt(col.id) || nhColMatch(col.name || '');
+    const pick = nhColArtPicker(cur.icon, cur.tint, T);
+    box.appendChild(pick.el);
+
+    const row = document.createElement('div'); row.className = 'nh-rt-actions';
+    // Once an override exists, renaming the collection no longer changes its icon.
+    // This link is what makes that recoverable.
+    const reset = document.createElement('button'); reset.type = 'button'; reset.className = 'nh-rt-link';
+    reset.textContent = T.ciReset || PANEL_T.en.ciReset;
+    const save = document.createElement('button'); save.type = 'button'; save.className = 'nh-rt-btn'; save.textContent = T.sdSave || PANEL_T.en.sdSave;
+    const status = document.createElement('span'); status.className = 'nh-rt-status';
+    const after = (ok) => {
+      if (!ok) { status.textContent = '✗'; return; }
+      nhCl.sig = '';                       // force the landing grid to rebuild
+      try { delete document.getElementById('bookshelf').dataset.nhColArt; } catch (e) {}
+      close();
+    };
+    reset.addEventListener('click', () => { status.textContent = '…'; nhColArtSave(col.id, null).then(after); });
+    save.addEventListener('click', () => { status.textContent = '…'; nhColArtSave(col.id, pick.get()).then(after); });
+    row.appendChild(reset); row.appendChild(save); row.appendChild(status); box.appendChild(row);
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  function nhColEditDesc(col) {
+    const T = nhGsT();
+    const old = document.getElementById('nh-col-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-col-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.colEditDesc || PANEL_T.en.colEditDesc;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×'; x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x); box.appendChild(head);
+    const ta = document.createElement('textarea'); ta.className = 'nh-sd-ta'; ta.maxLength = 5000;
+    ta.value = (col.description || '').trim();
+    box.appendChild(ta);
+    const row = document.createElement('div'); row.className = 'nh-rt-actions';
+    const save = document.createElement('button'); save.type = 'button'; save.className = 'nh-rt-btn'; save.textContent = T.sdSave || PANEL_T.en.sdSave;
+    const status = document.createElement('span'); status.className = 'nh-rt-status';
+    save.addEventListener('click', () => {
+      status.textContent = '…';
+      const tok = window.__NH_TOKEN || getTokenNH();
+      fetch('/api/collections/' + col.id, {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: col.name, description: ta.value.trim() || null })
+      }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+        if (!j) { status.textContent = '✗'; return; }
+        try { window.$nuxt.$store.commit('libraries/addUpdateCollection', j); } catch (e) {}
+        close();
+      }).catch(() => { status.textContent = '✗'; });
+    });
+    row.appendChild(save); row.appendChild(status); box.appendChild(row);
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+    ta.focus();
+  }
+
+  // Add-books modal for the collection detail page: search books (and authors —
+  // clicking an author adds all their books), then POST /batch/add. Books already
+  // in the collection are shown ticked and non-selectable.
+  function nhColAddBooks(col) {
+    const T = nhGsT();
+    const libId = col.libraryId;
+    const old = document.getElementById('nh-ab-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-ab-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.abTitle || PANEL_T.en.abTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×'; x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x); box.appendChild(head);
+    const wrap = document.createElement('div'); wrap.className = 'nh-ct-build';
+    const existing = {}; (Array.isArray(col.books) ? col.books : []).forEach((b) => { if (b && b.id) existing[b.id] = 1; });
+    const selected = {};
+    const search = document.createElement('input'); search.type = 'text'; search.className = 'nh-ct-input'; search.placeholder = T.ctSearch || PANEL_T.en.ctSearch;
+    wrap.appendChild(search);
+    const results = document.createElement('div'); results.className = 'nh-ct-results'; wrap.appendChild(results);
+    const chips = document.createElement('div'); chips.className = 'nh-ct-chips'; wrap.appendChild(chips);
+    const add = document.createElement('button'); add.type = 'button'; add.className = 'nh-rt-btn'; add.textContent = T.abAdd || PANEL_T.en.abAdd;
+    const updateAdd = () => { add.disabled = !Object.keys(selected).length; };
+    const renderChips = () => {
+      chips.textContent = '';
+      Object.keys(selected).forEach((id) => {
+        const c = document.createElement('span'); c.className = 'nh-ct-chip'; c.textContent = selected[id];
+        const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = '×';
+        rm.addEventListener('click', () => { delete selected[id]; renderChips(); updateAdd(); const row = results.querySelector('[data-id="' + id + '"]'); if (row) row.classList.remove('nh-on'); });
+        c.appendChild(rm); chips.appendChild(c);
+      });
+    };
+    let seq = 0;
+    const runSearch = () => {
+      const q = search.value.trim(); if (!q) { results.textContent = ''; return; }
+      const my = ++seq; const tok = nhSrToken();
+      fetch('/api/libraries/' + libId + '/search?q=' + encodeURIComponent(q) + '&limit=10', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          if (my !== seq) return; results.textContent = '';
+          const books = (j && Array.isArray(j.book)) ? j.book : [];
+          const auth = (j && Array.isArray(j.authors)) ? j.authors : [];
+          if (!books.length && !auth.length) { const e = document.createElement('div'); e.className = 'nh-ct-empty'; e.textContent = T.gsNoResults || PANEL_T.en.gsNoResults; results.appendChild(e); return; }
+          const bf = T.colBookForms || PANEL_T.en.colBookForms;
+          auth.slice(0, 4).forEach((a) => {
+            if (!a.id) return;
+            const row = document.createElement('button'); row.type = 'button'; row.className = 'nh-ct-row nh-ct-author';
+            const gi = document.createElement('span'); gi.className = 'material-symbols'; gi.textContent = 'person';
+            const c2 = document.createElement('span'); c2.className = 'nh-ct-atext';
+            const tt = document.createElement('span'); tt.className = 'nh-ct-rt'; tt.textContent = a.name || '';
+            const au = document.createElement('span'); au.className = 'nh-ct-ra'; const cnt = (typeof a.numBooks === 'number') ? a.numBooks : null; au.textContent = cnt != null ? cnt + ' ' + nhWordForm(cnt, bf) : (T.ctAddAll || PANEL_T.en.ctAddAll);
+            c2.appendChild(tt); c2.appendChild(au); row.appendChild(gi); row.appendChild(c2);
+            row.addEventListener('click', () => {
+              if (row.dataset.busy) return; row.dataset.busy = '1'; const o = au.textContent; au.textContent = '…'; const tk2 = nhSrToken();
+              fetch('/api/libraries/' + libId + '/items?filter=authors.' + encodeURIComponent(btoa(a.id)) + '&limit=0', { headers: { Authorization: 'Bearer ' + tk2 }, credentials: 'include' })
+                .then((r2) => (r2.ok ? r2.json() : null))
+                .then((jj) => {
+                  ((jj && jj.results) || []).forEach((it) => { if (it.id && !existing[it.id]) selected[it.id] = ((it.media && it.media.metadata && it.media.metadata.title) || '(untitled)'); });
+                  renderChips(); updateAdd(); au.textContent = o; delete row.dataset.busy;
+                  results.querySelectorAll('.nh-ct-row[data-id]').forEach((rr) => { if (selected[rr.dataset.id]) rr.classList.add('nh-on'); });
+                })
+                .catch(() => { au.textContent = o; delete row.dataset.busy; });
+            });
+            results.appendChild(row);
+          });
+          books.forEach((bk) => {
+            const it = bk.libraryItem || bk; const md = (it.media && it.media.metadata) || {}; const id = it.id; if (!id) return;
+            const row = document.createElement('button'); row.type = 'button'; row.className = 'nh-ct-row' + (existing[id] ? ' nh-ct-have' : ''); row.dataset.id = id;
+            if (selected[id]) row.classList.add('nh-on');
+            const tt = document.createElement('span'); tt.className = 'nh-ct-rt'; tt.textContent = (md.title || '') + (existing[id] ? ' ✓' : '');
+            const au = document.createElement('span'); au.className = 'nh-ct-ra'; au.textContent = md.authorName || '';
+            row.appendChild(tt); row.appendChild(au);
+            row.addEventListener('click', () => {
+              if (existing[id]) return;
+              if (selected[id]) { delete selected[id]; row.classList.remove('nh-on'); } else { selected[id] = md.title || '(untitled)'; row.classList.add('nh-on'); }
+              renderChips(); updateAdd();
+            });
+            results.appendChild(row);
+          });
+        })
+        .catch(() => {});
+    };
+    let tmr = null; search.addEventListener('input', () => { clearTimeout(tmr); tmr = setTimeout(runSearch, 250); });
+    const actions = document.createElement('div'); actions.className = 'nh-rt-actions';
+    const status = document.createElement('span'); status.className = 'nh-rt-status';
+    updateAdd();
+    add.addEventListener('click', () => {
+      if (add.disabled || add.dataset.busy) return; add.dataset.busy = '1'; status.textContent = '…';
+      const tok = window.__NH_TOKEN || getTokenNH();
+      fetch('/api/collections/' + col.id + '/batch/add', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' }, body: JSON.stringify({ books: Object.keys(selected) }) })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((c2) => {
+          if (!c2) { status.textContent = '✗'; delete add.dataset.busy; return; }
+          try { window.$nuxt.$store.commit('libraries/addUpdateCollection', c2); } catch (e) {}
+          nhCol.sig = '';
+          close();
+        })
+        .catch(() => { status.textContent = '✗'; delete add.dataset.busy; });
+    });
+    actions.appendChild(add); actions.appendChild(status); wrap.appendChild(actions);
+    box.appendChild(wrap); overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+    search.focus();
+  }
+
+  function nhCollectionPage() {
+    if (nhSettings.collectionsPages === false) return;
+    const m = location.pathname.match(/(?:^|\/)collection\/([^/?#]+)/);
+    const wrap = document.getElementById('page-wrapper');
+    // Read the collection from Vuex, NOT #page-wrapper.__vue__: on ABS latest that
+    // element's component is the layout, not the page, so vm.collectionId is absent.
+    // The store getter is populated by the page's asyncData and works on 2.35.x too.
+    const store = window.$nuxt && window.$nuxt.$store;
+    const getCol = store && store.getters && store.getters['libraries/getCollection'];
+    const col = (m && typeof getCol === 'function') ? getCol(m[1]) : null;
+    if (!m || !wrap || !col || !Array.isArray(col.books)) {
+      if (document.body.classList.contains('nh-collection-page')) nhColOff();
+      return;
+    }
+    document.body.classList.add('nh-collection-page');
+
+    const books = col.books.filter(Boolean);
+    // Content column = the div that holds the <h1> title. Its structure:
+    // [title flex-row (h1 + buttons)] [.my-8.max-w-2xl description] [books table].
+    const h1 = wrap.querySelector('h1');
+    const titleRow = h1 && h1.parentNode;
+    const contentCol = titleRow && titleRow.parentNode;
+    if (!contentCol) return;
+    const descBlock = contentCol.querySelector('.my-8.max-w-2xl');
+
+    // ---- E3: inline admin "edit description" affordance ----
+    const canEdit = !!(store.getters['user/getUserCanUpdate'] || store.getters['user/getIsAdminOrUp']);
+    if (descBlock && canEdit) {
+      let er = document.getElementById('nh-col-editrow');
+      if (!er) {
+        er = document.createElement('div');
+        er.id = 'nh-col-editrow';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'nh-col-edit';
+        btn.innerHTML = '<span class="material-symbols">edit</span><span class="nh-col-edit-lbl"></span>';
+        btn.addEventListener('click', () => { const c = (typeof getCol === 'function') ? getCol(m[1]) : col; if (c) nhColEditDesc(c); });
+        er.appendChild(btn);
+        // Without this, a renamed or imported collection could never be re-iconed:
+        // the art is derived from the name, and once an override exists renaming no
+        // longer changes it. Admin-gated because /_nh/data/ is behind admincheck --
+        // canEdit alone would give a non-admin a silent 403.
+        if (isUserAdmin()) {
+          const ib = document.createElement('button');
+          ib.type = 'button';
+          ib.className = 'nh-col-edit nh-col-icobtn';
+          ib.innerHTML = '<span class="material-symbols">palette</span><span class="nh-col-ico-lbl"></span>';
+          ib.addEventListener('click', () => { const c = (typeof getCol === 'function') ? getCol(m[1]) : col; if (c) nhColEditArt(c); });
+          er.appendChild(ib);
+        }
+        descBlock.appendChild(er);
+      }
+      const T = nhGsT();
+      const lbl = er.querySelector('.nh-col-edit-lbl');
+      if (lbl) lbl.textContent = T.colEditDesc || PANEL_T.en.colEditDesc;
+      const ilbl = er.querySelector('.nh-col-ico-lbl');
+      if (ilbl) ilbl.textContent = T.colEditIcon || PANEL_T.en.colEditIcon;
+    }
+
+    // ---- "Add books" as a title-row action (Pawel: a toolbar button, not a tile) ----
+    if (canEdit && titleRow) {
+      let ab = titleRow.querySelector('.nh-col-addbtn');
+      if (!ab) {
+        ab = document.createElement('button');
+        ab.type = 'button'; ab.className = 'nh-col-addbtn';
+        ab.innerHTML = '<span class="material-symbols">add</span><span class="nh-col-addbtn-lbl"></span>';
+        ab.addEventListener('click', () => { const c = (typeof getCol === 'function') ? getCol(m[1]) : col; if (c) nhColAddBooks(c); });
+        titleRow.appendChild(ab);
+      }
+      const albl = ab.querySelector('.nh-col-addbtn-lbl');
+      const TT = nhGsT();
+      const want = TT.abTitle || PANEL_T.en.abTitle;
+      if (albl && albl.textContent !== want) albl.textContent = want;
+    }
+
+    // ---- E1b: category emblem over the native two-cover collage (Pawel: show
+    // the same tile graphic, not a grid of two book covers). Overlaid absolutely
+    // so we never hide/fight the native cover's Vue children. ----
+    const twoCol = contentCol.parentElement;
+    const coverCol = twoCol && twoCol.firstElementChild;
+    if (coverCol && coverCol !== contentCol) {
+      const holder = coverCol.querySelector('.relative') || coverCol;
+      let em = holder.querySelector('.nh-col-emblem');
+      if (!em) {
+        em = document.createElement('div');
+        em.className = 'nh-cl-emblem nh-col-emblem';
+        const wm = document.createElement('span'); wm.className = 'material-symbols nh-cl-wm'; wm.setAttribute('aria-hidden', 'true');
+        const ic = document.createElement('span'); ic.className = 'material-symbols nh-cl-ico';
+        em.appendChild(wm); em.appendChild(ic);
+        holder.insertBefore(em, holder.firstChild);
+      }
+      // Hide the native two-book cover so only our emblem shows (re-assert each
+      // tick — the cover component can re-render). Our emblem is left in flow.
+      Array.prototype.forEach.call(holder.children, (c) => { if (c !== em && c.style.display !== 'none') c.style.display = 'none'; });
+      const match = nhColArt(col.id) || nhColMatch(col.name);
+      // A custom property, NOT the background shorthand: the shorthand resets
+      // background-color to transparent, which killed the glass pane's own
+      // translucent base and with it the no-blur @supports fallback in core.js.
+      const bgv = nhColEmblemBg(match.tint);
+      if (em.style.getPropertyValue('--nh-cl-bg') !== bgv) em.style.setProperty('--nh-cl-bg', bgv);
+      const wmEl = em.querySelector('.nh-cl-wm'); if (wmEl && wmEl.textContent !== match.icon) wmEl.textContent = match.icon;
+      const icEl = em.querySelector('.nh-cl-ico'); if (icEl && icEl.textContent !== match.icon) icEl.textContent = match.icon;
+    }
+
+    // ---- E2: fast cover grid (rebuilt only when the book set changes) ----
+    const sig = col.id + '|' + books.map((b) => b.id).join(',');
+    let grid = document.getElementById('nh-col-grid');
+    if (!grid || nhCol.sig !== sig) {
+      nhCol.sig = sig;
+      if (!grid) { grid = document.createElement('div'); grid.id = 'nh-col-grid'; }
+      grid.textContent = '';
+      const tk = window.__NH_TOKEN || getTokenNH();
+      const tq = tk ? '&token=' + encodeURIComponent(tk) : '';
+      // "Add books" now lives in the page's title row (same reasoning as the
+      // landing page: an action tile in a grid of books reads as a book).
+      books.forEach((b) => {
+        const md = (b.media && b.media.metadata) || {};
+        const btitle = md.title || '';
+        const tile = document.createElement('a');
+        tile.className = 'nh-col-tile';
+        tile.href = getBaseNH() + '/item/' + b.id;
+        tile.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/item/' + b.id); });
+        const cover = document.createElement('div');
+        cover.className = 'nh-col-cover';
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.alt = btitle;
+        img.src = '/api/items/' + b.id + '/cover?width=300' + tq;
+        img.addEventListener('error', () => {
+          img.remove();
+          const ph = document.createElement('div'); ph.className = 'nh-col-ph'; ph.textContent = btitle; cover.appendChild(ph);
+        });
+        cover.appendChild(img);
+        // Same treatment as a library card (Pawel: every book tile, everywhere):
+        // a hover dim over the cover, and the rating on the author line of the
+        // caption — always visible, never over the artwork, never hover-gated.
+        const dim = document.createElement('div'); dim.className = 'nh-col-dim'; cover.appendChild(dim);
+        const t = document.createElement('div'); t.className = 'nh-col-t'; t.textContent = btitle;
+        const arow = document.createElement('div'); arow.className = 'nh-col-arow';
+        const a = document.createElement('div'); a.className = 'nh-col-a';
+        a.textContent = (md.authors || []).map((x) => x.name).join(', ') || (md.authorName || '');
+        // These tiles are narrow and the rating shares the line, so the name
+        // often ellipses — keep the full text reachable.
+        if (a.textContent) a.title = a.textContent;
+        arow.appendChild(a);
+        // The badge itself is painted by nhCardRatings on the tick, not here: the
+        // grid is built as soon as the collection loads, which is often BEFORE the
+        // ratings map arrives, and the grid is not rebuilt afterwards -- so a
+        // build-time badge simply never appeared on a cold load.
+        tile.appendChild(cover); tile.appendChild(t); tile.appendChild(arow);
+        grid.appendChild(tile);
+      });
+    }
+    // Hide the native table and mount our grid in the content column. The table
+    // component's root class isn't predictable, so the table is identified as the
+    // last element child that is neither the title row, the description, nor us.
+    const kids = Array.prototype.filter.call(contentCol.children, (el) => el !== titleRow && el !== descBlock && el.id !== 'nh-col-grid');
+    const nativeTable = kids[kids.length - 1] || null;
+    if (nativeTable && !nativeTable.classList.contains('nh-col-native-hide')) nativeTable.classList.add('nh-col-native-hide');
+    if (grid.parentNode !== contentCol) contentCol.appendChild(grid);
+  }
+
+  // ===================== COLLECTIONS LANDING PAGE (A10) =====================
+  // The native /bookshelf/collections shelf renders each collection as a wide
+  // two-cover card, loading many full covers at once (slow at scale) and reading
+  // generically. We hide the native cards (CSS, body.nh-collections-page) and
+  // mount our own fast tile grid inside #bookshelf: each collection is an ICON
+  // EMBLEM on a category-tinted card (Pawel's pick — no cover images at all, so
+  // it's instant) + name + book count, click → the detail page. An admin-only
+  // "New" tile opens the curated template picker. Mount pattern from narrators.
+
+  // Curated category templates: drive BOTH the emblem shown for an existing
+  // collection (matched by name keyword) AND the starter-collection picker.
+  // Icons are material-symbols ligatures (already loaded by the app).
+  const NH_COL_TEMPLATES = [
+    { name: 'Science Fiction', icon: 'rocket_launch', tint: '#3b5bd9', kw: ['sci-fi', 'science fiction', 'scifi', 'space opera'], desc: "Worlds beyond our own — the far future, distant stars, and the ideas that stretch what's possible." },
+    { name: 'Fantasy', icon: 'castle', tint: '#7048e8', kw: ['fantasy', 'epic fantasy', 'dragon', 'magic'], desc: 'Maps with dragons in the margins — myth, magic, and quests worth the long road.' },
+    { name: 'Mystery & Thriller', icon: 'search', tint: '#d6336c', kw: ['myster', 'thriller', 'detective', 'suspense', 'noir'], desc: 'Locked rooms, long shadows, and the slow pleasure of piecing it together.' },
+    { name: 'True Crime', icon: 'local_police', tint: '#a51111', kw: ['true crime', 'crime'], desc: 'Real cases, real stakes — the investigations that kept a nation reading.' },
+    { name: 'Romance', icon: 'favorite', tint: '#e64980', kw: ['romance', 'love story'], desc: 'Hearts colliding, second chances, and the warm ache of a story that ends in an embrace.' },
+    { name: 'History', icon: 'account_balance', tint: '#b0855b', kw: ['history', 'histor', 'ancient', 'politic'], desc: 'How we got here — empires, revolutions, and the quiet moments that turned the world.' },
+    { name: 'War & Military', icon: 'military_tech', tint: '#5c6670', kw: ['war', 'military', 'army', 'battle'], desc: 'Courage and cost — the front lines, the strategy, and the people who lived it.' },
+    { name: 'Science', icon: 'science', tint: '#1098ad', kw: ['science', 'physics', 'biology', 'cosmos', 'nature'], desc: 'The universe, explained — from the very small to the unimaginably vast.' },
+    { name: 'Technology & AI', icon: 'smart_toy', tint: '#4263eb', kw: ['technolog', 'artificial intelligence', 'machine learning', 'computer', 'digital', 'robot'], desc: 'Code, machines, and minds — the tools remaking how we live and think.' },
+    { name: 'Psychology & Self-Help', icon: 'psychology', tint: '#7950f2', kw: ['psycholog', 'self-help', 'self help', 'mindful', 'habit'], desc: 'The mind at work — habits, happiness, and becoming a little more yourself.' },
+    { name: 'Health & Medicine', icon: 'medical_services', tint: '#2f9e44', kw: ['health', 'medic', 'fitness', 'wellness', 'nutrition'], desc: 'Body and wellbeing — the science of living longer and feeling better.' },
+    { name: 'Business & Money', icon: 'trending_up', tint: '#e8850c', kw: ['business', 'money', 'finance', 'econom', 'startup', 'invest', 'leadership'], desc: 'Ideas, markets, and money — building things and making them work.' },
+    { name: 'Biography & Memoir', icon: 'person', tint: '#9c6b3f', kw: ['biograph', 'memoir', 'lives', 'autobiograph'], desc: 'Real lives, well told — the people worth spending an evening with.' },
+    { name: 'Poetry', icon: 'format_quote', tint: '#ae3ec9', kw: ['poet', 'poem', 'verse'], desc: 'Language distilled — verse to read slowly and return to often.' },
+    { name: 'Philosophy & Religion', icon: 'self_improvement', tint: '#5f3dc4', kw: ['philosoph', 'religion', 'spiritual', 'faith', 'theolog'], desc: 'The big questions — meaning, ethics, and the search for how to live.' },
+    { name: 'Food & Cooking', icon: 'restaurant', tint: '#e8590c', kw: ['food', 'cook', 'recipe', 'culinary', 'kitchen'], desc: 'The pleasures of the table — recipes, kitchens, and the stories behind the meal.' },
+    { name: 'Travel & Adventure', icon: 'travel_explore', tint: '#0ca678', kw: ['travel', 'adventure', 'journey', 'explor', 'outdoor'], desc: 'Far horizons — journeys, wild places, and the pull of the open road.' },
+    { name: 'Young Adult', icon: 'auto_stories', tint: '#f06595', kw: ['young adult', 'teen', 'coming of age'], desc: 'Coming of age — first loves, hard choices, and finding your feet.' },
+    { name: 'Classics & Literature', icon: 'menu_book', tint: '#846358', kw: ['classic', 'literature', 'literary'], desc: 'The books that lasted — timeless stories and the writers who shaped them.' },
+    { name: "Children's", icon: 'child_care', tint: '#f59f00', kw: ['children', 'kids', 'picture book', 'bedtime'], desc: 'Big adventures for small listeners — bedtime favourites and first chapter books.' }
+  ];
+
+  // Pick an emblem (icon + tint) for a collection by matching its name against
+  // the template keywords; fall back to a generic book icon with a stable tint.
+  // Curated template names/descriptions per UI language. Keyed by the spine's
+  // ICON, which is unique per template, so the English array above needs no edit
+  // and no parallel index to drift. A language defines only what it has; anything
+  // missing falls back to the English spine, which is correct rather than broken.
+  // `kw` here is ADDITIVE: matching unions the keywords of every language,
+  // because a Polish user can still have English collection names and vice versa.
+  const NH_COL_TPL_T = {
+    pl: {
+      rocket_launch:    { name: 'Fantastyka naukowa', desc: "Światy inne niż nasz — daleka przyszłość, obce gwiazdy i idee rozciągające wyobraźnię.", kw: ['fantastyka naukowa', 'kosmos'] },
+      castle:           { name: 'Fantasy', desc: "Mapy ze smokami na marginesach — mit, magia i wyprawy warte dalekiej drogi.", kw: ['fantastyka', 'magia', 'smoki'] },
+      search:           { name: 'Kryminał i thriller', desc: "Zamknięte pokoje, długie cienie i powolna przyjemność składania tropów w całość.", kw: ['kryminal', 'kryminał', 'thriller', 'detektyw', 'sensacja'] },
+      local_police:     { name: 'Zbrodnie prawdziwe', desc: "Prawdziwe sprawy, prawdziwa stawka — śledztwa, które trzymały w napięciu cały kraj.", kw: ['zbrodnia', 'true crime'] },
+      favorite:         { name: 'Romans', desc: "Zderzenia serc, drugie szanse i ciepły ból historii kończącej się uściskiem.", kw: ['romans', 'milosc', 'miłość'] },
+      account_balance:  { name: 'Historia', desc: "Jak tu dotarliśmy — imperia, rewolucje i ciche chwile, które odmieniły świat.", kw: ['historia', 'historyczn'] },
+      military_tech:    { name: 'Wojna i wojskowość', desc: "Strategia, odwaga i cena zwycięstwa — relacje z pola bitwy i z jego obrzeży.", kw: ['wojna', 'wojenn', 'wojskow'] },
+      science:          { name: 'Nauka', desc: "Jak działa świat — od cząstek elementarnych po skraj obserwowalnego wszechświata.", kw: ['nauka', 'naukow', 'fizyka', 'biologia', 'przyroda'] },
+      smart_toy:        { name: 'Technologia i AI', desc: "Maszyny, które uczą się myśleć, i ludzie, którzy je budują.", kw: ['technologi', 'sztuczna inteligencja', 'komputer', 'cyfrow'] },
+      psychology:       { name: 'Psychologia i rozwój', desc: "Dlaczego robimy to, co robimy — umysł, nawyki i praca nad sobą.", kw: ['psycholog', 'rozwoj', 'rozwój', 'nawyk'] },
+      medical_services: { name: 'Zdrowie i medycyna', desc: "Ciało, umysł i medycyna — od profilaktyki po wielkie odkrycia.", kw: ['zdrowie', 'medycyn', 'dieta', 'fitness'] },
+      trending_up:      { name: 'Biznes i finanse', desc: "Rynki, decyzje i pieniądze — jak powstają firmy i jak upadają.", kw: ['biznes', 'finans', 'ekonomi', 'pieniadz', 'pieniądz', 'inwest'] },
+      person:           { name: 'Biografie i wspomnienia', desc: "Prawdziwe życiorysy opowiedziane własnym głosem — wspomnienia i biografie.", kw: ['biografi', 'wspomnien', 'pamietnik', 'pamiętnik'] },
+      format_quote:     { name: 'Poezja', desc: "Język ściśnięty do granic — wiersze, które zostają w pamięci.", kw: ['poezja', 'wiersz'] },
+      self_improvement: { name: 'Filozofia i religia', desc: "Wielkie pytania — sens, wiara i sposoby patrzenia na życie.", kw: ['filozofi', 'religi', 'duchow', 'wiara'] },
+      restaurant:       { name: 'Kuchnia', desc: "Przepisy, smaki i historie z kuchni — jedzenie jako opowieść.", kw: ['kuchnia', 'gotowan', 'przepis', 'kulinar'] },
+      travel_explore:   { name: 'Podróże i przygoda', desc: "Drogi, mapy i miejsca za horyzontem — podróż jako cel sam w sobie.", kw: ['podroz', 'podróż', 'przygod', 'wyprawa'] },
+      auto_stories:     { name: 'Młodzieżowe', desc: "Dorastanie, pierwsze wybory i świat widziany świeżym okiem.", kw: ['mlodziez', 'młodzież', 'nastolat'] },
+      menu_book:        { name: 'Klasyka i literatura', desc: "Książki, które przetrwały — kanon i literatura z najwyższej półki.", kw: ['klasyk', 'literatur'] },
+      child_care:       { name: 'Dla dzieci', desc: "Opowieści na dobranoc i pierwsze wielkie przygody — dla najmłodszych.", kw: ['dzieci', 'bajk', 'dziecie'] }
+    }
+  };
+
+  // ---- per-collection icon/accent overrides -------------------------------
+  // The tile art is otherwise DERIVED from the collection name on every render,
+  // so a picker without a store would lose the choice on the next tick. Kept in
+  // its own file, not server-config.json: the settings panel PUTs that one
+  // wholesale and would erase anything else living in it. Shape is versioned and
+  // leaves room for an "img" key so uploaded artwork can be added later without
+  // a migration.
+  const NH_COL_ART_URL = '/_nh/collection-art.json';
+  let nhColArtMap = null;        // null = not loaded yet, {} = loaded and empty
+  let nhColArtPending = false;
+
+  function nhColArtLoad() {
+    if (nhColArtMap || nhColArtPending) return;
+    nhColArtPending = true;
+    fetch(NH_COL_ART_URL, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { nhColArtMap = (j && j.cols && typeof j.cols === 'object') ? j.cols : {}; nhColArtPending = false; })
+      .catch(() => { nhColArtMap = {}; nhColArtPending = false; });
+  }
+
+  function nhColArt(id) {
+    if (!nhColArtMap) { nhColArtLoad(); return null; }
+    const a = nhColArtMap[id];
+    if (!a || !a.icon) return null;
+    return { icon: a.icon, tint: a.tint || '#5c5048', name: a.name };
+  }
+
+  // Admin-only: /_nh/data/ is behind auth_request /_nh/admincheck, so a
+  // non-admin would get a silent 403 here.
+  function nhColArtSave(id, art) {
+    if (!nhColArtMap) nhColArtMap = {};
+    if (art) nhColArtMap[id] = art; else delete nhColArtMap[id];
+    const body = JSON.stringify({ v: 1, cols: nhColArtMap });
+    const tok = window.__NH_TOKEN || getTokenNH();
+    return fetch('/_nh/data/collection-art.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+      body: body
+    }).then((r) => r.ok).catch(() => false);
+  }
+
+  // Icons offered by the picker: the 20 curated template glyphs plus a few
+  // neutral ones, so a collection that matches no template still has choices.
+  const NH_COL_ICONS = ['rocket_launch', 'castle', 'search', 'local_police', 'favorite', 'account_balance',
+    'military_tech', 'science', 'smart_toy', 'psychology', 'medical_services', 'trending_up', 'person',
+    'format_quote', 'self_improvement', 'restaurant', 'travel_explore', 'auto_stories', 'menu_book',
+    'child_care', 'library_books', 'star', 'bolt', 'landscape', 'theater_comedy', 'sports_esports'];
+  const NH_COL_TINTS = ['#3b5bd9', '#7048e8', '#d6336c', '#a51111', '#e64980', '#b0855b', '#5c6670',
+    '#1098ad', '#2f9e44', '#e8850c', '#ae3ec9', '#0ca678', '#846358', '#f59f00', '#5c5048', '#455a64'];
+
+  // Icon + accent picker. Returns { el, get() } so both the create dialog and the
+  // detail page can mount the same widget without duplicating the markup.
+  function nhColArtPicker(icon0, tint0, T) {
+    let icon = icon0 || 'library_books';
+    let tint = tint0 || '#5c5048';
+    const el = document.createElement('div'); el.className = 'nh-ci-wrap';
+
+    const il = document.createElement('div'); il.className = 'nh-ci-lbl';
+    il.textContent = (T && T.ctIcon) || PANEL_T.en.ctIcon; el.appendChild(il);
+    const ig = document.createElement('div'); ig.className = 'nh-ci-grid'; el.appendChild(ig);
+    NH_COL_ICONS.forEach((ic) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'nh-ci-opt' + (ic === icon ? ' nh-on' : '');
+      b.innerHTML = '<span class="material-symbols">' + ic + '</span>';
+      b.addEventListener('click', () => {
+        icon = ic;
+        ig.querySelectorAll('.nh-ci-opt').forEach((o) => o.classList.remove('nh-on'));
+        b.classList.add('nh-on');
+        prev.firstChild.textContent = ic;
+      });
+      ig.appendChild(b);
+    });
+
+    const cl = document.createElement('div'); cl.className = 'nh-ci-lbl';
+    cl.textContent = (T && T.ctColour) || PANEL_T.en.ctColour; el.appendChild(cl);
+    const cg = document.createElement('div'); cg.className = 'nh-ci-grid'; el.appendChild(cg);
+    NH_COL_TINTS.forEach((tc) => {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'nh-ci-sw' + (tc === tint ? ' nh-on' : '');
+      b.style.setProperty('--nh-sw', tc);
+      b.addEventListener('click', () => {
+        tint = tc;
+        cg.querySelectorAll('.nh-ci-sw').forEach((o) => o.classList.remove('nh-on'));
+        b.classList.add('nh-on');
+        prev.style.setProperty('--nh-cl-bg', nhColEmblemBg(tint));
+      });
+      cg.appendChild(b);
+    });
+
+    const prev = document.createElement('div'); prev.className = 'nh-cl-emblem nh-ci-prev';
+    prev.innerHTML = '<span class="material-symbols nh-cl-ico">' + icon + '</span>';
+    prev.style.setProperty('--nh-cl-bg', nhColEmblemBg(tint));
+    el.appendChild(prev);
+
+    return { el: el, get: () => ({ icon: icon, tint: tint }) };
+  }
+
+  function nhColLang() {
+    try { return String(getUserLanguage() || 'en').split('-')[0].toLowerCase(); } catch (e) { return 'en'; }
+  }
+
+  // One localised template. Only name/desc are translatable; icon and tint are
+  // language-neutral identity.
+  function nhColTplOne(t) {
+    const loc = (NH_COL_TPL_T[nhColLang()] || {})[t.icon];
+    if (!loc) return t;
+    return Object.assign({}, t, { name: loc.name || t.name, desc: loc.desc || t.desc });
+  }
+
+  function nhColTpl() { return NH_COL_TEMPLATES.map(nhColTplOne); }
+
+  // Normalise every non-letter to a space and match on WORD START. A bare
+  // indexOf gave "Award Winners", "Software" and "Beware the Dark" the military
+  // medal, because all three contain "war". Prefix keywords such as "histor"
+  // still work -- only the START of the word is anchored, not the end.
+  function nhColNorm(s) {
+    return ' ' + String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim() + ' ';
+  }
+
+  function nhColMatch(name) {
+    const n = nhColNorm(name);
+    const langs = Object.keys(NH_COL_TPL_T);
+    for (let i = 0; i < NH_COL_TEMPLATES.length; i++) {
+      const t = NH_COL_TEMPLATES[i];
+      let kws = t.kw;
+      for (let L = 0; L < langs.length; L++) {
+        const e = NH_COL_TPL_T[langs[L]][t.icon];
+        if (e && e.kw) kws = kws.concat(e.kw);
+      }
+      // Keywords of 4+ characters match as a word-START PREFIX, so the curated
+      // stems ("histor", "myster", "poet", "biograph") still catch their whole
+      // family. Shorter ones must match a WHOLE word: the only 3-letter keyword
+      // in the set is "war", and as a prefix it claimed "Warmth & Comfort".
+      if (kws.some((k) => {
+        const kn = nhColNorm(k);
+        const body = kn.slice(1, -1);
+        return body.length < 4 ? n.indexOf(kn) !== -1 : n.indexOf(' ' + body) !== -1;
+      })) return nhColTplOne(t);
+    }
+    let h = 0;
+    for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) & 0x7fffffff;
+    const pal = ['#5c5048', '#4a5568', '#5b4a63', '#4a5b52', '#63564a', '#455a64'];
+    return { icon: 'library_books', tint: pal[h % pal.length] };
+  }
+
+  function nhHexA(hex, a) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex || ''));
+    if (!m) return 'rgba(224,194,122,' + a + ')';
+    return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
+  }
+
+  // Glass, not candy. The genre tint is a restrained corner radial over a
+  // translucent pane -- never a solid fill. The old version ended with ', ' + tint,
+  // i.e. an OPAQUE colour layer, and an opaque layer reinstates the flat look no
+  // matter what is composited above it (and kills the backdrop-filter, which has
+  // nothing left to show through). So there is deliberately no opaque layer here:
+  // the pane's transparency is what lets the blur in core.js pick up the ambient
+  // cinematic background behind the grid.
+  function nhColEmblemBg(tint) {
+    return 'radial-gradient(120% 100% at 88% 6%, ' + nhHexA(tint, 0.34) + ' 0%, ' +
+      nhHexA(tint, 0.10) + ' 42%, rgba(0,0,0,0) 72%), ' +
+      'linear-gradient(158deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 42%, rgba(0,0,0,0.24) 100%)';
+  }
+
+  // POST a new collection (ABS requires >=1 book — it rejects an empty books
+  // array with 400 "No books"), then PATCH the prewritten description (POST may
+  // ignore it depending on ABS version, so set it explicitly). Resolves to the id.
+  function nhColCreate(libId, name, desc, books) {
+    const tok = window.__NH_TOKEN || getTokenNH();
+    const H = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+    return fetch('/api/collections', { method: 'POST', headers: H, body: JSON.stringify({ libraryId: libId, name: name, books: books || [] }) })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((col) => {
+        if (!col || !col.id) return null;
+        try { window.$nuxt.$store.commit('libraries/addUpdateCollection', col); } catch (e) {}
+        if (!desc) return col.id;
+        return fetch('/api/collections/' + col.id, { method: 'PATCH', headers: H, body: JSON.stringify({ name: name, description: desc }) })
+          .then((r2) => (r2.ok ? r2.json() : null))
+          .then((c2) => { if (c2) { try { window.$nuxt.$store.commit('libraries/addUpdateCollection', c2); } catch (e) {} } return col.id; })
+          .catch(() => col.id);
+      })
+      .catch(() => null);
+  }
+
+  // Template picker modal: a curated set of starter shelves (icon + name +
+  // prewritten description) plus a blank option. Picking one creates the
+  // collection and opens its (empty) detail page, where books are added.
+  function nhColTemplatePicker(libId) {
+    const T = nhGsT();
+    const old = document.getElementById('nh-ct-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-ct-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.ctTitle || PANEL_T.en.ctTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×'; x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x); box.appendChild(head);
+    const body = document.createElement('div'); box.appendChild(body);
+
+    // ---- PHASE 1: pick a template (or blank) ----
+    function showPick() {
+      title.textContent = T.ctTitle || PANEL_T.en.ctTitle;
+      body.textContent = '';
+      const gridEl = document.createElement('div'); gridEl.className = 'nh-ct-grid';
+      const mk = (name, desc, icon, tint) => {
+        const tile = document.createElement('button'); tile.type = 'button'; tile.className = 'nh-ct-tile';
+        const ico = document.createElement('div'); ico.className = 'nh-ct-ico'; ico.style.background = tint;
+        const is = document.createElement('span'); is.className = 'material-symbols'; is.textContent = icon; ico.appendChild(is);
+        const nm = document.createElement('div'); nm.className = 'nh-ct-name'; nm.textContent = name;
+        tile.appendChild(ico); tile.appendChild(nm);
+        if (desc) { const de = document.createElement('div'); de.className = 'nh-ct-desc'; de.textContent = desc; tile.appendChild(de); }
+        // Carry the template's icon/tint through, so the picker in phase 2 opens
+        // on the choice the user just made rather than re-deriving from the name.
+        tile.addEventListener('click', () => showBuild(name, desc, icon, tint));
+        return tile;
+      };
+      gridEl.appendChild(mk(T.ctBlank || PANEL_T.en.ctBlank, '', 'add', 'rgba(224,194,122,0.25)'));
+      nhColTpl().forEach((t) => gridEl.appendChild(mk(t.name, t.desc, t.icon, t.tint)));
+      body.appendChild(gridEl);
+    }
+
+    // ---- PHASE 2: name it, add >=1 book (ABS requires it), create ----
+    function showBuild(name, desc, icon0, tint0) {
+      title.textContent = name || (T.ctBlank || PANEL_T.en.ctBlank);
+      body.textContent = '';
+      const selected = {}; // id -> title
+      const wrap = document.createElement('div'); wrap.className = 'nh-ct-build';
+
+      const nameIn = document.createElement('input'); nameIn.type = 'text'; nameIn.className = 'nh-ct-input'; nameIn.value = name || ''; nameIn.placeholder = T.ctNamePh || PANEL_T.en.ctNamePh;
+      wrap.appendChild(nameIn);
+      if (desc) { const dta = document.createElement('textarea'); dta.className = 'nh-sd-ta nh-ct-desc-ta'; dta.value = desc; dta.dataset.role = 'desc'; wrap.appendChild(dta); }
+
+      // Icon + accent, seeded from the template that was picked, or from the
+      // name-derived match otherwise, so the default is never wrong. The BLANK
+      // tile passes icon 'add' and a non-hex rgba tint for its own appearance --
+      // neither is a valid seed, hence the guard rather than a truthiness check.
+      const seedOk = icon0 && icon0 !== 'add' && /^#[0-9a-f]{6}$/i.test(String(tint0 || ''));
+      const seed = seedOk ? { icon: icon0, tint: tint0 } : nhColMatch(name || '');
+      const artPick = nhColArtPicker(seed.icon, seed.tint, T);
+      wrap.appendChild(artPick.el);
+
+      const search = document.createElement('input'); search.type = 'text'; search.className = 'nh-ct-input'; search.placeholder = T.ctSearch || PANEL_T.en.ctSearch;
+      wrap.appendChild(search);
+      const results = document.createElement('div'); results.className = 'nh-ct-results'; wrap.appendChild(results);
+      const chips = document.createElement('div'); chips.className = 'nh-ct-chips'; wrap.appendChild(chips);
+
+      const renderChips = () => {
+        chips.textContent = '';
+        Object.keys(selected).forEach((id) => {
+          const c = document.createElement('span'); c.className = 'nh-ct-chip'; c.textContent = selected[id];
+          const rm = document.createElement('button'); rm.type = 'button'; rm.textContent = '×';
+          rm.addEventListener('click', () => { delete selected[id]; renderChips(); updateCreate(); const row = results.querySelector('[data-id="' + id + '"]'); if (row) row.classList.remove('nh-on'); });
+          c.appendChild(rm); chips.appendChild(c);
+        });
+      };
+
+      let seq = 0;
+      const runSearch = () => {
+        const q = search.value.trim();
+        if (!q) { results.textContent = ''; return; }
+        const my = ++seq;
+        const tok = nhSrToken();
+        fetch('/api/libraries/' + libId + '/search?q=' + encodeURIComponent(q) + '&limit=10', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            if (my !== seq) return;
+            results.textContent = '';
+            const books = (j && Array.isArray(j.book)) ? j.book : [];
+            const auth = (j && Array.isArray(j.authors)) ? j.authors : [];
+            if (!books.length && !auth.length) { const e = document.createElement('div'); e.className = 'nh-ct-empty'; e.textContent = T.gsNoResults || PANEL_T.en.gsNoResults; results.appendChild(e); return; }
+            const bookForms = T.colBookForms || PANEL_T.en.colBookForms;
+            // Authors first: ABS book-search doesn't match author names, so we
+            // surface author matches separately — clicking one adds ALL their books.
+            auth.slice(0, 4).forEach((a) => {
+              if (!a.id) return;
+              const row = document.createElement('button'); row.type = 'button'; row.className = 'nh-ct-row nh-ct-author';
+              const gi = document.createElement('span'); gi.className = 'material-symbols'; gi.textContent = 'person';
+              const col2 = document.createElement('span'); col2.className = 'nh-ct-atext';
+              const tt = document.createElement('span'); tt.className = 'nh-ct-rt'; tt.textContent = a.name || '';
+              const au = document.createElement('span'); au.className = 'nh-ct-ra';
+              const cnt = (typeof a.numBooks === 'number') ? a.numBooks : null;
+              au.textContent = (cnt != null ? cnt + ' ' + nhWordForm(cnt, bookForms) : (T.ctAddAll || PANEL_T.en.ctAddAll));
+              col2.appendChild(tt); col2.appendChild(au);
+              row.appendChild(gi); row.appendChild(col2);
+              row.addEventListener('click', () => {
+                if (row.dataset.busy) return; row.dataset.busy = '1';
+                const orig = au.textContent; au.textContent = '…';
+                const tk2 = nhSrToken();
+                fetch('/api/libraries/' + libId + '/items?filter=authors.' + encodeURIComponent(btoa(a.id)) + '&limit=0', { headers: { Authorization: 'Bearer ' + tk2 }, credentials: 'include' })
+                  .then((r2) => (r2.ok ? r2.json() : null))
+                  .then((jj) => {
+                    ((jj && jj.results) || []).forEach((it) => { if (it.id) selected[it.id] = ((it.media && it.media.metadata && it.media.metadata.title) || '(untitled)'); });
+                    renderChips(); updateCreate();
+                    au.textContent = orig; delete row.dataset.busy;
+                    results.querySelectorAll('.nh-ct-row[data-id]').forEach((rr) => { if (selected[rr.dataset.id]) rr.classList.add('nh-on'); });
+                  })
+                  .catch(() => { au.textContent = orig; delete row.dataset.busy; });
+              });
+              results.appendChild(row);
+            });
+            books.forEach((b) => {
+              const it = b.libraryItem || b;
+              const md = (it.media && it.media.metadata) || {};
+              const id = it.id; if (!id) return;
+              const row = document.createElement('button'); row.type = 'button'; row.className = 'nh-ct-row'; row.dataset.id = id;
+              if (selected[id]) row.classList.add('nh-on');
+              const tt = document.createElement('span'); tt.className = 'nh-ct-rt'; tt.textContent = md.title || '';
+              const au = document.createElement('span'); au.className = 'nh-ct-ra'; au.textContent = md.authorName || '';
+              row.appendChild(tt); row.appendChild(au);
+              row.addEventListener('click', () => {
+                if (selected[id]) { delete selected[id]; row.classList.remove('nh-on'); }
+                else { selected[id] = md.title || '(untitled)'; row.classList.add('nh-on'); }
+                renderChips(); updateCreate();
+              });
+              results.appendChild(row);
+            });
+          })
+          .catch(() => {});
+      };
+      let sTimer = null;
+      search.addEventListener('input', () => { clearTimeout(sTimer); sTimer = setTimeout(runSearch, 250); });
+
+      const actions = document.createElement('div'); actions.className = 'nh-rt-actions';
+      const back = document.createElement('button'); back.type = 'button'; back.className = 'nh-rt-link'; back.textContent = T.ctBack || PANEL_T.en.ctBack;
+      back.addEventListener('click', showPick);
+      const create = document.createElement('button'); create.type = 'button'; create.className = 'nh-rt-btn'; create.textContent = T.ctCreate || PANEL_T.en.ctCreate;
+      const status = document.createElement('span'); status.className = 'nh-rt-status';
+      // Say WHY the button is dead. Probed against ABS 2.35.1: it answers
+      // 400 "Invalid collection data. No books" both with books: [] and with the
+      // key omitted, so a truly empty collection cannot be created through any
+      // UI, ours or ABS's. The gate is a server constraint, not our choice.
+      const hint = document.createElement('p'); hint.className = 'nh-ct-hint';
+      hint.textContent = T.ctNeedBook || PANEL_T.en.ctNeedBook;
+      const updateCreate = () => {
+        const ok = !!(nameIn.value.trim() && Object.keys(selected).length);
+        create.disabled = !ok;
+        hint.style.display = Object.keys(selected).length ? 'none' : '';
+      };
+      nameIn.addEventListener('input', updateCreate);
+      updateCreate();
+      create.addEventListener('click', () => {
+        if (create.disabled || create.dataset.busy) return;
+        create.dataset.busy = '1'; status.textContent = '…';
+        const dta = wrap.querySelector('textarea[data-role="desc"]');
+        nhColCreate(libId, nameIn.value.trim(), dta ? dta.value.trim() : desc, Object.keys(selected)).then((id) => {
+          if (!id) { status.textContent = '✗'; delete create.dataset.busy; return; }
+          nhCl.list = null; nhCl.sig = '';
+          // Persist the chosen art, then navigate. Failure is non-fatal: the tile
+          // falls back to the name-derived match, which is what it did before.
+          const done = () => { close(); nhRouterPush('/collection/' + id); };
+          if (isUserAdmin()) nhColArtSave(id, artPick.get()).then(done, done); else done();
+        });
+      });
+      actions.appendChild(back); actions.appendChild(create); actions.appendChild(status);
+      wrap.appendChild(hint);
+      wrap.appendChild(actions);
+      body.appendChild(wrap);
+      nameIn.focus();
+    }
+
+    showPick();
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  const nhCl = { libId: null, list: null, fetching: false, sig: '' };
+
+  // Our sibling grid has to clear the FIXED toolbar the way #bookshelf does with
+  // its padding-top. Measured from the toolbar itself (its padding can still be 0
+  // on a fresh mount, which is what put the tiles behind it), plus a buffer for
+  // the hover lift, and re-applied on every tick.
+  function nhColsGridPad(grid, bookshelf) {
+    if (!grid) return;
+    try {
+      const tb = document.getElementById('toolbar');
+      const host = grid.parentElement;
+      let want = 0;
+      if (tb && host) {
+        const tr = tb.getBoundingClientRect();
+        const hr = host.getBoundingClientRect();
+        if (tr.height > 0) want = Math.round(tr.bottom - hr.top + 22);
+      }
+      if (want <= 0 && bookshelf) {
+        const pt = parseInt(getComputedStyle(bookshelf).paddingTop, 10);
+        if (pt > 0) want = pt + 22;
+      }
+      if (want > 0 && grid.style.paddingTop !== want + 'px') grid.style.paddingTop = want + 'px';
+    } catch (e) {}
+  }
+  // "New collection" as a real toolbar action on the collections landing page.
+  // The toolbar is Vue's, so the button is re-inserted whenever it is patched
+  // away, and removed as soon as we leave the route.
+  function nhColNewButton(libId, T) {
+    const bar = document.getElementById('toolbar');
+    if (!bar) return;
+    let btn = bar.querySelector('.nh-cl-newbtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'nh-cl-newbtn';
+      btn.innerHTML = '<span class="material-symbols">add</span><span class="nh-cl-newbtn-lbl"></span>';
+      btn.addEventListener('click', () => nhColTemplatePicker(libId));
+      bar.appendChild(btn); // after the .grow spacer -> right-hand side
+    }
+    const lbl = btn.querySelector('.nh-cl-newbtn-lbl');
+    const want = T.ctNew || PANEL_T.en.ctNew;
+    if (lbl && lbl.textContent !== want) lbl.textContent = want;
+  }
+  function nhColNewButtonClear() {
+    const b = document.querySelector('#toolbar .nh-cl-newbtn');
+    if (b) b.remove();
+  }
+
+  function nhCollectionsLanding() {
+    if (nhSettings.collectionsPages === false) return;
+    const m = location.pathname.match(/\/library\/([^/]+)\/bookshelf\/collections\/?$/);
+    if (!m) {
+      if (document.body.classList.contains('nh-collections-page')) {
+        document.body.classList.remove('nh-collections-page');
+        document.querySelectorAll('#nh-cols-grid, #toolbar .nh-cl-count-top, #toolbar .nh-cl-newbtn').forEach((el) => el.remove());
+        nhCl.sig = '';
+      }
+      return;
+    }
+    const libId = m[1];
+    document.body.classList.add('nh-collections-page');
+    // Clear the takeover SYNCHRONOUSLY on any navigation away, before the shared
+    // #bookshelf re-measures for the next route (collections↔series). A tick-based
+    // cleanup lands too late — the series shelf already measured #bookshelf while
+    // it was display:none and loaded nothing. Registered once.
+    if (!nhCl.hooked) {
+      try {
+        const rt = window.$nuxt && window.$nuxt.$router;
+        if (rt && typeof rt.beforeEach === 'function') {
+          nhCl.hooked = true;
+          rt.beforeEach((to, from, next) => {
+            const toPath = (to && to.path) || '';
+            if (!/\/bookshelf\/collections\/?$/.test(toPath)) {
+              document.body.classList.remove('nh-collections-page');
+              document.querySelectorAll('#nh-cols-grid, #toolbar .nh-cl-count-top, #toolbar .nh-cl-newbtn').forEach((el) => el.remove());
+              nhCl.sig = '';
+            }
+            next();
+          });
+        }
+      } catch (e) {}
+    }
+    if (nhCl.libId !== libId) { nhCl.libId = libId; nhCl.list = null; nhCl.fetching = false; nhCl.sig = ''; }
+    const bookshelf = document.getElementById('bookshelf');
+    if (!bookshelf) return;
+    const tok = nhSrToken();
+    if (!nhCl.list && !nhCl.fetching && tok) {
+      nhCl.fetching = true;
+      fetch('/api/libraries/' + libId + '/collections?limit=0', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { nhCl.fetching = false; if (j && Array.isArray(j.results) && nhCl.libId === libId) nhCl.list = j.results; })
+        .catch(() => { nhCl.fetching = false; });
+    }
+    if (!nhCl.list) return;
+
+    const T = nhGsT();
+    // Our own count in the toolbar: the native "N Collections" text zeroes out
+    // once the native shelf is hidden, so we render (and localize) it ourselves.
+    const toolbar = document.getElementById('toolbar');
+    if (toolbar) {
+      let cnt = toolbar.querySelector('.nh-cl-count-top');
+      if (!cnt) { cnt = document.createElement('p'); cnt.className = 'nh-cl-count-top'; toolbar.insertBefore(cnt, toolbar.firstChild); }
+      cnt.textContent = nhCl.list.length + ' ' + nhWordForm(nhCl.list.length, T.colForms || PANEL_T.en.colForms);
+    }
+
+    let canEdit = false;
+    try { const g = window.$nuxt.$store.getters; canEdit = !!(g['user/getUserCanUpdate'] || g['user/getIsAdminOrUp']); } catch (e) {}
+
+    // Mount our grid as a SIBLING of #bookshelf in .page — never inside it (see
+    // the CSS note: foreign nodes in the shared LazyBookshelf break series).
+    const host = bookshelf.parentElement || bookshelf;
+    const sig = libId + '|' + nhCl.list.length + '|' + (canEdit ? 1 : 0);
+    const gridNow = document.getElementById('nh-cols-grid');
+    // Toolbar clearance is re-asserted on EVERY tick, before the "nothing
+    // changed" guard — the geometry it depends on settles after the grid is
+    // built, so a one-shot value is what put the tiles behind the toolbar.
+    if (gridNow) nhColsGridPad(gridNow, bookshelf);
+    if (nhCl.sig === sig && gridNow && gridNow.parentElement === host) return;
+    nhCl.sig = sig;
+
+    let grid = gridNow;
+    if (!grid) { grid = document.createElement('div'); grid.id = 'nh-cols-grid'; }
+    if (grid.parentElement !== host) host.appendChild(grid);
+    nhColsGridPad(grid, bookshelf);
+    grid.textContent = '';
+    const forms = T.colBookForms || PANEL_T.en.colBookForms;
+
+    // "New collection" belongs in the toolbar, not as a tile in the grid
+    // (Pawel) — an action pretending to be content sorts and reads badly.
+    if (canEdit) nhColNewButton(libId, T);
+
+    nhCl.list.forEach((col) => {
+      const books = Array.isArray(col.books) ? col.books.filter(Boolean) : [];
+      const card = document.createElement('a');
+      card.className = 'nh-cl-card';
+      card.href = getBaseNH() + '/collection/' + col.id;
+      card.addEventListener('click', (e) => { e.preventDefault(); nhRouterPush('/collection/' + col.id); });
+      const match = nhColArt(col.id) || nhColMatch(col.name);
+      const emb = document.createElement('div'); emb.className = 'nh-cl-emblem';
+      emb.style.setProperty('--nh-cl-bg', nhColEmblemBg(match.tint));
+      const wm = document.createElement('span'); wm.className = 'material-symbols nh-cl-wm'; wm.textContent = match.icon; wm.setAttribute('aria-hidden', 'true'); emb.appendChild(wm);
+      const ic = document.createElement('span'); ic.className = 'material-symbols nh-cl-ico'; ic.textContent = match.icon; emb.appendChild(ic);
+      const nm = document.createElement('p'); nm.className = 'nh-cl-name'; nm.textContent = col.name || '';
+      const ct = document.createElement('p'); ct.className = 'nh-cl-count'; ct.textContent = books.length + ' ' + nhWordForm(books.length, forms);
+      card.appendChild(emb); card.appendChild(nm); card.appendChild(ct);
+      grid.appendChild(card);
+    });
+  }
+
+  // ===================== ADMIN STATS: FAMILY SCOREBOARD + DRILL-DOWN (A11) =====================
+  // On /config/stats, admins get a "Family Scoreboard" card at the top: every
+  // user ranked by listening time (week/month/year/all), each row opening a
+  // per-user drill-down. Data via the admin-authorized /api/users/<id>/
+  // listening-stats endpoint (same shape as /api/me/listening-stats).
+  const nhSb = { fetching: false, tries: 0, users: null, stats: {}, period: 'week', renderedSig: '' };
+
+  // Big listening totals read better as days + hours than as a four-digit hour
+  // count, so anything past a day formats as "5d 3h" and the plain hour figure
+  // is kept as a second line underneath (nhSbSub) for comparing users.
+  function nhSbFmt(secs) {
+    // Round to minutes FIRST and carry upward — rounding each unit separately
+    // produced "12h 60m".
+    let m = Math.round(Math.max(0, secs || 0) / 60);
+    const d = Math.floor(m / 1440); m -= d * 1440;
+    const h = Math.floor(m / 60); m -= h * 60;
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    return m + 'm';
+  }
+  function nhSbHours(secs) {
+    const h = (secs || 0) / 3600;
+    return (h >= 10 ? Math.round(h) : Math.round(h * 10) / 10) + ' h';
+  }
+  // Second line only once days are in play — below a day the main line is
+  // already hours, and repeating it reads as noise.
+  function nhSbSub(secs) { return (secs || 0) >= 86400 ? nhSbHours(secs) : ''; }
+  function nhSbPeriodTotal(stats, period) {
+    if (!stats) return 0;
+    if (period === 'all') return stats.totalTime || 0;
+    const days = stats.days || {};
+    const n = period === 'week' ? 7 : (period === 'month' ? 30 : 365);
+    const now = Date.now(); let sum = 0;
+    for (let i = 0; i < n; i++) { const ds = new Date(now - i * 86400000).toISOString().slice(0, 10); sum += days[ds] || 0; }
+    return sum;
+  }
+
+  // Profile photos: served from /data/nh/user-avatars via the proxy; the
+  // {userId: ext} map arrives with the series-meta payload (nhSc.avatars).
+  // The photo layers OVER the initial-letter avatar — on 404 the img removes
+  // itself and the letter simply shows again.
+  function nhAvatarUrl(uid) {
+    const ext = nhSc.avatars && uid ? nhSc.avatars[uid] : null;
+    return ext ? '/_nh/user-avatars/' + uid + '.' + ext + (nhSc.ts ? '?v=' + nhSc.ts : '') : null;
+  }
+  function nhAvatarInto(el, uid) {
+    const url = nhAvatarUrl(uid);
+    if (!url) return;
+    const img = document.createElement('img');
+    img.alt = '';
+    img.src = url;
+    img.addEventListener('error', () => img.remove());
+    el.appendChild(img);
+  }
+  // Photos are shown in circles, so a non-square upload has to become square
+  // somewhere. Doing it in the browser at upload time (rather than leaning on
+  // object-fit at every render site) means the stored file is already correct
+  // and NOTHING can stretch it later:
+  //   • near-square           -> crop, biased up a little so faces survive
+  //   • clearly non-square    -> the whole photo, centred on a blurred copy of
+  //                              itself, so no part of it is cut away
+  // Output is capped at 640px (the largest circle we draw is 62px, even at 4x
+  // DPR that is plenty) which also keeps every upload well under the 2MB limit.
+  const NH_AV_SIDE = 640;
+  const NH_AV_CROP_RATIO = 1.35; // beyond this, padding beats cropping
+  function nhAvatarNormalize(file, cb) {
+    if (!file || !/^image\//.test(file.type || '') || /svg/.test(file.type || '')) { cb(file); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const done = (out) => { URL.revokeObjectURL(url); cb(out || file); };
+    img.onerror = () => done(null);
+    img.onload = function () {
+      try {
+        const w = img.naturalWidth, h = img.naturalHeight;
+        if (!w || !h) { done(null); return; }
+        const ratio = Math.max(w, h) / Math.min(w, h);
+        if (ratio <= 1.02 && Math.max(w, h) <= NH_AV_SIDE) { done(null); return; } // already fine, keep the original bytes
+        const side = Math.min(NH_AV_SIDE, Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = side; c.height = side;
+        const x = c.getContext('2d');
+        if (ratio <= NH_AV_CROP_RATIO) {
+          const s = Math.min(w, h);
+          // Portraits: take the crop from 30% down rather than dead centre —
+          // heads sit in the top half of most photos.
+          const sx = (w - s) / 2;
+          const sy = h > w ? (h - s) * 0.3 : (h - s) / 2;
+          x.drawImage(img, sx, sy, s, s, 0, 0, side, side);
+        } else {
+          const cov = Math.max(side / w, side / h);
+          try { x.filter = 'blur(18px)'; } catch (e) {}
+          x.drawImage(img, (side - w * cov) / 2, (side - h * cov) / 2, w * cov, h * cov);
+          try { x.filter = 'none'; } catch (e) {}
+          x.fillStyle = 'rgba(20,17,13,0.45)';
+          x.fillRect(0, 0, side, side);
+          const con = Math.min(side / w, side / h);
+          x.drawImage(img, (side - w * con) / 2, (side - h * con) / 2, w * con, h * con);
+        }
+        const png = /png/i.test(file.type);
+        c.toBlob((b) => done(b), png ? 'image/png' : 'image/jpeg', 0.92);
+      } catch (e) { done(null); }
+    };
+    img.src = url;
+  }
+
+  // Upload/remove a photo through the njs endpoint (raw bytes; server sniffs
+  // the type). forUser only works for admins — the server enforces it.
+  function nhAvatarSave(rawFile, uid, cb) {
+    if (!rawFile) return;
+    nhAvatarNormalize(rawFile, (file) => nhAvatarPut(file, uid, cb));
+  }
+  function nhAvatarPut(file, uid, cb) {
+    if (!file) { cb(false); return; }
+    if (file.size > 2 * 1024 * 1024) { cb(false, 'size'); return; }
+    const tok = window.__NH_TOKEN || getTokenNH();
+    fetch('/_nh/api/avatar-admin?forUser=' + encodeURIComponent(uid), {
+      method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/octet-stream' }, body: file
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j || !j.ext) { cb(false); return; }
+        if (!nhSc.avatars) nhSc.avatars = {};
+        nhSc.avatars[uid] = j.ext;
+        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhSb.renderedSig = '';
+        cb(true);
+      })
+      .catch(() => cb(false));
+  }
+  function nhAvatarClear(uid, cb) {
+    const tok = window.__NH_TOKEN || getTokenNH();
+    fetch('/_nh/api/avatar-admin?forUser=' + encodeURIComponent(uid), { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => {
+        if (!r.ok) { cb(false); return; }
+        if (nhSc.avatars) delete nhSc.avatars[uid];
+        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhSb.renderedSig = '';
+        cb(true);
+      })
+      .catch(() => cb(false));
+  }
+
+  function nhStatsUserModal(user) {
+    const stats = nhSb.stats[user.id];
+    const T = nhGsT();
+    const old = document.getElementById('nh-us-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-us-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const hleft = document.createElement('span'); hleft.className = 'nh-us-hleft';
+    const hav = document.createElement('span'); hav.className = 'nh-av-prev nh-us-hav'; hav.textContent = (user.username || '?').charAt(0).toUpperCase();
+    nhAvatarInto(hav, user.id);
+    const title = document.createElement('span'); title.textContent = user.username;
+    hleft.appendChild(hav); hleft.appendChild(title);
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×'; x.addEventListener('click', close);
+    head.appendChild(hleft); head.appendChild(x); box.appendChild(head);
+
+    if (!stats) {
+      const p = document.createElement('div'); p.className = 'nh-sb-loading'; p.textContent = '…'; box.appendChild(p);
+    } else {
+      const tiles = document.createElement('div'); tiles.className = 'nh-us-tiles';
+      const mk = (val, lab, sub) => {
+        const t = document.createElement('div'); t.className = 'nh-us-tile';
+        const v = document.createElement('div'); v.className = 'nh-us-val'; v.textContent = val; t.appendChild(v);
+        const s = document.createElement('div'); s.className = 'nh-us-sub'; s.textContent = sub || ' '; t.appendChild(s);
+        const l = document.createElement('div'); l.className = 'nh-us-lab'; l.textContent = lab; t.appendChild(l); return t;
+      };
+      const wk = nhSbPeriodTotal(stats, 'week'), mo = nhSbPeriodTotal(stats, 'month');
+      tiles.appendChild(mk(nhSbFmt(stats.totalTime), T.sbAll || PANEL_T.en.sbAll, nhSbSub(stats.totalTime)));
+      tiles.appendChild(mk(nhSbFmt(wk), T.sbWeek || PANEL_T.en.sbWeek, nhSbSub(wk)));
+      tiles.appendChild(mk(nhSbFmt(mo), T.sbMonth || PANEL_T.en.sbMonth, nhSbSub(mo)));
+      tiles.appendChild(mk(String(Object.keys(stats.items || {}).length), T.sbBooks || PANEL_T.en.sbBooks, ''));
+      box.appendChild(tiles);
+      const items = Object.keys(stats.items || {}).map((k) => stats.items[k]).sort((a, b) => (b.timeListening || 0) - (a.timeListening || 0)).slice(0, 6);
+      if (items.length) {
+        const th = document.createElement('div'); th.className = 'nh-us-sec'; th.textContent = T.sbTopBooks || PANEL_T.en.sbTopBooks; box.appendChild(th);
+        const ul = document.createElement('div'); ul.className = 'nh-us-books';
+        items.forEach((it) => {
+          const row = document.createElement('div'); row.className = 'nh-us-book';
+          const nm = document.createElement('span'); nm.className = 'nh-us-bt'; nm.textContent = (it.mediaMetadata && it.mediaMetadata.title) || '—';
+          const tm = document.createElement('span'); tm.className = 'nh-us-btime'; tm.textContent = nhSbFmt(it.timeListening);
+          row.appendChild(nm); row.appendChild(tm); ul.appendChild(row);
+        });
+        box.appendChild(ul);
+      }
+    }
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  // The year heatmap on "Your Stats" ships a fixed GitHub-green ramp written as an
+  // INLINE background-color on every cell, so it stayed green on an amber (or any
+  // other) accent and read as a transplant from another app. CSS cannot outrank an
+  // inline style without knowing the value, so the cells are repainted here:
+  // each known ramp step maps to the accent at a matching alpha, and the empty
+  // cells to a faint neutral. Matching is done on the COMPUTED colour, which the
+  // browser normalises to "rgb(r, g, b)" — the raw style attribute is serialised
+  // differently by different engines and would work in Chrome only.
+  const NH_HEAT_RAMP = {
+    'rgb(45, 45, 45)': 'rgba(255,255,255,0.05)',   // no listening
+    'rgb(14, 68, 41)': 0.30,                        // ramp 1 → accent alpha
+    'rgb(0, 109, 50)': 0.52,
+    'rgb(38, 166, 65)': 0.76,
+    'rgb(57, 211, 83)': 1,
+  };
+  let nhHeatRgb = null;
+  function nhAccentRgb() {
+    const raw = (getComputedStyle(document.documentElement).getPropertyValue('--nh-amber') || '').trim();
+    if (nhHeatRgb && nhHeatRgb.src === raw) return nhHeatRgb.v;
+    let v = '224,194,122';
+    const m = raw.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (m) {
+      let h = m[1];
+      if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+      v = parseInt(h.slice(0, 2), 16) + ',' + parseInt(h.slice(2, 4), 16) + ',' + parseInt(h.slice(4, 6), 16);
+    } else {
+      const r = raw.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (r) v = r[1] + ',' + r[2] + ',' + r[3];
+    }
+    nhHeatRgb = { src: raw, v: v };
+    return v;
+  }
+  // ===================== AUTOPLAY NEXT IN SERIES =====================
+  // ABS stops at the end of a book. When this is on, the next volume of the same
+  // series starts by itself.
+  // The trigger is deliberately narrow: playback STOPPED and the book that was
+  // playing is now marked finished. Listening to the <audio> "ended" event would
+  // be wrong — that fires between every track of a multi-file book — and reacting
+  // to isFinished alone would hijack the speakers when someone merely ticks a
+  // book off by hand. `done` makes it fire at most once per book per session.
+  const nhAp = { last: null, done: {}, busy: false };
+
+  function nhApSeriesOf(md) {
+    // /api/items returns series as an object on the item, as an array in the
+    // listening-stats metadata. Accept either.
+    const s = md && md.series;
+    if (!s) return null;
+    const one = Array.isArray(s) ? s[0] : s;
+    return one && one.id ? one : null;
+  }
+  function nhApSeq(v) {
+    const n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+
+  async function nhApPlayNext(finishedId) {
+    const tok = nhSrToken();
+    if (!tok) return;
+    const H = { Authorization: 'Bearer ' + tok };
+    const item = await fetch('/api/items/' + finishedId, { headers: H }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const md = item && item.media && item.media.metadata;
+    const ser = nhApSeriesOf(md);
+    if (!ser || !item.libraryId) return;
+    const here = nhApSeq(ser.sequence);
+    // ABS filters a library by series with a base64 (unpadded) series id.
+    let key = '';
+    try { key = btoa(ser.id).replace(/=/g, ''); } catch (e) { return; }
+    const list = await fetch('/api/libraries/' + item.libraryId + '/items?filter=series.' + key + '&limit=300', { headers: H })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    const rows = (list && list.results) || [];
+    if (!rows.length) return;
+    let prog = [];
+    try { prog = window.$nuxt.$store.state.user.user.mediaProgress || []; } catch (e) {}
+    const finished = {};
+    prog.forEach((x) => { if (x && x.isFinished) finished[x.libraryItemId] = 1; });
+    const all = rows.map((it) => ({
+      id: it.id,
+      title: (it.media && it.media.metadata && it.media.metadata.title) || '',
+      seq: nhApSeq(((it.media && it.media.metadata && it.media.metadata.series) || {}).sequence),
+      audio: !!(it.media && (it.media.numTracks || (it.media.audioFiles || []).length)),
+    }));
+    // Plenty of libraries have series with no sequence numbers at all. Order by
+    // sequence when there is one, otherwise keep the order ABS returned — which
+    // is the series order it shows everywhere else. "Next" is then simply the
+    // first playable, unfinished book after this one, either way.
+    const numbered = all.filter((x) => x.seq !== null);
+    const ordered = numbered.length ? numbered.slice().sort((a, b) => a.seq - b.seq) : all;
+    let after;
+    const idx = ordered.findIndex((x) => x.id === finishedId);
+    if (idx >= 0) after = ordered.slice(idx + 1);
+    else if (here !== null) after = ordered.filter((x) => x.seq !== null && x.seq > here);
+    else after = ordered;
+    const next = after.find((x) => x.audio && !finished[x.id]);
+    if (!next) return;
+    try { window.$nuxt.$eventBus.$emit('play-item', { libraryItemId: next.id }); } catch (e) { return; }
+    const T = nhGsT();
+    nhApToast((T.apNext || PANEL_T.en.apNext) + ' · ' + next.title);
+  }
+
+  // Autoplay without a word is unnerving, so say what just started.
+  function nhApToast(msg) {
+    const old = document.getElementById('nh-ap-toast');
+    if (old) old.remove();
+    const t = document.createElement('div');
+    t.id = 'nh-ap-toast';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.classList.add('nh-ap-out'); }, 4200);
+    setTimeout(() => { t.remove(); }, 5000);
+  }
+
+  function nhAutoplaySeries() {
+    if (nhSettings.autoplaySeries !== true) return;
+    let st = null;
+    try { st = window.$nuxt && window.$nuxt.$store; } catch (e) {}
+    if (!st) return;
+    // ABS does NOT clear streamLibraryItem when a book ends — it leaves the
+    // finished book loaded and paused on its last second (measured). So the
+    // signal is the item that is STILL current having run out, not the player
+    // going empty.
+    const cur = st.state.streamLibraryItem ? st.state.streamLibraryItem.id : null;
+    if (!cur || nhAp.done[cur] || nhAp.busy) return;
+    const a = document.querySelector('audio');
+    // Both halves matter. "Audio ended" alone fires between the tracks of a
+    // multi-file book; "marked finished" alone would grab the speakers when
+    // someone simply ticks a book off by hand. Together they mean: this book
+    // just played out.
+    const atEnd = !!a && (a.ended || (a.duration && a.currentTime >= a.duration - 1.5));
+    if (!atEnd) return;
+    let prog = [];
+    try { prog = st.state.user.user.mediaProgress || []; } catch (e) {}
+    const p = prog.find((x) => x && x.libraryItemId === cur);
+    if (!p || !p.isFinished) return;
+    nhAp.done[cur] = 1;
+    nhAp.busy = true;
+    nhApPlayNext(cur).catch(() => {}).then(() => { nhAp.busy = false; });
+  }
+
+  // While one of our overlays is up, the page underneath must not scroll — its
+  // scrollbar sat right beside the sheet's own (Pawel: "two scrolls" on Year in
+  // review). Driven from the tick rather than from every open/close site: the
+  // overlays are created and removed in a dozen places, and a missed call there
+  // would leave the app permanently unscrollable.
+  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal';
+  function nhModalLock() {
+    document.body.classList.toggle('nh-modal-open', !!document.querySelector(NH_MODAL_IDS));
+  }
+
+  // ===================== THEMED DATE PICKER =====================
+  // The popup a native <input type=date> opens is browser chrome — no page CSS
+  // reaches it, so it kept appearing as the stock white-on-grey calendar next to
+  // our themed fields (Pawel's screenshot). The inputs stay in the DOM exactly
+  // as they were (value + change event, so every save handler is untouched) but
+  // are readOnly, and this popover is the whole editing surface.
+  // Exposed as window.__nhDatePicker so book-details.js (loaded after this file)
+  // uses the same one.
+  const nhDp = { input: null, view: null, path: '' };
+
+  // A real click closes the popover via pointerdown-outside before any nav, but
+  // keyboard or programmatic navigation has no pointerdown — without this the
+  // calendar floats over the NEXT page (seen live in the r10 probe).
+  function nhDpRouteGuard() {
+    if (nhDp.input && nhDp.path !== location.pathname && document.getElementById('nh-dp')) nhDpClose();
+  }
+
+  function nhDpIso(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function nhDpClose() {
+    const el = document.getElementById('nh-dp');
+    if (el) el.remove();
+    nhDp.input = null;
+    document.removeEventListener('keydown', nhDpKey, true);
+    document.removeEventListener('pointerdown', nhDpOutside, true);
+    window.removeEventListener('scroll', nhDpClose, true);
+  }
+  function nhDpKey(e) { if (e.key === 'Escape') { e.stopPropagation(); nhDpClose(); } }
+  function nhDpOutside(e) {
+    const el = document.getElementById('nh-dp');
+    if (el && !el.contains(e.target) && e.target !== nhDp.input) nhDpClose();
+  }
+
+  function nhDpRender() {
+    const el = document.getElementById('nh-dp');
+    if (!el || !nhDp.input) return;
+    const lang = getUserLanguage();
+    const view = nhDp.view;
+    const selIso = nhDp.input.value || '';
+    const todayIso = nhDpIso(new Date());
+    el.textContent = '';
+
+    const head = document.createElement('div'); head.className = 'nh-dp-head';
+    const mk = (txt, delta) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'nh-dp-nav'; b.textContent = txt;
+      b.addEventListener('click', (e) => { e.stopPropagation(); nhDp.view = new Date(view.getFullYear(), view.getMonth() + delta, 1); nhDpRender(); });
+      return b;
+    };
+    const lab = document.createElement('span'); lab.className = 'nh-dp-month';
+    lab.textContent = view.toLocaleDateString(lang, { month: 'long', year: 'numeric' });
+    head.appendChild(mk('‹', -1)); head.appendChild(lab); head.appendChild(mk('›', 1));
+    el.appendChild(head);
+
+    const grid = document.createElement('div'); grid.className = 'nh-dp-grid';
+    // 2026-01-05 is a Monday — locale weekday names without shipping a table.
+    for (let i = 0; i < 7; i++) {
+      const w = document.createElement('span'); w.className = 'nh-dp-w';
+      try { w.textContent = new Date(Date.UTC(2026, 0, 5 + i)).toLocaleDateString(lang, { weekday: 'short', timeZone: 'UTC' }).slice(0, 2); } catch (e) { w.textContent = 'MTWTFSS'[i]; }
+      grid.appendChild(w);
+    }
+    // Monday-first grid; 42 cells covers every month shape.
+    const first = new Date(view.getFullYear(), view.getMonth(), 1);
+    const lead = (first.getDay() + 6) % 7;
+    for (let c = 0; c < 42; c++) {
+      const d = new Date(view.getFullYear(), view.getMonth(), 1 - lead + c);
+      const iso = nhDpIso(d);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nh-dp-day' + (d.getMonth() !== view.getMonth() ? ' nh-dp-out' : '') +
+        (iso === selIso ? ' nh-dp-sel' : '') + (iso === todayIso ? ' nh-dp-today' : '');
+      b.textContent = String(d.getDate());
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const inp = nhDp.input;
+        nhDpClose();
+        if (!inp) return;
+        inp.value = iso;
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      grid.appendChild(b);
+    }
+    el.appendChild(grid);
+  }
+
+  function nhDpOpen(input) {
+    if (nhDp.input === input && document.getElementById('nh-dp')) { nhDpClose(); return; }
+    nhDpClose();
+    nhDp.input = input;
+    nhDp.path = location.pathname;
+    const parts = (input.value || '').split('-');
+    nhDp.view = parts.length === 3 ? new Date(+parts[0], +parts[1] - 1, 1) : new Date();
+    if (isNaN(nhDp.view.getTime())) nhDp.view = new Date();
+    const el = document.createElement('div');
+    el.id = 'nh-dp';
+    document.body.appendChild(el);
+    nhDpRender();
+    // Below the field, flipped above when there is no room, clamped to the viewport.
+    const r = input.getBoundingClientRect();
+    const w = el.offsetWidth, h = el.offsetHeight;
+    let top = r.bottom + 6;
+    if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    let left = Math.min(Math.max(8, r.left), innerWidth - w - 8);
+    el.style.top = Math.round(top) + 'px';
+    el.style.left = Math.round(left) + 'px';
+    document.addEventListener('keydown', nhDpKey, true);
+    document.addEventListener('pointerdown', nhDpOutside, true);
+    window.addEventListener('scroll', nhDpClose, true);
+  }
+  window.__nhDatePicker = nhDpOpen;
+
+  // One delegated opener for every themed date field, current and future.
+  document.addEventListener('click', (e) => {
+    const inp = e.target.closest && e.target.closest('input.nh-ys-date, input.nh-bd-dt-inp');
+    if (!inp) return;
+    e.preventDefault();
+    nhDpOpen(inp);
+  }, true);
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const inp = e.target && e.target.matches && e.target.matches('input.nh-ys-date, input.nh-bd-dt-inp') ? e.target : null;
+    if (!inp) return;
+    e.preventDefault();
+    nhDpOpen(inp);
+  }, true);
+
+  // ===================== "YOUR LISTENING" INSIGHTS =====================
+  // ABS's Your Stats page shows four numbers, a 7-day chart and a year heatmap,
+  // and stops there — while /api/me/listening-stats already carries a per-item
+  // breakdown (title, authors, narrators) and a dayOfWeek map it never renders.
+  // This panel spends that data: streaks, which weekday you actually listen on,
+  // the week-over-week trend, and the books/authors/narrators you spend time
+  // with. It also fills the width the fixed-width native columns left empty.
+  const nhYs = { data: null, fetching: false, tried: 0, sig: '' };
+
+  function nhYsFetch() {
+    if (nhYs.data || nhYs.fetching || nhYs.tried > 3) return;
+    const tok = nhSrToken();
+    if (!tok) return;
+    nhYs.fetching = true; nhYs.tried++;
+    fetch('/api/me/listening-stats', { headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { nhYs.data = j || null; nhYs.fetching = false; })
+      .catch(() => { nhYs.fetching = false; });
+  }
+
+  // Date maths in UTC on the Y-M-D parts: the keys are plain local dates, and
+  // doing this with real Date arithmetic makes a streak break on a DST boundary.
+  function nhYsDayNum(key) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000 : null;
+  }
+  function nhYsTodayNum() {
+    const d = new Date();
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000;
+  }
+
+  function nhYsDigest(st) {
+    const raw = (st && st.days) || {};
+    const days = {};
+    Object.keys(raw).forEach((k) => { const n = nhYsDayNum(k); if (n !== null && raw[k] > 0) days[n] = raw[k]; });
+    const nums = Object.keys(days).map(Number).sort((a, b) => a - b);
+    if (!nums.length) return null;
+
+    let longest = 0, run = 0, prev = null;
+    nums.forEach((n) => { run = (prev !== null && n - prev === 1) ? run + 1 : 1; if (run > longest) longest = run; prev = n; });
+
+    // Today with nothing played yet must not read as a broken streak, so start
+    // from today when it counts and from yesterday otherwise.
+    const today = nhYsTodayNum();
+    let cur = 0, at = days[today] ? today : today - 1;
+    while (days[at]) { cur++; at--; }
+
+    const span = (from, to) => { let s = 0; for (let n = from; n <= to; n++) s += days[n] || 0; return s; };
+    const week = span(today - 6, today);
+    const prevWeek = span(today - 13, today - 7);
+    const totalSecs = nums.reduce((s, n) => s + days[n], 0);
+    const best = nums.reduce((b, n) => (days[n] > (days[b] || 0) ? n : b), nums[0]);
+
+    const items = (st && st.items) || {};
+    const books = Object.keys(items).map((k) => items[k])
+      .filter((it) => it && it.timeListening > 0)
+      .sort((a, b) => b.timeListening - a.timeListening);
+    const tally = (pick) => {
+      const acc = {};
+      books.forEach((it) => {
+        const md = it.mediaMetadata || {};
+        (pick(md) || []).forEach((name) => { if (name) acc[name] = (acc[name] || 0) + it.timeListening; });
+      });
+      return Object.keys(acc).map((k) => ({ name: k, secs: acc[k] })).sort((a, b) => b.secs - a.secs).slice(0, 5);
+    };
+    return {
+      cur: cur, longest: longest, daysCount: nums.length,
+      week: week, prevWeek: prevWeek,
+      perDay: totalSecs / nums.length,
+      best: days[best],
+      dow: (st && st.dayOfWeek) || null,
+      books: books.slice(0, 5),
+      authors: tally((md) => (md.authors || []).map((a) => a.name)),
+      narrators: tally((md) => md.narrators || []),
+    };
+  }
+
+  function nhYsBarRow(name, secs, max, thumb) {
+    const row = document.createElement('div'); row.className = 'nh-ys-row';
+    if (thumb) { const c = document.createElement('span'); c.className = 'nh-ys-thumb'; c.style.backgroundImage = 'url("' + thumb + '")'; row.appendChild(c); }
+    const mid = document.createElement('span'); mid.className = 'nh-ys-mid';
+    const nm = document.createElement('span'); nm.className = 'nh-ys-name'; nm.textContent = name; nm.title = name;
+    const bar = document.createElement('span'); bar.className = 'nh-ys-bar';
+    const fill = document.createElement('span'); fill.className = 'nh-ys-fill';
+    fill.style.width = Math.max(3, Math.round((secs / (max || 1)) * 100)) + '%';
+    bar.appendChild(fill);
+    mid.appendChild(nm); mid.appendChild(bar);
+    const tm = document.createElement('span'); tm.className = 'nh-ys-time'; tm.textContent = nhSbFmt(secs);
+    row.appendChild(mid); row.appendChild(tm);
+    return row;
+  }
+
+  // ---- finished-book tools -------------------------------------------------
+  // Two things ABS has the data for but never surfaces: what you finished lately
+  // (with a wrong date you can correct — ABS stamps finishedAt when you tick the
+  // box, not when you actually finished), and the books sitting at 97-99% that
+  // never got marked because the file has credits or silence at the end.
+  const NH_ALMOST_MIN = 0.97;
+
+  function nhFdRows() {
+    let prog = [];
+    try { prog = window.$nuxt.$store.state.user.user.mediaProgress || []; } catch (e) {}
+    const done = prog.filter((x) => x && x.isFinished && x.libraryItemId)
+      .sort((a, b) => (b.finishedAt || b.lastUpdate || 0) - (a.finishedAt || a.lastUpdate || 0)).slice(0, 6);
+    const almost = prog.filter((x) => x && !x.isFinished && x.libraryItemId && x.progress >= NH_ALMOST_MIN && x.progress < 1)
+      .sort((a, b) => (b.progress || 0) - (a.progress || 0)).slice(0, 6);
+    return { done: done, almost: almost };
+  }
+
+  // Titles are not in mediaProgress; fetch once and reuse the rate-row cache.
+  function nhFdTitle(id, el) {
+    if (nhRfTitles[id]) { el.textContent = nhRfTitles[id]; return; }
+    el.textContent = '…';
+    const tk = nhSrToken();
+    if (!tk) return;
+    fetch('/api/items/' + id, { headers: { Authorization: 'Bearer ' + tk } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const nm = j && j.media && j.media.metadata && j.media.metadata.title;
+        if (nm) { nhRfTitles[id] = nm; el.textContent = nm; }
+      }).catch(() => {});
+  }
+
+  function nhFdPatch(id, body, onOk) {
+    const tk = nhSrToken();
+    if (!tk) return;
+    fetch('/api/me/progress/' + id, { method: 'PATCH', headers: { Authorization: 'Bearer ' + tk, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => { if (r.ok && onOk) onOk(); })
+      .catch(() => {});
+  }
+
+  function nhFdIsoDay(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function nhFdCards(wrap, t) {
+    const rows = nhFdRows();
+    const tk = window.__NH_TOKEN || getTokenNH();
+    const tq = tk ? '&token=' + encodeURIComponent(tk) : '';
+    if (rows.done.length) {
+      // Full width: a cover, a title and a whole date do not fit one column of
+      // the insights grid, and the date field was being cut to "26 / 07 / 202".
+      const card = document.createElement('div'); card.className = 'nh-ys-card nh-ys-wide';
+      const h = document.createElement('div'); h.className = 'nh-ys-h'; h.textContent = t('ysFinished'); card.appendChild(h);
+      const list = document.createElement('div'); list.className = 'nh-ys-fgrid'; card.appendChild(list);
+      rows.done.forEach((p) => {
+        const row = document.createElement('div'); row.className = 'nh-ys-frow';
+        const th = document.createElement('span'); th.className = 'nh-ys-thumb';
+        th.style.backgroundImage = 'url("/api/items/' + p.libraryItemId + '/cover?width=80' + tq + '")';
+        row.appendChild(th);
+        const nm = document.createElement('span'); nm.className = 'nh-ys-name'; nhFdTitle(p.libraryItemId, nm);
+        // A native date input is the whole editor: keyboard accessible, and the
+        // OS picker is better than anything hand-rolled at this size.
+        const date = document.createElement('input');
+        date.type = 'date'; date.className = 'nh-ys-date'; date.title = t('ysEditDate');
+        date.readOnly = true;   // readOnly suppresses the native popup; ours opens instead
+        date.value = nhFdIsoDay(p.finishedAt);
+        // readOnly also drops the browser's calendar glyph, so the field read as
+        // plain text — the wrap overlays our own icon (says "clickable").
+        const dWrap = document.createElement('span'); dWrap.className = 'nh-date-wrap';
+        dWrap.appendChild(date);
+        const dIco = document.createElement('span'); dIco.className = 'nh-date-ico';
+        dWrap.appendChild(dIco);
+        date.addEventListener('change', () => {
+          if (!date.value) return;
+          const parts = date.value.split('-');
+          const ms = new Date(+parts[0], +parts[1] - 1, +parts[2], 12, 0, 0).getTime();
+          date.classList.add('nh-ys-saving');
+          nhFdPatch(p.libraryItemId, { finishedAt: ms }, () => {
+            date.classList.remove('nh-ys-saving');
+            try { window.$nuxt.$store.state.user.user.mediaProgress.forEach((x) => { if (x.libraryItemId === p.libraryItemId) x.finishedAt = ms; }); } catch (e) {}
+            nhYs.bump = (nhYs.bump || 0) + 1;
+          });
+        });
+        row.appendChild(nm); row.appendChild(dWrap);
+        list.appendChild(row);
+      });
+      wrap.appendChild(card);
+    }
+    if (rows.almost.length) {
+      const card = document.createElement('div'); card.className = 'nh-ys-card';
+      const h = document.createElement('div'); h.className = 'nh-ys-h'; h.textContent = t('ysAlmost'); card.appendChild(h);
+      rows.almost.forEach((p) => {
+        const row = document.createElement('div'); row.className = 'nh-ys-frow';
+        const nm = document.createElement('span'); nm.className = 'nh-ys-name'; nhFdTitle(p.libraryItemId, nm);
+        const pct = document.createElement('span'); pct.className = 'nh-ys-pct';
+        pct.textContent = Math.floor((p.progress || 0) * 100) + '%';
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'nh-ys-done'; btn.title = t('ysMarkDone');
+        btn.setAttribute('aria-label', t('ysMarkDone'));
+        btn.innerHTML = '<span class="material-symbols">check_circle</span>';
+        btn.addEventListener('click', () => {
+          btn.disabled = true;
+          nhFdPatch(p.libraryItemId, { isFinished: true }, () => {
+            row.classList.add('nh-ys-gone');
+            try {
+              const mp = window.$nuxt.$store.state.user.user.mediaProgress;
+              mp.forEach((x) => { if (x.libraryItemId === p.libraryItemId) { x.isFinished = true; x.progress = 1; x.finishedAt = Date.now(); } });
+            } catch (e) {}
+            setTimeout(() => { nhYs.bump = (nhYs.bump || 0) + 1; }, 260);
+          });
+        });
+        row.appendChild(nm); row.appendChild(pct); row.appendChild(btn);
+        card.appendChild(row);
+      });
+      wrap.appendChild(card);
+    }
+  }
+
+  function nhYsList(title, rows, thumbFor) {
+    const card = document.createElement('div'); card.className = 'nh-ys-card';
+    const h = document.createElement('div'); h.className = 'nh-ys-h'; h.textContent = title; card.appendChild(h);
+    const max = rows.reduce((m, r) => Math.max(m, r.secs), 0);
+    rows.forEach((r) => card.appendChild(nhYsBarRow(r.name, r.secs, max, thumbFor ? thumbFor(r) : null)));
+    return card;
+  }
+
+  function nhYourStatsExtras() {
+    const grid = document.getElementById('nh-stats-grid');
+    const heat = document.getElementById('heatmap');
+    if (!grid || !heat || !heat.parentElement) { return; }
+    nhYsFetch();
+    const d = nhYs.data ? nhYsDigest(nhYs.data) : null;
+    if (!d) return;
+    // Home is the chart/sessions ROW, not the card: the chart is stuck at 384px
+    // and the session list only wants ~500, so on a wide card the rest of that
+    // row was empty. As a third flex child the panel takes exactly that surplus
+    // and wraps underneath when there isn't any. Falls back to sitting above the
+    // heatmap if ABS ever restructures the row.
+    const row = heat.parentElement.querySelector(':scope > div[class*="flex-row"]');
+    const host = row || heat.parentElement;
+    // The finished/almost lists come from the live store, so they join the
+    // signature — otherwise ticking a book off would not redraw the panel.
+    const fd = nhSettings.finishedTools === false ? { done: [], almost: [] } : nhFdRows();
+    const sig = [d.cur, d.longest, d.daysCount, d.week, d.prevWeek, Math.round(d.perDay), d.best,
+      d.books.map((b) => b.id + ':' + b.timeListening).join(','), d.authors.length, d.narrators.length,
+      fd.done.map((x) => x.libraryItemId + ':' + (x.finishedAt || 0)).join(','),
+      fd.almost.map((x) => x.libraryItemId + ':' + Math.round((x.progress || 0) * 1000)).join(','),
+      nhYs.bump || 0].join('|');
+    const existing = document.getElementById('nh-ys');
+    if (existing && existing.dataset.sig === sig && existing.parentElement === host) return;
+
+    const T = nhGsT();
+    const t = (k) => T[k] || PANEL_T.en[k];
+    const panel = existing || document.createElement('div');
+    panel.id = 'nh-ys';
+    panel.dataset.sig = sig;
+    panel.textContent = '';
+
+    const head = document.createElement('h2'); head.className = 'nh-ys-title'; head.textContent = t('ysTitle');
+    panel.appendChild(head);
+    const wrap = document.createElement('div'); wrap.className = 'nh-ys-grid'; panel.appendChild(wrap);
+
+    // --- streak ---
+    const sc = document.createElement('div'); sc.className = 'nh-ys-card nh-ys-figs';
+    const sh = document.createElement('div'); sh.className = 'nh-ys-h'; sh.textContent = t('ysStreak'); sc.appendChild(sh);
+    const mkFig = (val, lab) => {
+      const f = document.createElement('div'); f.className = 'nh-ys-fig';
+      const v = document.createElement('div'); v.className = 'nh-ys-val'; v.textContent = val;
+      const l = document.createElement('div'); l.className = 'nh-ys-lab'; l.textContent = lab;
+      f.appendChild(v); f.appendChild(l); return f;
+    };
+    const figs = document.createElement('div'); figs.className = 'nh-ys-figrow';
+    figs.appendChild(mkFig(String(d.cur), t('ysCurrent')));
+    figs.appendChild(mkFig(String(d.longest), t('ysLongest')));
+    figs.appendChild(mkFig(String(d.daysCount), t('ysDaysTotal')));
+    sc.appendChild(figs);
+    wrap.appendChild(sc);
+
+    // --- pace: this week against the one before it ---
+    const pc = document.createElement('div'); pc.className = 'nh-ys-card nh-ys-figs';
+    const ph = document.createElement('div'); ph.className = 'nh-ys-h'; ph.textContent = t('ysPace'); pc.appendChild(ph);
+    const prow = document.createElement('div'); prow.className = 'nh-ys-figrow';
+    const wk = mkFig(nhSbFmt(d.week), t('ysThisWeek'));
+    if (d.prevWeek > 0) {
+      const pct = Math.round(((d.week - d.prevWeek) / d.prevWeek) * 100);
+      const tag = document.createElement('span');
+      tag.className = 'nh-ys-delta ' + (pct >= 0 ? 'up' : 'down');
+      tag.textContent = (pct >= 0 ? '▲ ' : '▼ ') + Math.abs(pct) + '%';
+      wk.querySelector('.nh-ys-lab').appendChild(tag);
+    }
+    prow.appendChild(wk);
+    prow.appendChild(mkFig(nhSbFmt(d.perDay), t('ysPerDay')));
+    prow.appendChild(mkFig(nhSbFmt(d.best), t('ysBestDay')));
+    pc.appendChild(prow);
+    wrap.appendChild(pc);
+
+    // --- which weekday, from the dayOfWeek map ABS computes but never shows ---
+    if (d.dow) {
+      const order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const max = order.reduce((m, k) => Math.max(m, d.dow[k] || 0), 0);
+      if (max > 0) {
+        const wc = document.createElement('div'); wc.className = 'nh-ys-card';
+        const wh = document.createElement('div'); wh.className = 'nh-ys-h'; wh.textContent = t('ysWhen'); wc.appendChild(wh);
+        const cols = document.createElement('div'); cols.className = 'nh-ys-week';
+        const lang = getUserLanguage();
+        order.forEach((k, idx) => {
+          const secs = d.dow[k] || 0;
+          const col = document.createElement('div'); col.className = 'nh-ys-day' + (secs === max ? ' nh-ys-top' : '');
+          col.title = nhSbFmt(secs);
+          const track = document.createElement('span'); track.className = 'nh-ys-dtrack';
+          const f = document.createElement('span'); f.className = 'nh-ys-dfill';
+          f.style.height = Math.max(3, Math.round((secs / max) * 100)) + '%';
+          track.appendChild(f);
+          const lab = document.createElement('span'); lab.className = 'nh-ys-dlab';
+          // 2026-01-05 is a Monday — a fixed anchor so the short weekday names
+          // come from the browser's locale instead of a table we have to ship.
+          let nm = k.slice(0, 3);
+          try { nm = new Date(Date.UTC(2026, 0, 5 + idx)).toLocaleDateString(lang, { weekday: 'short', timeZone: 'UTC' }); } catch (e) {}
+          lab.textContent = nm;
+          col.appendChild(track); col.appendChild(lab);
+          cols.appendChild(col);
+        });
+        wc.appendChild(cols);
+        wrap.appendChild(wc);
+      }
+    }
+
+    const tk = window.__NH_TOKEN || getTokenNH();
+    const tq = tk ? '&token=' + encodeURIComponent(tk) : '';
+    if (d.books.length) {
+      wrap.appendChild(nhYsList(t('ysTopBooks'),
+        d.books.map((b) => ({ name: (b.mediaMetadata && b.mediaMetadata.title) || '—', secs: b.timeListening, id: b.id })),
+        (r) => '/api/items/' + r.id + '/cover?width=80' + tq));
+    }
+    if (d.authors.length) wrap.appendChild(nhYsList(t('ysTopAuthors'), d.authors));
+    if (d.narrators.length) wrap.appendChild(nhYsList(t('ysTopNarrators'), d.narrators));
+    if (nhSettings.finishedTools !== false) nhFdCards(wrap, t);
+
+    if (panel.parentElement !== host) host.appendChild(panel);
+  }
+
+  // Two blocks on Your Stats have a fixed intrinsic width: the 7-day chart (its
+  // bars are absolutely positioned against a 384px box) and the year heatmap
+  // (ABS sizes it once on mount and overshoots its container by ~24px, which is
+  // what put a scrollbar under it on a phone). Neither can simply be told to be
+  // narrower, so each is SCALED to the room it has.
+  // The negative margins are the point: a scale never shrinks the layout box, so
+  // without them the block keeps its full-size footprint and leaves exactly the
+  // scaled-away strip as dead space — which is what ABS's own scale-75 did below
+  // lg, under-filling the width AND leaving a gap after it.
+  function nhFitInto(el, avail, naturalW, maxScale) {
+    if (!el || !avail) return;
+    const h = el.offsetHeight; // layout metrics ignore scale
+    const w = naturalW || el.offsetWidth;
+    if (!w || !h) return;
+    const cap = maxScale || 1;
+    const sig = Math.round(avail) + ':' + Math.round(w) + ':' + h + ':' + cap;
+    if (el.dataset.nhFit === sig) return;
+    el.dataset.nhFit = sig;
+    // Scales UP as well as down when a cap above 1 is given: these blocks are
+    // DOM boxes, not bitmaps, so enlarging them stays crisp and they finally use
+    // the room they are given instead of sitting small in the middle of it.
+    const s = Math.min(cap, avail / w);
+    // Only skip when the scale really is 1. The old guard was >= 0.999, written
+    // when this could only ever shrink — with a cap above 1 it swallowed every
+    // enlargement and stripped the transform straight back off.
+    if (Math.abs(s - 1) < 0.01) {
+      el.style.removeProperty('transform');
+      el.style.removeProperty('margin-right');
+      el.style.removeProperty('margin-bottom');
+      return;
+    }
+    el.style.setProperty('transform-origin', 'top left');
+    el.style.setProperty('transform', 'scale(' + s.toFixed(4) + ')');
+    // Signed, not a literal minus: scaling UP needs POSITIVE margins to make
+    // room for the extra size, scaling down needs negative ones to reclaim it.
+    el.style.setProperty('margin-right', Math.round(w * (s - 1)) + 'px');
+    el.style.setProperty('margin-bottom', Math.round(h * (s - 1)) + 'px');
+  }
+
+  // ABS's caption always says "N days listened in the last year", but it sizes
+  // the grid to its container and on a phone only draws the last few months —
+  // so the sentence claimed a year while the chart showed five months. Name the
+  // window that is actually on screen when it is short of a full year.
+  // The month row is found by geometry, not by matching month names: the labels
+  // are localised, but the months are the ones sharing the topmost row (weekday
+  // labels sit further down the left edge).
+  function nhHeatmapCaption() {
+    const hm = document.getElementById('heatmap');
+    const cap = hm && hm.querySelector('p');
+    if (!cap) return;
+    const labels = [...hm.querySelectorAll('div')].filter((d) => !d.children.length && (d.textContent || '').trim() && /text-gray-300/.test(d.className || ''));
+    if (labels.length < 4) return;
+    const boxes = labels.map((d) => ({ t: d.getBoundingClientRect().top, l: d.getBoundingClientRect().left, x: d.textContent.trim() }));
+    const top = Math.min.apply(null, boxes.map((b) => b.t));
+    const months = boxes.filter((b) => b.t - top < 4).sort((a, b) => a.l - b.l);
+    if (!months.length) return;
+    if (!cap.dataset.nhOrig) cap.dataset.nhOrig = cap.textContent.trim();
+    const base = cap.dataset.nhOrig;
+    const T = nhGsT();
+    const range = months.length >= 12 ? '' : ' · ' + (T.hmShowing || PANEL_T.en.hmShowing) + ' ' +
+      months[0].x + (months.length > 1 ? '–' + months[months.length - 1].x : '');
+    const want = base + range;
+    if (cap.textContent !== want) cap.textContent = want;
+  }
+
+  function nhStatsFit() {
+    const grid = document.getElementById('nh-stats-grid');
+    if (!grid) return;
+    const col = grid.querySelector('.configContent div[class*="scale-75"]');
+    // The row is the flex container; its content box is the room the column has.
+    if (col && col.parentElement) {
+      const par = col.parentElement;
+      const cs = getComputedStyle(par);
+      let avail = par.clientWidth - parseFloat(cs.paddingLeft || 0) - parseFloat(cs.paddingRight || 0);
+      // Side by side (md+) the column is one of several children, so it may only
+      // have part of the row — but it is also flex:0 0 auto there and the row
+      // wraps, so its own offsetWidth is the honest answer whenever it fits.
+      if (avail > col.offsetWidth) avail = col.offsetWidth;
+      nhFitInto(col, avail);
+    }
+    // Fit the heatmap's OUTER wrapper (#heatmap > div.mx-auto), not the bordered
+    // box inside it. That wrapper is shrink-to-fit around the grid, so it is the
+    // element that actually overhangs — scaling its child left the wrapper at its
+    // full width and the container still reported the overflow.
+    const hm = document.getElementById('heatmap');
+    const wrap = hm && hm.firstElementChild;
+    if (wrap && hm.clientWidth) {
+      const inner = hm.querySelector('[class*="border-white/25"]');
+      if (inner && inner.style.transform) { // clear an earlier attempt at the wrong element
+        inner.style.removeProperty('transform');
+        inner.style.removeProperty('margin-right');
+        inner.style.removeProperty('margin-bottom');
+        delete inner.dataset.nhFit;
+      }
+      nhFitInto(wrap, hm.clientWidth, 0, 1.6);
+    }
+  }
+
+  // ===================== OUR OWN 7-DAY CHART =====================
+  // Replaces ABS's Minutes-Listening block wholesale. That one is a 384px box of
+  // absolutely-positioned bars at scale(.75): it cannot stretch, cannot centre,
+  // and two rounds of transform surgery destabilised the card — so it is hidden
+  // (CSS) and this block, built from the same /api/me/listening-stats days map,
+  // takes its place: fluid width, theme type, accent on the heaviest day.
+  function nhWeekChart() {
+    const grid = document.getElementById('nh-stats-grid');
+    const heat = document.getElementById('heatmap');
+    if (!grid || !heat || !heat.parentElement) return;
+    const row = heat.parentElement.querySelector(':scope > div[class*="flex-row"]');
+    if (!row) return;
+    nhYsFetch();
+    const st = nhYs.data;
+    if (!st) return;
+    const T = nhGsT();
+    const t = (k) => T[k] || PANEL_T.en[k];
+    const lang = getUserLanguage();
+    const now = new Date();
+    const days = [];
+    for (let k = 6; k >= 0; k--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k);
+      const key = nhDpIso(d);
+      days.push({ key: key, lab: d.toLocaleDateString(lang, { weekday: 'short' }), secs: (st.days && st.days[key]) || 0 });
+    }
+    const max = Math.max.apply(null, days.map((d) => d.secs));
+    const total = days.reduce((s, d) => s + d.secs, 0);
+    const dig = nhYsDigest(st);
+    const sig = days.map((d) => d.key + ':' + d.secs).join(',') + '|' + (dig ? dig.cur : 0);
+    let el = document.getElementById('nh-wk');
+    if (el && el.dataset.sig === sig && el.parentElement === row && row.firstElementChild === el) return;
+    if (!el) { el = document.createElement('div'); el.id = 'nh-wk'; }
+    el.dataset.sig = sig;
+    el.textContent = '';
+
+    const h = document.createElement('h2'); h.className = 'nh-wk-title'; h.textContent = t('wkTitle');
+    el.appendChild(h);
+
+    // The summary figures come FIRST, as tiles (Pawel: numbers before shape —
+    // the flat row under the bars was easy to miss). Scoreboard tile classes so
+    // the whole stats page keeps one tile look.
+    const tiles = document.createElement('div'); tiles.className = 'nh-sb-tiles nh-wk-tiles';
+    const mkTile = (val, lab2, sub) => {
+      const x = document.createElement('div'); x.className = 'nh-sb-tile';
+      const v = document.createElement('div'); v.className = 'nh-sb-tval'; v.textContent = val; x.appendChild(v);
+      const s2 = document.createElement('div'); s2.className = 'nh-sb-tsub'; s2.textContent = sub || ' '; x.appendChild(s2);
+      const l = document.createElement('div'); l.className = 'nh-sb-tlab'; l.textContent = lab2; x.appendChild(l);
+      return x;
+    };
+    tiles.appendChild(mkTile(nhSbFmt(total), t('ysThisWeek'), nhSbSub(total)));
+    tiles.appendChild(mkTile(nhSbFmt(total / 7), t('wkAvg'), ''));
+    tiles.appendChild(mkTile(nhSbFmt(max), t('ysBestDay'), ''));
+    tiles.appendChild(mkTile(String(dig ? dig.cur : 0), t('wkRow'), ''));
+    el.appendChild(tiles);
+
+    const bars = document.createElement('div'); bars.className = 'nh-wk-bars';
+    days.forEach((d) => {
+      const col = document.createElement('div');
+      col.className = 'nh-wk-day' + (max > 0 && d.secs === max ? ' nh-wk-top' : '');
+      col.title = nhSbFmt(d.secs);
+      const v = document.createElement('span'); v.className = 'nh-wk-v';
+      v.textContent = d.secs > 0 ? nhSbFmt(d.secs) : '';
+      const track = document.createElement('span'); track.className = 'nh-wk-track';
+      const fill = document.createElement('span'); fill.className = 'nh-wk-fill';
+      fill.style.height = max > 0 ? Math.max(3, Math.round((d.secs / max) * 100)) + '%' : '3%';
+      track.appendChild(fill);
+      const lab = document.createElement('span'); lab.className = 'nh-wk-lab'; lab.textContent = d.lab;
+      col.appendChild(v); col.appendChild(track); col.appendChild(lab);
+      bars.appendChild(col);
+    });
+    el.appendChild(bars);
+
+    if (row.firstElementChild !== el) row.insertBefore(el, row.firstChild);
+  }
+
+  // ===================== SERVER STATISTICS (admin, /config/library-stats) =====
+  // ABS's Library Stats page counts files in one library. This replaces it with
+  // what an admin actually asks: what does the whole SERVER listen to — most
+  // listened books, best rated, top genres, top authors — across every user,
+  // with a per-library filter. Built from the same admin listening-stats calls
+  // the ranking uses plus the ratings store; genres and authors come from the
+  // metadata each listened item already carries, so no library scan is needed
+  // until a specific library filter asks for one.
+  const nhLs = { users: null, stats: {}, fetching: false, tries: 0, ratings: null, libs: null, libSel: 'all', libItems: {}, libFetching: {}, titles: {}, sig: '' };
+
+  function nhLsAgg() {
+    const filt = nhLs.libSel !== 'all' ? nhLs.libItems[nhLs.libSel] : null;
+    const inLib = (id) => !filt || filt[id];
+    const perItem = {}, perAuthor = {}, perGenre = {}, perUser = {};
+    let total = 0;
+    (nhLs.users || []).forEach((u) => {
+      const st = nhLs.stats[u.id];
+      if (!st || !st.items) return;
+      let mine = 0;
+      Object.keys(st.items).forEach((k) => {
+        const it = st.items[k];
+        const id = it.id || k;
+        if (!it || !(it.timeListening > 0) || !inLib(id)) return;
+        const secs = it.timeListening;
+        mine += secs;
+        const md = it.mediaMetadata || {};
+        if (!perItem[id]) perItem[id] = { secs: 0, n: 0, title: md.title || '' };
+        perItem[id].secs += secs; perItem[id].n++;
+        if (!perItem[id].title && md.title) perItem[id].title = md.title;
+        (md.authors || []).forEach((a) => { if (a && a.name) perAuthor[a.name] = (perAuthor[a.name] || 0) + secs; });
+        (md.genres || []).forEach((g) => { if (g) perGenre[g] = (perGenre[g] || 0) + secs; });
+      });
+      if (mine > 0) { total += mine; perUser[u.id] = mine; }
+    });
+    const top = (map) => Object.keys(map).map((k) => ({ name: k, secs: map[k] })).sort((a, b) => b.secs - a.secs);
+    return {
+      total: total,
+      listeners: Object.keys(perUser).length,
+      played: Object.keys(perItem).length,
+      books: Object.keys(perItem).map((id) => ({ id: id, title: perItem[id].title, secs: perItem[id].secs, n: perItem[id].n })).sort((a, b) => b.secs - a.secs).slice(0, 10),
+      authors: top(perAuthor).slice(0, 10),
+      genres: top(perGenre).slice(0, 5),
+    };
+  }
+
+  function nhLsBestRated(filt) {
+    const items = (nhLs.ratings && nhLs.ratings.items) || {};
+    const out = [];
+    Object.keys(items).forEach((id) => {
+      if (id.indexOf('series:') === 0) return;
+      if (filt && !filt[id]) return;
+      const rs = items[id];
+      let sum = 0, n = 0;
+      Object.keys(rs).forEach((uid) => { const v = rs[uid] && rs[uid].stars; if (typeof v === 'number') { sum += v; n++; } });
+      if (n) out.push({ id: id, avg: sum / n, n: n });
+    });
+    return out.sort((a, b) => (b.avg - a.avg) || (b.n - a.n)).slice(0, 5);
+  }
+
+  function nhLsTitle(id) {
+    if (nhLs.titles[id]) return nhLs.titles[id];
+    for (const uid of Object.keys(nhLs.stats)) {
+      const it = nhLs.stats[uid] && nhLs.stats[uid].items && nhLs.stats[uid].items[id];
+      const nm = it && it.mediaMetadata && it.mediaMetadata.title;
+      if (nm) { nhLs.titles[id] = nm; return nm; }
+    }
+    if (nhRfTitles[id]) return nhRfTitles[id];
+    const tok = nhSrToken();
+    if (tok && nhLs.titles[id] === undefined) {
+      nhLs.titles[id] = null;   // in flight; '' after a failed fetch stops retries
+      fetch('/api/items/' + id, { headers: { Authorization: 'Bearer ' + tok } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const nm = j && j.media && j.media.metadata && j.media.metadata.title;
+          nhLs.titles[id] = nm || '';
+          if (nm) nhLs.sig = '';
+        }).catch(() => { nhLs.titles[id] = ''; });
+    }
+    return '';
+  }
+
+  function nhLsFetchLibItems(libId) {
+    if (nhLs.libItems[libId] || nhLs.libFetching[libId]) return;
+    nhLs.libFetching[libId] = true;
+    const tok = nhSrToken();
+    const map = {};
+    // Paged, capped at 2000 — a filter map, not a mirror of the library.
+    const page = (n) => fetch('/api/libraries/' + libId + '/items?limit=500&page=' + n, { headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const rows = (j && j.results) || [];
+        rows.forEach((it) => { map[it.id] = 1; });
+        if (rows.length === 500 && n < 3) return page(n + 1);
+        if (rows.length === 500) console.warn('[NanoHive] server stats: library filter capped at 2000 items');
+      });
+    page(0).catch(() => {}).then(() => { nhLs.libItems[libId] = map; nhLs.libFetching[libId] = false; nhLs.sig = ''; });
+  }
+
+  function nhLibraryStats() {
+    // The sidebar's "Library Stats" goes to /library/<id>/stats — that is the
+    // page this replaces for admins. (/config/library-stats is NOT a route in
+    // ABS; round 9 mounted only there, which is why Pawel never saw the page.
+    // The config match stays for builds that might grow one.)
+    const onCfg = /\/config\/library-stats\/?$/.test(location.pathname);
+    const onLib = /\/library\/[^/]+\/stats\/?$/.test(location.pathname);
+    const on = (onCfg || onLib) && isUserAdmin();
+    const old = document.getElementById('nh-libstats');
+    if (!on) {
+      if (document.body.classList.contains('nh-libstats')) {
+        document.body.classList.remove('nh-libstats');
+        document.body.classList.remove('nh-libstats-cfg');
+        // give the native page back exactly what we hid
+        document.querySelectorAll('[data-nh-ls-hid]').forEach((c) => { c.style.display = c.dataset.nhLsHid; delete c.dataset.nhLsHid; });
+        if (old) old.remove();
+        nhLs.sig = '';
+      }
+      return;
+    }
+    // On the library route the stats page's own scroller is (confusingly) named
+    // #bookshelf — a plain div here, NOT the virtual shelf. Mounting inside it
+    // inherits the toolbar clearance and native scrolling; its siblings (the
+    // library nav strip) stay untouched.
+    const container = onLib
+      ? document.querySelector('#app-content .page > #bookshelf')
+      : (document.querySelector('#page-wrapper .page') || document.getElementById('page-wrapper'));
+    if (!container) return;
+    document.body.classList.add('nh-libstats');
+    document.body.classList.toggle('nh-libstats-cfg', onCfg);
+    // Anything the /config/stats dashboard left behind is removed — EXCEPT the
+    // ranking board, which nhStatsScoreboard now legitimately mounts at the
+    // bottom of this page (round 14). The grid may still hold the Vue-owned
+    // .configContent — hand it back BEFORE removing (the reuse trap).
+    document.querySelectorAll('#nh-stats-grid').forEach((g) => {
+      const cc = g.querySelector('.configContent');
+      if (cc && g.parentElement) g.parentElement.insertBefore(cc, g);
+      g.remove();
+    });
+    document.querySelectorAll('#nh-wk, #nh-ys').forEach((el) => { el.remove(); });
+    document.querySelectorAll('#nh-libstats').forEach((el) => { if (el !== old) el.remove(); });
+    // Hide the native page IN PLACE — nothing is moved, so Vue's reuse of these
+    // nodes across config routes (the trap the stats grid hit) cannot bite.
+    Array.prototype.forEach.call(container.children, (c) => {
+      if (c.id !== 'nh-libstats' && !c.dataset.nhLsHid) { c.dataset.nhLsHid = c.style.display || ''; c.style.display = 'none'; }
+    });
+
+    const tok = nhSrToken();
+    if (!nhLs.libs && tok) {
+      nhLs.libs = [];
+      fetch('/api/libraries', { headers: { Authorization: 'Bearer ' + tok } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { nhLs.libs = (j && j.libraries) || []; nhLs.sig = ''; }).catch(() => {});
+    }
+    if (!nhLs.users && !nhLs.fetching && tok && nhLs.tries < 5) {
+      nhLs.fetching = true; nhLs.tries++;
+      Promise.all([
+        fetch('/api/users', { headers: { Authorization: 'Bearer ' + tok } }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        fetch('/_nh/api/ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ]).then((res) => {
+        nhLs.ratings = res[1] || { items: {} };
+        const us = (res[0] && (res[0].users || res[0])) || [];
+        nhLs.users = us.filter((u) => u.isActive !== false).map((u) => ({ id: u.id, username: u.username }));
+        nhLs.fetching = false;
+        nhLs.users.forEach((u) => {
+          fetch('/api/users/' + u.id + '/listening-stats', { headers: { Authorization: 'Bearer ' + tok } })
+            .then((r) => (r.ok ? r.json() : null)).then((st) => { if (st) { nhLs.stats[u.id] = st; nhLs.sig = ''; } }).catch(() => {});
+        });
+      }).catch(() => { nhLs.fetching = false; });
+    }
+    if (!nhLs.users) return;
+    if (nhLs.libSel !== 'all' && !nhLs.libItems[nhLs.libSel]) { nhLsFetchLibItems(nhLs.libSel); }
+
+    const T = nhGsT();
+    const t = (k) => T[k] || PANEL_T.en[k];
+    const agg = nhLsAgg();
+    const best = nhLsBestRated(nhLs.libSel !== 'all' ? nhLs.libItems[nhLs.libSel] : null);
+    const loaded = nhLs.users.filter((u) => nhLs.stats[u.id]).length;
+    const sig = [nhLs.libSel, loaded, agg.total, agg.played, best.map((b) => b.id + b.avg).join(','), (nhLs.libs || []).length].join('|');
+    // The guard must read nhLs.sig — async arrivals (best-rated TITLES, library
+    // filter maps) blank it to force a redraw, and the computed signature alone
+    // does not change when they land (r10 probe: a column of "…" that never
+    // resolved).
+    let el = old;
+    if (el && nhLs.sig === sig && el.parentElement === container) return;
+    if (!el) { el = document.createElement('div'); el.id = 'nh-libstats'; container.appendChild(el); }
+    nhLs.sig = sig;
+    el.textContent = '';
+
+    const head = document.createElement('div'); head.className = 'nh-sb-head';
+    const h2 = document.createElement('h2'); h2.className = 'nh-sb-title'; h2.textContent = t('lsTitle');
+    const sel = document.createElement('select'); sel.className = 'nh-ls-sel';
+    const optAll = document.createElement('option'); optAll.value = 'all'; optAll.textContent = t('lsAll');
+    sel.appendChild(optAll);
+    (nhLs.libs || []).forEach((l) => {
+      const o = document.createElement('option'); o.value = l.id; o.textContent = l.name;
+      if (nhLs.libSel === l.id) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener('change', () => { nhLs.libSel = sel.value; nhLs.sig = ''; el.dataset.sig = ''; });
+    head.appendChild(h2); head.appendChild(sel);
+    nhSelectify(sel, true);
+    el.appendChild(head);
+
+    const tiles = document.createElement('div'); tiles.className = 'nh-sb-tiles';
+    const mkTile = (val, lab, sub) => {
+      const x = document.createElement('div'); x.className = 'nh-sb-tile';
+      const v = document.createElement('div'); v.className = 'nh-sb-tval'; v.textContent = val; x.appendChild(v);
+      const s2 = document.createElement('div'); s2.className = 'nh-sb-tsub'; s2.textContent = sub || ' '; x.appendChild(s2);
+      const l = document.createElement('div'); l.className = 'nh-sb-tlab'; l.textContent = lab; x.appendChild(l);
+      return x;
+    };
+    tiles.appendChild(mkTile(nhSbFmt(agg.total), t('sbTotal'), nhSbSub(agg.total)));
+    tiles.appendChild(mkTile(String(agg.listeners), t('sbListeners'), ''));
+    tiles.appendChild(mkTile(String(agg.played), t('lsPlayed'), ''));
+    el.appendChild(tiles);
+
+    const wrap = document.createElement('div'); wrap.className = 'nh-ys-grid nh-ls-grid';
+    const tk = window.__NH_TOKEN || getTokenNH();
+    const tq = tk ? '&token=' + encodeURIComponent(tk) : '';
+    if (agg.books.length) {
+      wrap.appendChild(nhYsList(t('ysTopBooks'),
+        agg.books.map((b) => ({ name: b.title || nhLsTitle(b.id) || '…', secs: b.secs, id: b.id })),
+        (r) => '/api/items/' + r.id + '/cover?width=80' + tq));
+    }
+    if (best.length) {
+      const card = document.createElement('div'); card.className = 'nh-ys-card';
+      const bh = document.createElement('div'); bh.className = 'nh-ys-h'; bh.textContent = t('lsBest'); card.appendChild(bh);
+      best.forEach((b) => {
+        const rowEl = document.createElement('div'); rowEl.className = 'nh-ys-row';
+        const th = document.createElement('span'); th.className = 'nh-ys-thumb';
+        th.style.backgroundImage = 'url("/api/items/' + b.id + '/cover?width=80' + tq + '")';
+        const mid = document.createElement('span'); mid.className = 'nh-ys-mid';
+        const nm = document.createElement('span'); nm.className = 'nh-ys-name';
+        nm.textContent = nhLsTitle(b.id) || '…';
+        mid.appendChild(nm);
+        mid.appendChild(nhCrStarsEl({ avg: b.avg, n: b.n }, '', true));
+        rowEl.appendChild(th); rowEl.appendChild(mid);
+        card.appendChild(rowEl);
+      });
+      wrap.appendChild(card);
+    }
+    if (agg.genres.length) wrap.appendChild(nhYsList(t('lsGenres'), agg.genres));
+    if (agg.authors.length) wrap.appendChild(nhYsList(t('ysTopAuthors'), agg.authors));
+    if (!agg.books.length && !best.length) {
+      const none = document.createElement('p'); none.className = 'nh-sb-empty'; none.textContent = t('yirNone');
+      wrap.appendChild(none);
+    }
+    el.appendChild(wrap);
+  }
+
+  // The settings sidebar entry that opens the page above still said "Library
+  // Stats" (Pawel: "in settings I still see Library Stats"). For admins the
+  // link opens Server Statistics, so the label says so. Hide-and-sibling — a
+  // textContent write on a Vue-bound node orphans its text from the vdom.
+  function nhLsNavLabel() {
+    const links = document.querySelectorAll('div.w-44 a');
+    if (!links.length) return;
+    const admin = isUserAdmin();
+    const T = nhGsT();
+    const txt = T.lsTitle || PANEL_T.en.lsTitle;
+    links.forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      if (!/\/library\/[^/]+\/stats\/?$/.test(href)) return;
+      const native = a.querySelector('p:not(.nh-ls-navlbl)');
+      let ours = a.querySelector('.nh-ls-navlbl');
+      if (!admin) {
+        if (ours) ours.remove();
+        if (native && native.style.display === 'none') native.style.display = '';
+        return;
+      }
+      if (!native) return; // Vue mid-patch; next tick
+      if (native.style.display !== 'none') native.style.display = 'none';
+      if (!ours) {
+        ours = document.createElement('p');
+        ours.className = (native.className ? native.className + ' ' : '') + 'nh-ls-navlbl';
+        native.parentNode.insertBefore(ours, native.nextSibling);
+      }
+      if (ours.textContent !== txt) ours.textContent = txt;
+    });
+  }
+
+  // ===================== ADMIN BADGE: OPEN PROBLEM REPORTS ====================
+  // A count on the appbar's account button so an admin learns about new reports
+  // without opening the settings panel. Read-only — the queue itself lives in
+  // the panel's Administration card. Refreshed every 5 minutes; the panel's
+  // list/resolve handlers push fresher counts into nhRb when they touch the API.
+  const nhRb = { count: null, ts: 0, fetching: false };
+  const NH_RB_EVERY = 2 * 60 * 1000; // Pawel: badge + queue refresh every 2 minutes
+
+  function nhReportsBadge() {
+    const link = document.querySelector('#appbar a[href$="/account"]');
+    if (!link) return;
+    let b = link.querySelector('.nh-rp-badge');
+    if (!isUserAdmin()) { if (b) b.remove(); return; }
+    const tok = nhSrToken();
+    if (tok && !nhRb.fetching && (nhRb.count === null || Date.now() - nhRb.ts > NH_RB_EVERY)) {
+      nhRb.fetching = true;
+      fetch('/_nh/api/reports-admin', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { nhRb.count = j && Array.isArray(j.reports) ? j.reports.length : 0; })
+        .catch(() => { if (nhRb.count === null) nhRb.count = 0; })
+        .then(() => { nhRb.ts = Date.now(); nhRb.fetching = false; });
+    }
+    if (!nhRb.count) { if (b) b.remove(); return; }
+    const T = nhGsT();
+    const shown = nhRb.count > 9 ? '9+' : String(nhRb.count);
+    const label = nhRb.count + ' · ' + (T.rpBadge || PANEL_T.en.rpBadge);
+    if (!b) { b = document.createElement('span'); b.className = 'nh-rp-badge'; link.appendChild(b); }
+    if (b.textContent !== shown) b.textContent = shown;
+    if (b.title !== label) b.title = label;
+  }
+
+  // The queue itself, at the bottom of the ACCOUNT page (Pawel: the badge must
+  // lead somewhere reviewable, and admin plumbing does not belong in the
+  // customization panel). The badge sits on the account button, so its click
+  // already lands here. Vue owns the column — presence is re-checked per tick.
+  const NH_ACC_RP_EVERY = 2 * 60 * 1000;
+  function nhAccountReports() {
+    const on = /\/account\/?$/.test(location.pathname) && isUserAdmin();
+    const old = document.getElementById('nh-acc-reports');
+    if (!on) { if (old) old.remove(); return; }
+    // ABS 2.36.0 renamed this column max-w-xl -> max-w-2xl (it grew an auth
+    // sessions table). Match either, and only then fall back to the first child
+    // — the fallback works but is blind to any wrapper ABS adds later.
+    const col = document.querySelector('#page-wrapper .max-w-xl, #page-wrapper .max-w-2xl') || document.querySelector('#page-wrapper > div');
+    if (!col) return;
+    if (old && old.parentElement === col) {
+      // keep the queue fresh while the page stays open (Pawel: 2 minutes)
+      if (Date.now() - (+old.dataset.ts || 0) > NH_ACC_RP_EVERY) {
+        old.dataset.ts = String(Date.now());
+        nhReportsAdminRender(old.querySelector('.nh-rp-list'));
+      }
+      return;
+    }
+    if (old) old.remove();
+    const T = nhGsT();
+    const card = document.createElement('div');
+    card.id = 'nh-acc-reports';
+    card.dataset.ts = String(Date.now());
+    const h = document.createElement('h2'); h.className = 'nh-acc-rp-t'; h.textContent = T.rpCard || PANEL_T.en.rpCard;
+    const hint = document.createElement('p'); hint.className = 'nh-acc-rp-hint'; hint.textContent = T.rpHint || PANEL_T.en.rpHint;
+    const list = document.createElement('div'); list.className = 'nh-rp-list';
+    card.appendChild(h); card.appendChild(hint); card.appendChild(list);
+    // at the TOP of the account column (Pawel), right under the page heading
+    const h1 = col.querySelector(':scope > h1');
+    if (h1 && h1.nextSibling) col.insertBefore(card, h1.nextSibling);
+    else col.insertBefore(card, col.firstChild);
+    nhReportsAdminRender(list);
+  }
+
+  function nhHeatmapSkin() {
+    const hm = document.getElementById('heatmap');
+    if (!hm) return;
+    // data-nh-heat is the guard, not the colour: once repainted a cell no longer
+    // matches the ramp, and Vue re-rendering one hands back a fresh untagged node.
+    const cells = hm.querySelectorAll('div:not([data-nh-heat])');
+    if (!cells.length) return;
+    const rgb = nhAccentRgb();
+    cells.forEach((c) => {
+      const bg = getComputedStyle(c).backgroundColor;
+      const step = NH_HEAT_RAMP[bg];
+      if (step === undefined) return;
+      c.dataset.nhHeat = '1';
+      c.style.setProperty('background-color', typeof step === 'number' ? 'rgba(' + rgb + ',' + step + ')' : step, 'important');
+      c.style.setProperty('outline', 'none', 'important');
+    });
+  }
+
+  function nhStatsScoreboard() {
+    if (nhSettings.statsRanking === false) return;
+    const onCfg = /\/config\/stats\/?$/.test(location.pathname);
+    // The board ALSO renders under the Server statistics content (Pawel:
+    // "put Server ranking under server statistics, so it's visible there too").
+    // Mount target there is #nh-libstats itself — it only exists for admins.
+    const lsHost = /\/library\/[^/]+\/stats\/?$/.test(location.pathname) ? document.getElementById('nh-libstats') : null;
+    if (!onCfg && !lsHost) {
+      if (document.body.classList.contains('nh-stats-dash') || document.getElementById('nh-scoreboard')) {
+        document.body.classList.remove('nh-stats-dash');
+        const g = document.getElementById('nh-stats-grid');
+        if (g) {
+          // CRITICAL: Vue reuses ONE .configContent element across ALL config
+          // pages (class flips to page-Users etc. in place). It's still inside
+          // our grid — hand it back to its original parent BEFORE removing the
+          // grid, or the next config page's content is destroyed with it.
+          const cc = g.querySelector('.configContent');
+          if (cc && g.parentElement) g.parentElement.insertBefore(cc, g);
+          g.remove();
+        }
+        const c = document.getElementById('nh-scoreboard'); if (c) c.remove();
+        nhSb.renderedSig = '';
+      }
+      return;
+    }
+    let admin = false;
+    try { admin = !!(window.$nuxt.$store.getters['user/getIsAdminOrUp']); } catch (e) {}
+    nhSb.mode = admin ? 'admin' : 'shared';
+    let wrap;
+    if (onCfg) {
+      const container = document.querySelector('#page-wrapper .page.overflow-y-auto') || document.querySelector('#page-wrapper .page') || document.querySelector('#page-wrapper');
+      if (!container) return;
+      document.body.classList.add('nh-stats-dash');
+      // Lay "Your Stats" (native .configContent) and our ranking side by side in
+      // a responsive grid — Your Stats first (top on narrow / left on wide). The
+      // card is Vue's; moving it is safe here because the stats page renders
+      // once and config navigation destroys #page-wrapper wholesale.
+      wrap = document.getElementById('nh-stats-grid');
+      if (!wrap) { wrap = document.createElement('div'); wrap.id = 'nh-stats-grid'; }
+      if (wrap.parentElement !== container) container.insertBefore(wrap, container.firstChild);
+      const yourStats = container.querySelector(':scope > .configContent') || document.querySelector('#page-wrapper .configContent');
+      if (yourStats && yourStats.parentElement !== wrap) wrap.appendChild(yourStats);
+    } else {
+      // Server statistics page: the board goes at the BOTTOM of #nh-libstats.
+      // No grid, no configContent adoption, no body class (that class carries
+      // the config-page padding).
+      wrap = lsHost;
+    }
+    nhScFetch(); // loads the avatars map (shared series-meta payload)
+    const tok = nhSrToken();
+    if (!nhSb.users && !nhSb.fetching && tok && nhSb.tries < 5) {
+      nhSb.fetching = true; nhSb.tries++;
+      if (admin) {
+        // Admins read the real thing for the NUMBERS (every user's sessions, no
+        // opt-in needed) but still honour the opt-OUT: "Share my listening stats"
+        // off means gone from the board and out of the totals, for everyone
+        // including admins (Pawel). Absence from the shared store cannot mean
+        // that — a user who has simply not opened the app since is absent too —
+        // so the filter is the explicit tombstone the DELETE leaves behind.
+        Promise.all([
+          fetch('/api/users', { headers: { Authorization: 'Bearer ' + tok } }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+          fetch('/_nh/api/stats', { headers: { Authorization: 'Bearer ' + tok } }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+        ]).then((res) => {
+          const j = res[0];
+          const shared = (res[1] && res[1].users) || {};
+          const out = {};
+          Object.keys(shared).forEach((id) => { if (shared[id] && shared[id].out) out[id] = 1; });
+          const us = (j && (j.users || j)) || [];
+          nhSb.users = us.filter((u) => u.isActive !== false && !out[u.id]).map((u) => ({ id: u.id, username: u.username, type: u.type }));
+          nhSb.fetching = false;
+          nhSb.users.forEach((u) => {
+            fetch('/api/users/' + u.id + '/listening-stats', { headers: { Authorization: 'Bearer ' + tok } })
+              .then((r) => (r.ok ? r.json() : null)).then((st) => { if (st) nhSb.stats[u.id] = st; }).catch(() => {});
+          });
+        }).catch(() => { nhSb.fetching = false; });
+      } else {
+        // Everyone else sees the OPT-IN shared store (A5) — each participant's own
+        // browser posts their summary there. Normalised into the same shape the
+        // admin path produces, so the board below is one code path.
+        fetch('/_nh/api/stats', { headers: { Authorization: 'Bearer ' + tok } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            nhSb.fetching = false;
+            const recs = (j && j.users) || {};
+            // Tombstones (opted out) carry no figures — skip them outright.
+            nhSb.users = Object.keys(recs).filter((id) => recs[id] && !recs[id].out).map((id) => ({ id: id, username: recs[id].user || '?' }));
+            nhSb.users.forEach((u) => {
+              const rec = recs[u.id];
+              const items = {};
+              (rec.books || []).forEach((b, n) => { items['b' + n] = { timeListening: b.s, mediaMetadata: { title: b.t } }; });
+              nhSb.stats[u.id] = { totalTime: rec.total || 0, days: rec.days || {}, items: items };
+            });
+          })
+          .catch(() => { nhSb.fetching = false; nhSb.users = []; });
+      }
+    }
+    if (!nhSb.users) return;
+
+    const rows = nhSb.users.map((u) => ({ u: u, secs: nhSbPeriodTotal(nhSb.stats[u.id], nhSb.period) })).sort((a, b) => b.secs - a.secs);
+    const loaded = nhSb.users.filter((u) => nhSb.stats[u.id]).length;
+    const avSig = nhSc.avatars ? Object.keys(nhSc.avatars).sort().join('.') + ':' + (nhSc.ts || 0) : 'x';
+    const sig = nhSb.mode + '|' + nhSb.period + '|' + loaded + '|' + avSig + '|' + rows.map((r) => r.u.id + ':' + r.secs).join(',') + '|' + (nhSettings.familyStats ? 1 : 0);
+    let card = document.getElementById('nh-scoreboard');
+    // Belt and braces (Pawel saw a doubled ranking on staging): if any stray
+    // copy of the board exists — an interrupted cleanup, a re-parented grid —
+    // keep only the one getElementById returned and drop the rest.
+    document.querySelectorAll('#nh-scoreboard').forEach((el) => { if (el !== card) el.remove(); });
+    if (card && card.parentElement === wrap && nhSb.renderedSig === sig) return;
+    nhSb.renderedSig = sig;
+    const T = nhGsT();
+    if (!card) { card = document.createElement('div'); card.id = 'nh-scoreboard'; }
+    if (card.parentElement !== wrap) wrap.appendChild(card);
+    card.textContent = '';
+
+    const head = document.createElement('div'); head.className = 'nh-sb-head';
+    const h2 = document.createElement('h2'); h2.className = 'nh-sb-title';
+    // One name in every language and every mode (Pawel): the shared-mode board
+    // called itself "Family listening", which read as a different feature.
+    h2.textContent = T.sbTitle || PANEL_T.en.sbTitle;
+    const headRight = document.createElement('div'); headRight.className = 'nh-sb-headright';
+    // Year in Review is the caller's OWN year, so it needs no shared data and is
+    // offered to every user, admin or not.
+    const yir = document.createElement('button');
+    yir.type = 'button'; yir.className = 'nh-sb-yir';
+    yir.textContent = T.yirBtn || PANEL_T.en.yirBtn;
+    yir.addEventListener('click', () => nhYearInReview());
+    if (rows.length) {
+      const toggle = document.createElement('div'); toggle.className = 'nh-sb-toggle';
+      [['week', T.sbWeek || PANEL_T.en.sbWeek], ['month', T.sbMonth || PANEL_T.en.sbMonth], ['year', T.sbYear || PANEL_T.en.sbYear], ['all', T.sbAll || PANEL_T.en.sbAll]].forEach((o) => {
+        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'nh-sb-pill' + (nhSb.period === o[0] ? ' nh-on' : ''); btn.textContent = o[1];
+        btn.addEventListener('click', () => { nhSb.period = o[0]; nhSb.renderedSig = ''; nhStatsScoreboard(); });
+        toggle.appendChild(btn);
+      });
+      headRight.appendChild(toggle);
+    }
+    headRight.appendChild(yir);
+    head.appendChild(h2); head.appendChild(headRight); card.appendChild(head);
+
+    // Shared board with nobody in it yet: explain how to join instead of showing
+    // a wall of zeroes.
+    if (nhSb.mode !== 'admin' && !rows.length) {
+      const empty = document.createElement('div'); empty.className = 'nh-sb-empty';
+      empty.textContent = nhSettings.familyStats
+        ? (T.fsWaiting || PANEL_T.en.fsWaiting)
+        : (T.fsJoin || PANEL_T.en.fsJoin);
+      card.appendChild(empty);
+      return;
+    }
+
+    // Summary tiles (period-aware): server total, active listeners, average each.
+    const totalSecs = rows.reduce((s, r) => s + r.secs, 0);
+    const active = rows.filter((r) => r.secs > 0).length;
+    const avg = active ? totalSecs / active : 0;
+    const tiles = document.createElement('div'); tiles.className = 'nh-sb-tiles';
+    const mkTile = (val, lab, sub) => {
+      const t = document.createElement('div'); t.className = 'nh-sb-tile';
+      const v = document.createElement('div'); v.className = 'nh-sb-tval'; v.textContent = val;
+      t.appendChild(v);
+      // always present, even when empty, so every tile's label sits on one line
+      const s = document.createElement('div'); s.className = 'nh-sb-tsub'; s.textContent = sub || ' '; t.appendChild(s);
+      const l = document.createElement('div'); l.className = 'nh-sb-tlab'; l.textContent = lab;
+      t.appendChild(l); return t;
+    };
+    tiles.appendChild(mkTile(nhSbFmt(totalSecs), T.sbTotal || PANEL_T.en.sbTotal, nhSbSub(totalSecs)));
+    tiles.appendChild(mkTile(String(active), T.sbListeners || PANEL_T.en.sbListeners, ''));
+    tiles.appendChild(mkTile(nhSbFmt(avg), T.sbAvg || PANEL_T.en.sbAvg, nhSbSub(avg)));
+    card.appendChild(tiles);
+
+    // Podium — top 3 (arranged 2 · 1 · 3; #1 gold and tallest). Click → drill-down.
+    const top = rows.slice(0, 3);
+    if (top.length) {
+      const podium = document.createElement('div'); podium.className = 'nh-sb-podium';
+      // A family board can have one or two participants; keep the podium centred
+      // and sized to what it holds instead of leaving two empty thirds.
+      if (top.length === 1) podium.style.gridTemplateColumns = 'minmax(200px, 340px)';
+      else if (top.length === 2) podium.style.gridTemplateColumns = 'repeat(2, minmax(180px, 300px))';
+      const order = top.length >= 3 ? [1, 0, 2] : (top.length === 2 ? [1, 0] : [0]);
+      order.forEach((idx) => {
+        const r = top[idx]; if (!r) return;
+        const pod = document.createElement('button'); pod.type = 'button'; pod.className = 'nh-sb-pod p' + (idx + 1);
+        pod.addEventListener('click', () => nhStatsUserModal(r.u));
+        // The rank used to be an emoji medal, which every OS draws in its own
+        // style — on Windows a blue-ribboned sticker that belonged to no part of
+        // this theme. It is now a numbered chip pinned to the portrait, coloured
+        // by place, so the podium is ours end to end.
+        const av = document.createElement('div'); av.className = 'nh-sb-pod-av'; av.textContent = (r.u.username || '?').charAt(0).toUpperCase();
+        nhAvatarInto(av, r.u.id);
+        const avw = document.createElement('div'); avw.className = 'nh-sb-pod-avw';
+        avw.appendChild(av);
+        const badge = document.createElement('span'); badge.className = 'nh-sb-pod-rank'; badge.textContent = String(idx + 1);
+        avw.appendChild(badge);
+        const nm = document.createElement('div'); nm.className = 'nh-sb-pod-name'; nm.textContent = r.u.username;
+        const tm = document.createElement('div'); tm.className = 'nh-sb-pod-time'; tm.textContent = nhSbFmt(r.secs);
+        pod.appendChild(avw); pod.appendChild(nm); pod.appendChild(tm);
+        const s = document.createElement('div'); s.className = 'nh-sb-pod-sub'; s.textContent = nhSbSub(r.secs) || ' '; pod.appendChild(s);
+        podium.appendChild(pod);
+      });
+      card.appendChild(podium);
+    }
+
+    // The rest (rank 4+) as TILES rather than a bar list — a column of bars
+    // scaled to an arbitrary maximum said little and read as filler; a photo,
+    // a name and a time per tile is the same information, legible at a glance.
+    const rest = rows.slice(3);
+    if (rest.length) {
+      const grid = document.createElement('div'); grid.className = 'nh-sb-grid';
+      rest.forEach((r, i) => {
+        const cardEl = document.createElement('button'); cardEl.type = 'button'; cardEl.className = 'nh-sb-card' + (r.secs > 0 ? '' : ' nh-sb-idle');
+        cardEl.addEventListener('click', () => nhStatsUserModal(r.u));
+        const rank = document.createElement('span'); rank.className = 'nh-sb-crank'; rank.textContent = '#' + (i + 4);
+        const av = document.createElement('span'); av.className = 'nh-sb-av nh-sb-cav'; av.textContent = (r.u.username || '?').charAt(0).toUpperCase();
+        nhAvatarInto(av, r.u.id);
+        const nm = document.createElement('span'); nm.className = 'nh-sb-cname'; nm.textContent = r.u.username;
+        const tm = document.createElement('span'); tm.className = 'nh-sb-ctime'; tm.textContent = nhSbFmt(r.secs);
+        cardEl.appendChild(rank); cardEl.appendChild(av); cardEl.appendChild(nm); cardEl.appendChild(tm);
+        const s = document.createElement('span'); s.className = 'nh-sb-csub'; s.textContent = nhSbSub(r.secs) || ' '; cardEl.appendChild(s);
+        grid.appendChild(cardEl);
+      });
+      card.appendChild(grid);
+    }
+    if (loaded < nhSb.users.length) { const ld = document.createElement('div'); ld.className = 'nh-sb-loading'; ld.textContent = '…'; card.appendChild(ld); }
+  }
+
+  // ===================== A5: SHARED LISTENING SUMMARIES + YEAR IN REVIEW =====================
+  // Opt-in. When it is on, this browser posts a SUMMARY of its own
+  // /api/me/listening-stats to the proxy's store every few hours; the family
+  // board on /config/stats reads that store, which is how non-admins can see a
+  // leaderboard without anyone handing out admin rights. Turning it off deletes
+  // the record — the flag alone would leave stale data on the server.
+  const nhFs = { busy: false, tried: 0 };
+
+  // Membership changed, so the board's cached roster is stale. Clearing users
+  // (not just the render signature) is what makes it refetch: the fetch guard is
+  // `if (!nhSb.users ...)`, so a signature reset alone would redraw the very same
+  // list and the person who just opted out would sit there until a reload.
+  function nhSbInvalidate() {
+    nhSb.users = null;
+    nhSb.stats = {};
+    nhSb.tries = 0;
+    nhSb.fetching = false;
+    nhSb.renderedSig = '';
+  }
+  const NH_FS_EVERY = 6 * 3600 * 1000;
+  const NH_FS_DAYS = 400;
+
+  // Admins fill the shared store for EVERYONE (round 11: a regular user opened
+  // the ranking and saw two names — the store only held the browsers that had
+  // synced themselves; "on by default" has to mean the board is full without
+  // each person logging in). Once per NH_FS_EVERY per admin browser: one
+  // summary per active user through the admin-gated twin. Opt-outs are skipped
+  // here AND refused server-side, so a tombstone survives an admin sweep.
+  const nhFsa = { busy: false, tried: 0 };
+
+  function nhFsAdminSummary(st) {
+    const days = {};
+    const src = st.days || {};
+    Object.keys(src).sort().slice(-NH_FS_DAYS).forEach((k) => { if (src[k] > 0) days[k] = Math.round(src[k]); });
+    const items = st.items || {};
+    const books = Object.keys(items)
+      .map((k) => { const it = items[k] || {}; return { t: (it.mediaMetadata && it.mediaMetadata.title) || '', s: it.timeListening || 0 }; })
+      .filter((b) => b.t && b.s > 0)
+      .sort((a, b) => b.s - a.s).slice(0, 8)
+      .map((b) => ({ t: b.t, s: Math.round(b.s) }));
+    return { total: Math.round(st.totalTime || 0), days: days, books: books };
+  }
+
+  function nhFsAdminSeed() {
+    if (!isUserAdmin()) return;
+    const tok = nhSrToken();
+    if (!tok || nhFsa.busy || nhFsa.tried > 2) return;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem('nh-fsa-ts'), 10) || 0; } catch (e) {}
+    if (Date.now() - last < NH_FS_EVERY) return;
+    nhFsa.busy = true; nhFsa.tried++;
+    const H = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+    Promise.all([
+      fetch('/api/users', { headers: H }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/_nh/api/stats', { headers: H, credentials: 'include' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(async (res) => {
+      const us = ((res[0] && (res[0].users || res[0])) || []).filter((u) => u && u.isActive !== false);
+      if (!us.length) { nhFsa.busy = false; return; } // /api/users failed — not an admin session after all
+      const shared = (res[1] && res[1].users) || {};
+      for (const u of us) {
+        if (shared[u.id] && shared[u.id].out) continue;
+        try {
+          const st = await fetch('/api/users/' + u.id + '/listening-stats', { headers: H }).then((r) => (r.ok ? r.json() : null));
+          if (!st) continue;
+          const sum = nhFsAdminSummary(st);
+          sum.user = u.username;
+          await fetch('/_nh/api/stats-admin?forUser=' + encodeURIComponent(u.id), { method: 'POST', headers: H, credentials: 'include', body: JSON.stringify(sum) });
+        } catch (e) {}
+      }
+      try { localStorage.setItem('nh-fsa-ts', String(Date.now())); } catch (e) {}
+      nhFsa.busy = false;
+    }).catch(() => { nhFsa.busy = false; });
+  }
+
+  function nhFamilyStatsSync() {
+    const tok = nhSrToken();
+    if (!tok) return;
+    const on = nhSettings.familyStats === true;
+    let joined = '0';
+    try { joined = localStorage.getItem('nh-fs-on') || '0'; } catch (e) {}
+    if (!on) {
+      if (joined === '1' && !nhFs.busy) { // opted out: erase the record, once
+        nhFs.busy = true;
+        fetch('/_nh/api/stats', { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } })
+          .then(() => {
+            try { localStorage.removeItem('nh-fs-on'); localStorage.removeItem('nh-fs-ts'); } catch (e) {}
+            nhSbInvalidate(); // drop off the board now, not on the next reload
+          })
+          .catch(() => {})
+          .then(() => { nhFs.busy = false; });
+      }
+      return;
+    }
+    if (nhFs.busy || nhFs.tried > 3) return;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem('nh-fs-ts'), 10) || 0; } catch (e) {}
+    if (Date.now() - last < NH_FS_EVERY) return;
+    nhFs.busy = true; nhFs.tried++;
+    fetch('/api/me/listening-stats', { headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((st) => {
+        if (!st) throw new Error('no stats');
+        const days = {};
+        const src = st.days || {};
+        Object.keys(src).sort().slice(-NH_FS_DAYS).forEach((k) => { if (src[k] > 0) days[k] = Math.round(src[k]); });
+        const items = st.items || {};
+        const books = Object.keys(items).map((k) => ({
+          t: (items[k].mediaMetadata && items[k].mediaMetadata.title) || '',
+          s: Math.round(items[k].timeListening || 0),
+        })).filter((b) => b.t && b.s > 0).sort((a, b) => b.s - a.s).slice(0, 10);
+        return fetch('/_nh/api/stats', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ total: Math.round(st.totalTime || 0), days: days, books: books }),
+        });
+      })
+      .then((r) => {
+        if (r && r.ok) {
+          try { localStorage.setItem('nh-fs-on', '1'); localStorage.setItem('nh-fs-ts', String(Date.now())); } catch (e) {}
+          nhSbInvalidate(); // the board includes us again
+        }
+      })
+      .catch(() => {})
+      .then(() => { nhFs.busy = false; });
+  }
+
+  // ---- Year in Review: the caller's own last 12 months ----
+  function nhYirMonthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+
+  function nhYearInReview() {
+    const T = nhGsT();
+    const old = document.getElementById('nh-yir-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-yir-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.yirTitle || PANEL_T.en.yirTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×';
+    x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x); box.appendChild(head);
+    const body = document.createElement('div'); body.className = 'nh-yir-body';
+    const loading = document.createElement('div'); loading.className = 'nh-sb-loading'; loading.textContent = '…';
+    body.appendChild(loading);
+    box.appendChild(body);
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+
+    const tok = nhSrToken();
+    fetch('/api/me/listening-stats', { headers: tok ? { Authorization: 'Bearer ' + tok } : {} })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((st) => {
+        body.textContent = '';
+        if (!st) { const e = document.createElement('div'); e.className = 'nh-sb-empty'; e.textContent = T.yirNone || PANEL_T.en.yirNone; body.appendChild(e); return; }
+        const days = st.days || {};
+        const now = new Date();
+        // last 12 months, oldest first
+        const months = [];
+        for (let i = 11; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          months.push({ key: nhYirMonthKey(d), label: new Intl.DateTimeFormat(getUserLanguage(), { month: 'short' }).format(d), secs: 0 });
+        }
+        const byMonth = {};
+        months.forEach((m) => { byMonth[m.key] = m; });
+        let yearSecs = 0, activeDays = 0, best = { d: '', s: 0 };
+        const cutoff = new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().slice(0, 10);
+        Object.keys(days).forEach((k) => {
+          const s = days[k] || 0;
+          if (s <= 0 || k < cutoff) return;
+          const m = byMonth[k.slice(0, 7)];
+          if (m) { m.secs += s; yearSecs += s; activeDays++; if (s > best.s) best = { d: k, s: s }; }
+        });
+
+        const tiles = document.createElement('div'); tiles.className = 'nh-us-tiles';
+        const mk = (val, lab, sub) => {
+          const t = document.createElement('div'); t.className = 'nh-us-tile';
+          const v = document.createElement('div'); v.className = 'nh-us-val'; v.textContent = val; t.appendChild(v);
+          const s = document.createElement('div'); s.className = 'nh-us-sub'; s.textContent = sub || ' '; t.appendChild(s);
+          const l = document.createElement('div'); l.className = 'nh-us-lab'; l.textContent = lab; t.appendChild(l);
+          return t;
+        };
+        tiles.appendChild(mk(nhSbFmt(yearSecs), T.yirYear || PANEL_T.en.yirYear, nhSbSub(yearSecs)));
+        tiles.appendChild(mk(String(activeDays), T.yirDays || PANEL_T.en.yirDays, ''));
+        tiles.appendChild(mk(best.s ? nhSbFmt(best.s) : '—', T.yirBest || PANEL_T.en.yirBest, best.d || ''));
+        tiles.appendChild(mk(nhSbFmt(st.totalTime || 0), T.sbAll || PANEL_T.en.sbAll, nhSbSub(st.totalTime || 0)));
+        body.appendChild(tiles);
+
+        const secTitle = document.createElement('div'); secTitle.className = 'nh-us-sec'; secTitle.textContent = T.yirMonths || PANEL_T.en.yirMonths;
+        body.appendChild(secTitle);
+        const chart = document.createElement('div'); chart.className = 'nh-yir-chart';
+        const max = Math.max.apply(null, months.map((m) => m.secs).concat([1]));
+        months.forEach((m) => {
+          const col = document.createElement('div'); col.className = 'nh-yir-col';
+          const barWrap = document.createElement('div'); barWrap.className = 'nh-yir-barwrap';
+          const bar = document.createElement('div'); bar.className = 'nh-yir-bar';
+          bar.style.height = Math.max(2, Math.round((m.secs / max) * 100)) + '%';
+          bar.title = nhSbFmt(m.secs);
+          barWrap.appendChild(bar);
+          const val = document.createElement('div'); val.className = 'nh-yir-val'; val.textContent = m.secs ? nhSbFmt(m.secs) : '';
+          const lab = document.createElement('div'); lab.className = 'nh-yir-lab'; lab.textContent = m.label;
+          col.appendChild(val); col.appendChild(barWrap); col.appendChild(lab);
+          chart.appendChild(col);
+        });
+        body.appendChild(chart);
+
+        const items = st.items || {};
+        const top = Object.keys(items).map((k) => items[k])
+          .sort((a, b) => (b.timeListening || 0) - (a.timeListening || 0)).slice(0, 6);
+        if (top.length) {
+          const th = document.createElement('div'); th.className = 'nh-us-sec'; th.textContent = T.sbTopBooks || PANEL_T.en.sbTopBooks;
+          body.appendChild(th);
+          const ul = document.createElement('div'); ul.className = 'nh-us-books';
+          top.forEach((it) => {
+            const row = document.createElement('div'); row.className = 'nh-us-book';
+            const nm = document.createElement('span'); nm.className = 'nh-us-bt'; nm.textContent = (it.mediaMetadata && it.mediaMetadata.title) || '—';
+            const tm = document.createElement('span'); tm.className = 'nh-us-btime'; tm.textContent = nhSbFmt(it.timeListening);
+            row.appendChild(nm); row.appendChild(tm); ul.appendChild(row);
+          });
+          body.appendChild(ul);
+        }
+      })
+      .catch(() => { body.textContent = ''; const e = document.createElement('div'); e.className = 'nh-sb-empty'; e.textContent = T.yirNone || PANEL_T.en.yirNone; body.appendChild(e); });
+  }
+
+  // ===================== USERS PAGE: CARD GRID + PROFILE PHOTOS (admin) =====================
+  // Settings → Users is a dense table; as the place where photos are managed it
+  // should show people, not rows. We keep ABS's table in the DOM (hidden) as the
+  // source of truth and re-present it as cards: photo, name, account type, last
+  // seen, and how much they have actually listened. Every action clicks the
+  // native control underneath, so ABS keeps owning the behaviour.
+  // Photos are admin-only (Pawel: users don't set their own).
+  const nhUav = { list: null, fetching: false, tries: 0, stats: {}, statTried: {}, sig: '' };
+
+  // One file picker for every entry point (card, table row, edit modal).
+  function nhAvatarPick(uid, onDone) {
+    const fi = document.createElement('input');
+    fi.type = 'file'; fi.accept = 'image/*'; fi.style.display = 'none';
+    document.body.appendChild(fi);
+    fi.addEventListener('change', () => {
+      const f = fi.files && fi.files[0];
+      fi.remove();
+      if (!f) { onDone(false); return; }
+      nhAvatarSave(f, uid, (ok) => onDone(ok));
+    });
+    fi.click();
+  }
+
+  // Give the card grid the width ABS's 900px panel doesn't have — measured, not
+  // guessed. The settings sub-rail is position:fixed on top of a full-width
+  // wrapper, so a wider box centred in that wrapper hides its own left edge (and
+  // the page heading) behind the rail. Anchor to the rail's right edge instead.
+  function nhUsersWiden(cc) {
+    const parent = cc && cc.parentElement;
+    if (!parent) return;
+    const pr = parent.getBoundingClientRect();
+    if (pr.width < 1200) { nhUsersUnwiden(); return; } // narrow: ABS's own layout is fine
+    let railRight = 0;
+    document.querySelectorAll('[class*="w-44"], [class*="w-48"]').forEach(function (el) {
+      const r = el.getBoundingClientRect();
+      // the sub-rail: tall, hugging the left edge of the wrapper
+      if (r.height > 200 && r.left <= pr.left + 4 && r.right > railRight) railRight = r.right;
+    });
+    const left = Math.max(24, Math.round(railRight - pr.left) + 28);
+    const width = Math.min(2200, Math.round(pr.width - left - 32));
+    if (width < 700) { nhUsersUnwiden(); return; }
+    const stamp = left + 'x' + width;
+    if (cc.dataset.nhWide === stamp) return; // no layout thrash on every tick
+    cc.dataset.nhWide = stamp;
+    cc.style.setProperty('margin-left', left + 'px', 'important');
+    cc.style.setProperty('margin-right', 'auto', 'important');
+    cc.style.setProperty('width', width + 'px', 'important');
+    cc.style.setProperty('max-width', 'none', 'important');
+  }
+  function nhUsersUnwiden() {
+    const cc = document.querySelector('.configContent[data-nh-wide]');
+    if (!cc) return;
+    ['margin-left', 'margin-right', 'width', 'max-width'].forEach((k) => cc.style.removeProperty(k));
+    delete cc.dataset.nhWide;
+  }
+
+  function nhUsersRows() {
+    return Array.from(document.querySelectorAll('.configContent tr.cursor-pointer'));
+  }
+  function nhUsersRowFor(username) {
+    return nhUsersRows().find((tr) => {
+      const p = tr.querySelector('td p.truncate');
+      return p && p.textContent.trim() === username;
+    }) || null;
+  }
+  // ABS's row actions are icon buttons whose text is the ligature name.
+  function nhUsersRowBtn(tr, name) {
+    return Array.from(tr.querySelectorAll('button')).find((b) => b.textContent.trim() === name) || null;
+  }
+
+  // Listening totals per user (admin endpoint, same shape as /api/me).
+  function nhUsersFetchStats(uid, tok) {
+    if (!tok || nhUav.statTried[uid]) return;
+    nhUav.statTried[uid] = true;
+    fetch('/api/users/' + uid + '/listening-stats', { headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((st) => { if (st) { nhUav.stats[uid] = st; nhUav.sig = ''; } })
+      .catch(() => {});
+  }
+
+  function nhUsersPage() {
+    const onUsers = /\/config\/users\/?$/.test(location.pathname);
+    if (!onUsers) {
+      // The grid is ours, but .configContent is Vue's and is REUSED across every
+      // /config/* page — only ever remove our own node.
+      if (document.body.classList.contains('nh-users-grid')) {
+        document.body.classList.remove('nh-users-grid');
+        const g = document.getElementById('nh-ug-grid'); if (g) g.remove();
+        const gb = document.getElementById('nh-ug-bar'); if (gb) gb.remove();
+        nhUsersUnwiden();
+        nhUav.sig = '';
+      }
+      return;
+    }
+    if (!isUserAdmin()) return;
+    if (nhSettings.usersCards === false) { nhUsersUnwiden(); return; }
+    nhScFetch(); // avatars map
+    const tok = nhSrToken();
+    if (!nhUav.list && !nhUav.fetching && tok && nhUav.tries < 5) {
+      nhUav.fetching = true; nhUav.tries++;
+      fetch('/api/users', { headers: { Authorization: 'Bearer ' + tok } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          nhUav.fetching = false;
+          const us = (j && (j.users || j)) || [];
+          nhUav.list = {};
+          us.forEach((u) => { nhUav.list[u.username] = u.id; });
+          nhUav.sig = '';
+        })
+        .catch(() => { nhUav.fetching = false; });
+    }
+    // Photos are a bonus: if the avatars endpoint is unavailable the grid still
+    // renders, just with initials.
+    if (!nhUav.list) return;
+    const avatars = nhSc.avatars || {};
+
+    const rows = nhUsersRows();
+    if (!rows.length) return;
+    const table = document.querySelector('.configContent table');
+    if (!table || !table.parentElement) return;
+
+    // Read everything off the native row so ABS keeps owning the formatting
+    // (relative dates, account type, current activity) and our card stays a
+    // presentation layer.
+    const people = rows.map((tr) => {
+      const nameP = tr.querySelector('td p.truncate');
+      const name = nameP ? nameP.textContent.trim() : '';
+      const tds = Array.from(tr.children);
+      const cellText = (i) => (tds[i] ? tds[i].textContent.trim().replace(/\s+/g, ' ') : '');
+      return {
+        name: name,
+        uid: nhUav.list[name] || null,
+        type: cellText(1),
+        activity: cellText(2),
+        seen: cellText(3),
+        created: cellText(4),
+        online: !!tr.querySelector('td .text-success'), // ABS marks a connected user with a text-success dot
+      };
+    }).filter((p) => p.name);
+    if (!people.length) return;
+
+    people.forEach((p) => { if (p.uid) nhUsersFetchStats(p.uid, tok); });
+
+    const T = nhGsT();
+    const sort = nhSettings.usersSort || 'time';
+    const secsOf = (p) => (p.uid && nhUav.stats[p.uid] ? (nhUav.stats[p.uid].totalTime || 0) : -1);
+    const collator = (function () {
+      try { return new Intl.Collator(getUserLanguage(), { sensitivity: 'base' }); } catch (e) { return null; }
+    })();
+    const byName = (a, b) => (collator ? collator.compare(a.name, b.name) : a.name.localeCompare(b.name));
+    people.sort(sort === 'name' ? byName : (a, b) => (secsOf(b) - secsOf(a)) || byName(a, b));
+
+    const sig = sort + '#' + people.map((p) => [p.name, p.type, p.seen, p.activity,
+      (p.uid && avatars[p.uid]) || '', (p.uid && nhUav.stats[p.uid] ? Math.round(nhUav.stats[p.uid].totalTime || 0) : '-')].join('~')).join('|') + '#' + (nhSc.ts || 0);
+    document.body.classList.add('nh-users-grid');
+    nhUsersWiden(table.closest('.configContent')); // re-measured each tick (resize, rail changes)
+    let bar = document.getElementById('nh-ug-bar');
+    let grid = document.getElementById('nh-ug-grid');
+    if (grid && grid.isConnected && nhUav.sig === sig) return;
+    nhUav.sig = sig;
+    if (!bar) { bar = document.createElement('div'); bar.id = 'nh-ug-bar'; }
+    if (!grid) { grid = document.createElement('div'); grid.id = 'nh-ug-grid'; }
+    if (bar.previousElementSibling !== table || bar.parentElement !== table.parentElement) {
+      table.parentElement.insertBefore(bar, table.nextSibling);
+    }
+    if (grid.previousElementSibling !== bar || grid.parentElement !== table.parentElement) {
+      table.parentElement.insertBefore(grid, bar.nextSibling);
+    }
+    bar.textContent = '';
+    grid.textContent = '';
+
+    // Sort control — the choice sticks per browser, like the other panel settings.
+    const toggle = document.createElement('div'); toggle.className = 'nh-ug-sort';
+    [['time', T.ugSortTime || PANEL_T.en.ugSortTime], ['name', T.ugSortName || PANEL_T.en.ugSortName]].forEach((o) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nh-ug-spill' + (sort === o[0] ? ' nh-on' : '');
+      b.textContent = o[1];
+      b.addEventListener('click', () => {
+        if ((nhSettings.usersSort || 'time') === o[0]) return;
+        nhSettings.usersSort = o[0];
+        saveSettings();
+        nhUav.sig = '';
+        nhUsersPage();
+      });
+      toggle.appendChild(b);
+    });
+    bar.appendChild(toggle);
+
+    people.forEach((p) => {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'nh-ug-card';
+      cardEl.tabIndex = 0;
+      cardEl.addEventListener('click', () => {
+        const tr = nhUsersRowFor(p.name); // resolve late: Vue re-renders rows
+        if (tr) tr.click();
+      });
+      cardEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') cardEl.click(); });
+
+      const avWrap = document.createElement('div'); avWrap.className = 'nh-ug-avwrap';
+      const av = document.createElement('button');
+      av.type = 'button';
+      av.className = 'nh-ug-av' + (p.uid && avatars[p.uid] ? ' nh-has' : '');
+      av.textContent = (p.name || '?').charAt(0).toUpperCase();
+      av.title = (p.uid && avatars[p.uid]) ? (T.ugChange || PANEL_T.en.ugChange) : (T.ugAdd || PANEL_T.en.ugAdd);
+      if (p.uid) nhAvatarInto(av, p.uid);
+      av.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!p.uid) return;
+        av.classList.add('nh-busy');
+        nhAvatarPick(p.uid, () => { av.classList.remove('nh-busy'); nhUav.sig = ''; nhUsersPage(); });
+      });
+      const cam = document.createElement('span'); cam.className = 'nh-ug-cam material-symbols'; cam.textContent = 'photo_camera';
+      av.appendChild(cam);
+      avWrap.appendChild(av);
+      if (p.online) { const dot = document.createElement('span'); dot.className = 'nh-ug-online'; avWrap.appendChild(dot); }
+      if (p.uid && avatars[p.uid]) {
+        const rm = document.createElement('button');
+        rm.type = 'button'; rm.className = 'nh-ug-rm'; rm.textContent = '×';
+        rm.title = T.avRemove || PANEL_T.en.avRemove;
+        rm.addEventListener('click', (e) => {
+          e.stopPropagation();
+          nhAvatarClear(p.uid, () => { nhUav.sig = ''; nhUsersPage(); });
+        });
+        avWrap.appendChild(rm);
+      }
+      cardEl.appendChild(avWrap);
+
+      const main = document.createElement('div'); main.className = 'nh-ug-main';
+      const nameRow = document.createElement('div'); nameRow.className = 'nh-ug-namerow';
+      const nm = document.createElement('span'); nm.className = 'nh-ug-name'; nm.textContent = p.name;
+      nameRow.appendChild(nm);
+      if (p.type) { const ty = document.createElement('span'); ty.className = 'nh-ug-type t-' + p.type.toLowerCase(); ty.textContent = p.type; nameRow.appendChild(ty); }
+      main.appendChild(nameRow);
+
+      const st = p.uid ? nhUav.stats[p.uid] : null;
+      const secs = st ? (st.totalTime || 0) : 0;
+      const timeRow = document.createElement('div'); timeRow.className = 'nh-ug-timerow';
+      const big = document.createElement('span'); big.className = 'nh-ug-time';
+      big.textContent = st ? nhSbFmt(secs) : '·';
+      timeRow.appendChild(big);
+      const lab = document.createElement('span'); lab.className = 'nh-ug-tlab';
+      lab.textContent = (T.ugListened || PANEL_T.en.ugListened) + (st && nhSbSub(secs) ? ' · ' + nhSbSub(secs) : '');
+      timeRow.appendChild(lab);
+      main.appendChild(timeRow);
+
+      const meta = document.createElement('div'); meta.className = 'nh-ug-meta';
+      meta.textContent = (T.ugSeen || PANEL_T.en.ugSeen) + ': ' + (p.seen || (T.ugNever || PANEL_T.en.ugNever));
+      main.appendChild(meta);
+      if (p.activity) { const ac = document.createElement('div'); ac.className = 'nh-ug-act'; ac.textContent = p.activity; main.appendChild(ac); }
+      cardEl.appendChild(main);
+
+      const acts = document.createElement('div'); acts.className = 'nh-ug-acts';
+      [['edit', T.ugEdit || PANEL_T.en.ugEdit], ['delete', T.ugDelete || PANEL_T.en.ugDelete]].forEach((a) => {
+        const tr0 = nhUsersRowFor(p.name);
+        if (!tr0 || !nhUsersRowBtn(tr0, a[0])) return; // root has no delete
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'nh-ug-act-btn' + (a[0] === 'delete' ? ' nh-del' : '');
+        b.title = a[1];
+        const ic = document.createElement('span'); ic.className = 'material-symbols'; ic.textContent = a[0];
+        b.appendChild(ic);
+        b.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const tr = nhUsersRowFor(p.name);
+          const nb = tr && nhUsersRowBtn(tr, a[0]);
+          if (nb) nb.click();
+        });
+        acts.appendChild(b);
+      });
+      cardEl.appendChild(acts);
+      grid.appendChild(cardEl);
+    });
+  }
+
+  // ---- "Update Account" modal: a profile-picture control next to the fields ----
+  // ABS's modal is a generic shell, so the user is identified by the username
+  // input's value (survives Vue re-renders; the Add-User modal has none yet, and
+  // we simply don't inject there — there is no account to attach a photo to).
+  function nhUserEditModal() {
+    if (!isUserAdmin() || !nhUav.list || !nhSc.avatars) return;
+    const toggle = document.getElementById('user-enabled-toggle');
+    if (!toggle) return;
+    let modal = toggle;
+    for (let i = 0; i < 12 && modal; i++) {
+      if (getComputedStyle(modal).position === 'fixed') break;
+      modal = modal.parentElement;
+    }
+    // NOT offsetParent: it is null for every position:fixed element, open or
+    // closed. Measure the anchor instead — a closed modal has no box.
+    if (!modal || toggle.getBoundingClientRect().height <= 0) return;
+    const holder = modal.querySelector('form .w-full.p-8') || modal.querySelector('form > div > div');
+    if (!holder) return;
+    const nameInput = modal.querySelector('input[type="text"]');
+    const username = nameInput ? String(nameInput.value).trim() : '';
+    const uid = username ? nhUav.list[username] : null;
+    const T = nhGsT();
+    const sig = (uid || '') + ':' + ((uid && nhSc.avatars[uid]) || '') + ':' + (nhSc.ts || 0);
+    const existing = holder.querySelector('#nh-um-photo');
+    if (!uid) { if (existing) existing.remove(); return; }
+    // Vue patches modal contents in place — confirm the node is still there,
+    // never trust the stamp alone.
+    if (existing && existing.dataset.sig === sig) return;
+    if (existing) existing.remove();
+
+    const row = document.createElement('div');
+    row.id = 'nh-um-photo'; row.dataset.sig = sig;
+    const prev = document.createElement('div'); prev.className = 'nh-um-prev';
+    prev.textContent = (username || '?').charAt(0).toUpperCase();
+    nhAvatarInto(prev, uid);
+    const txt = document.createElement('div'); txt.className = 'nh-um-txt';
+    const lab = document.createElement('div'); lab.className = 'nh-um-lab'; lab.textContent = T.ugPhoto || PANEL_T.en.ugPhoto;
+    const btns = document.createElement('div'); btns.className = 'nh-um-btns';
+    const set = document.createElement('button');
+    set.type = 'button'; set.className = 'nh-um-btn';
+    set.textContent = nhSc.avatars[uid] ? (T.ugChange || PANEL_T.en.ugChange) : (T.ugAdd || PANEL_T.en.ugAdd);
+    set.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      set.disabled = true;
+      nhAvatarPick(uid, () => { set.disabled = false; row.dataset.sig = ''; nhUserEditModal(); nhUav.sig = ''; });
+    });
+    btns.appendChild(set);
+    if (nhSc.avatars[uid]) {
+      const rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'nh-um-btn nh-um-rm'; rm.textContent = T.avRemove || PANEL_T.en.avRemove;
+      rm.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        nhAvatarClear(uid, () => { row.dataset.sig = ''; nhUserEditModal(); nhUav.sig = ''; });
+      });
+      btns.appendChild(rm);
+    }
+    txt.appendChild(lab); txt.appendChild(btns);
+    row.appendChild(prev); row.appendChild(txt);
+    holder.insertBefore(row, holder.firstChild);
+  }
+
+  // ===================== PER-USER START PAGE (A4) =====================
+  // Lands the browser on a chosen library view on APP ENTRY only. Deep links and
+  // SPA navigation are never hijacked: the decision keys off the URL captured at
+  // script parse time (before ABS's own default-library redirect can move it),
+  // runs once per page load, and a sessionStorage guard keeps a tab that already
+  // got its start page this session from redirecting again on reload.
+  const nhSp = { entry: location.pathname, tried: false, hold: false };
+  // Veil hold: when this load WILL likely redirect (setting present, tab hasn't
+  // redirected yet, entry looks like a neutral app entry), keep the boot veil up
+  // until the decision lands — otherwise the default home paints for a few frames
+  // and then jumps to the start page (user: "very jittery"). The template's 4s
+  // nh-ready timeout is the unconditional failsafe, so a wrong guess here can
+  // never trap the veil. The loose regex tolerates a router base prefix; the
+  // strict base-stripped check still decides the actual redirect below.
+  try {
+    nhSp.hold = !!(nhSettings.startPage && !sessionStorage.getItem('nh-sp-done') &&
+      (/(?:^|\/)(?:login\/?)?$/.test(nhSp.entry) || /\/library\/[^/]+\/?$/.test(nhSp.entry)));
+  } catch (e) {}
+  function nhStartPage() {
+    if (nhSp.tried) return;
+    // Never veil the login form: an unauthenticated entry lands there and the
+    // user has to see it. The post-login redirect is covered by the normal
+    // masked page transition instead.
+    if (nhSp.hold && /\/login(?:\/|$)/.test(location.pathname)) nhSp.hold = false;
+    const nuxt = window.$nuxt;
+    if (!nuxt || !nuxt.$router) return; // app not up yet
+    const target = String(nhSettings.startPage || '');
+    if (!target) { nhSp.tried = true; nhSp.hold = false; return; }
+    if (!(nuxt.$store && nuxt.$store.state.user && nuxt.$store.state.user.user)) return; // wait for login
+    nhSp.tried = true;
+    // Release the veil hold only AFTER the redirect has actually landed (router
+    // promise) — releasing at push time still unveiled the interim default home
+    // for a couple of frames. Every declined path releases immediately.
+    const unhold = () => { nhSp.hold = false; };
+    if (sessionStorage.getItem('nh-sp-done')) return unhold();
+    sessionStorage.setItem('nh-sp-done', '1');
+    // Strip the router base (e.g. /audiobookshelf/) off the captured entry URL.
+    let entry = nhSp.entry;
+    const base = (nuxt.$router.options && nuxt.$router.options.base) || '/';
+    if (base !== '/' && entry.indexOf(base) === 0) entry = '/' + entry.slice(base.length);
+    entry = entry.replace(/\/+$/, '') || '/';
+    if (!(entry === '/' || entry === '/login' || /^\/library\/[^/]+$/.test(entry))) return unhold();
+    const cut = target.indexOf(':');
+    const view = target.slice(0, cut), lib = target.slice(cut + 1);
+    if (!lib) return unhold();
+    // authors lives UNDER /bookshelf — a bare /authors route 404s (ABS 2.35)
+    const paths = { home: '', bookshelf: '/bookshelf', series: '/bookshelf/series', collections: '/bookshelf/collections', authors: '/bookshelf/authors' };
+    if (paths[view] === undefined) return unhold();
+    const dest = '/library/' + lib + paths[view];
+    const cur = ((nuxt.$route && nuxt.$route.path) || '').replace(/\/+$/, '');
+    if (cur !== dest) {
+      try { Promise.resolve(nuxt.$router.push(dest)).catch(function () {}).then(unhold); }
+      catch (e) { unhold(); }
+    } else {
+      unhold();
     }
   }
 
@@ -2316,7 +9057,7 @@
     const fontSel = document.createElement('select');
     fontSel.className = 'nh-er-select';
     const defOpt = document.createElement('option');
-    defOpt.value = ''; defOpt.textContent = 'Default (ABS)';
+    defOpt.value = ''; defOpt.textContent = (nhGsT().erDefault || PANEL_T.en.erDefault);
     fontSel.appendChild(defOpt);
     [['Serif', NH_ER_FONTS_SERIF], ['Sans serif', NH_ER_FONTS_SANS], ['Dyslexia friendly', NH_ER_FONTS_DYS]].forEach(function (grp) {
       const og = document.createElement('optgroup');
@@ -2332,11 +9073,12 @@
     fontSel.value = curFont || '';
     if (curFont) fontSel.style.fontFamily = '"' + curFont + '", ' + nhFontGeneric(curFont);
     fontSel.addEventListener('change', function () { pick('ereaderFont', fontSel.value); });
-    sec.appendChild(row('Typeface', [fontSel]));
+    sec.appendChild(row(nhGsT().erTypeface || PANEL_T.en.erTypeface, [fontSel]));
+    nhSelectify(fontSel);
 
     const curPage = nhEreaderGet('ereaderPage');
     const hasCustom = !!(nhEreaderGet('ereaderFg') || nhEreaderGet('ereaderBg'));
-    sec.appendChild(row('Page theme', Object.keys(NH_EREADER_PAGES).map(function (k) {
+    sec.appendChild(row(nhGsT().erPage || PANEL_T.en.erPage, Object.keys(NH_EREADER_PAGES).map(function (k) {
       const p = NH_EREADER_PAGES[k];
       const sel = !hasCustom && (curPage === k || (!curPage && k === 'nanohive'));
       return chip(p.label, sel, function () {
@@ -2347,12 +9089,12 @@
     })));
 
     const curFg = nhEreaderGet('ereaderFg');
-    sec.appendChild(row('Text colour', [chip('Auto', !curFg, function () { pick('ereaderFg', ''); })].concat(
+    sec.appendChild(row(nhGsT().erText || PANEL_T.en.erText, [chip(nhGsT().erAuto || PANEL_T.en.erAuto, !curFg, function () { pick('ereaderFg', ''); })].concat(
       NH_ER_FG_SWATCHES.map(function (cc) { return swatch(cc, curFg.toLowerCase() === cc, function () { pick('ereaderFg', cc); }); }),
       [colorInput(curFg, function (v) { pick('ereaderFg', v); })]
     )));
     const curBg = nhEreaderGet('ereaderBg');
-    sec.appendChild(row('Background', [chip('Auto', !curBg, function () { pick('ereaderBg', ''); })].concat(
+    sec.appendChild(row(nhGsT().erBg || PANEL_T.en.erBg, [chip(nhGsT().erAuto || PANEL_T.en.erAuto, !curBg, function () { pick('ereaderBg', ''); })].concat(
       NH_ER_BG_SWATCHES.map(function (cc) { return swatch(cc, curBg.toLowerCase() === cc, function () { pick('ereaderBg', cc); }); }),
       [colorInput(curBg, function (v) { pick('ereaderBg', v); })]
     )));
@@ -2443,6 +9185,920 @@
     (document.body || document.documentElement).appendChild(b);
   }
 
+  // Series-page mask. The 500ms tick is too late to stop the staged reveal the user
+  // sees on series pages (wide books -> column squeezes them -> cards re-measure ->
+  // finished badges pop). So: (1) an SPA route hook masks the page the INSTANT the
+  // navigation happens; (2) nhSeriesReveal fades everything in one tick AFTER the
+  // two-column structure is applied and the shelf re-measured — by then the cards
+  // and their finished badges are painted, so the page appears fully formed.
+  let nhMaskT0 = 0;
+  let nhLastPath = '';
+  let nhPgArm = '';
+  let nhEnterT = null;
+  // The eased-card-entrance window is re-armed by the reveal, not only by the
+  // route change — see nhPageShown.
+  function nhEnterWindow(ms) {
+    clearTimeout(nhEnterT);
+    nhEnterT = setTimeout(() => { try { document.body.classList.remove('nh-entering'); } catch (e) {} }, ms);
+  }
+  function nhRouteMask() {
+    if (nhSettings.pageTransitions === false) return;
+    if (!document.body) return;
+    nhRememberQuery(); // learn whatever query ABS settles on for this route
+    const path = location.pathname;
+    if (path === nhLastPath) { nhRequeryMask(); return; } // filter/sort: shelf-only mask
+    nhLastPath = path;
+    // A real navigation supersedes any in-flight requery mask, and re-baselines the
+    // query so landing on a page with ?filter=... does not instantly re-mask.
+    nhRqQuery = location.search;
+    nhRqArm = null;
+    document.body.classList.remove('nh-requery', 'nh-requery-ready');
+    // Entrance window (B5): cards that mount within ~2s of a navigation fade in
+    // instead of popping — kills the "trickle" on slow shelf pages (series list
+    // especially). Cards mounted later (scroll) appear instantly as before.
+    document.body.classList.add('nh-entering');
+    nhEnterWindow(2200);
+    const onSeries = /\/library\/[^/]+\/series\/[^/?#]+/.test(path);
+    document.body.classList.remove('nh-series-ready');
+    if (onSeries) document.body.classList.add('nh-series-page');
+    else document.body.classList.remove('nh-series-page');
+    // General mask for EVERY app page (series detail has its own system above; the
+    // login page is handled by the boot veil): hidden from the instant of
+    // navigation until nhPageReveal decides the layout has settled.
+    const maskable = !onSeries && !/\/login\/?$/.test(path);
+    document.body.classList.remove('nh-page-ready');
+    document.body.classList.toggle('nh-page-loading', maskable);
+    nhMaskT0 = Date.now();
+    nhPgArm = '';
+    nhCoverT0 = 0;
+    // Mark the OUTGOING page's bookshelf as stale: during a route transition it
+    // can survive a tick or two, and its cards satisfied the reveal conditions
+    // for the NEW page — the mask lifted before the new grid ever rendered
+    // (user: "easing-in for the library page doesn't work"). The remounted
+    // shelf arrives without the marker.
+    const staleBs = document.getElementById('bookshelf');
+    if (staleBs) staleBs.dataset.nhStale = '1';
+  }
+
+  // The bookshelf for reveal checks: rejects the OUTGOING page's still-mounted
+  // shelf during the first beat of a transition, but un-stales it if it survives
+  // longer — Vue reuses the same component (and element) for home→home library
+  // switches and series→series, and blocking those forever would force the
+  // 3.5s failsafe on every such navigation.
+  function nhShelfFresh() {
+    const bs = document.getElementById('bookshelf');
+    if (!bs) return null;
+    if (bs.dataset.nhStale) {
+      if (Date.now() - nhMaskT0 < 600) return null;
+      delete bs.dataset.nhStale;
+    }
+    return bs;
+  }
+
+  // Is the grid's geometry stable? Compares the first card's box against the
+  // previous tick; two matching samples (~2 ticks) mean ABS has finished
+  // re-laying the shelf. Capped by the caller's failsafe, and by its own timeout
+  // so a shelf that never settles can't hold the page hostage.
+  const nhGridS = { key: '', since: 0 };
+  function nhGridSettled(bs) {
+    const card = bs.querySelector('[id^="book-card-"], [cy-id="card"], [id^="series-card-"], [id^="collection-card-"], [id^="author-card-"], [id^="narrator-card-"]');
+    if (!card) return true;
+    const r = card.getBoundingClientRect();
+    // The card's box alone is not enough: on the series grid ABS re-computed
+    // entitiesPerShelf (10 -> 6) and its left margin ~200ms AFTER the reveal,
+    // while the first card sat still — so watch the shelf's own layout inputs too.
+    const vm = bs.__vue__ || {};
+    const key = Math.round(r.left) + 'x' + Math.round(r.top) + 'x' + Math.round(r.width) +
+      '|' + vm.entitiesPerShelf + '|' + Math.round(vm.bookshelfMarginLeft || 0) +
+      '|' + vm.bookWidth + '|' + Math.round(vm.bookshelfWidth || 0);
+    const now = Date.now();
+    if (key !== nhGridS.key) { nhGridS.key = key; nhGridS.since = now; return false; }
+    // 220ms ≈ three ticks: a two-sample window still let a late ABS
+    // re-position (~7px on the series grid) slip in just after the reveal.
+    return (now - nhGridS.since >= 220) || (now - nhMaskT0 > 2600);
+  }
+
+  // Filter / sort / search change the QUERY, not the path, so the page mask above
+  // deliberately skips them — masking the whole page there would blink the toolbar
+  // control you just clicked. But ABS tears the virtual shelf down to ZERO cards and
+  // rebuilds it (measured in Firefox: 37 -> 0 -> 36 within ~100ms), so the grid
+  // blanks and snaps back. That is the "it flickers once when I filter or sort"
+  // report. Cover the SHELF ONLY for that rebuild, then fade it back.
+  let nhRqT0 = 0;
+  let nhRqQuery = '';
+  // null, NOT '' — a bare nav link's query IS '', so an '' sentinel collided with a
+  // real value and made the reveal guard below short-circuit before it ever armed,
+  // leaving the shelf hidden until the next navigation ("click Library again and all
+  // tiles disappear"). Never give this a value a real location.search can take.
+  let nhRqArm = null;
+  function nhRequeryMask() {
+    if (nhSettings.pageTransitions === false) return;
+    if (!document.body) return;
+    const q = location.search;
+    if (q === nhRqQuery) return;
+    const wasQueried = !!nhRqQuery;
+    nhRqQuery = q;
+    // Nothing to cover on pages with no virtual shelf (settings, book detail...).
+    if (!document.getElementById('bookshelf')) return;
+    // Clicking the CURRENT page's nav link just strips the query (one replaceState,
+    // no refetch — measured: the shelf keeps all its cards). There is no teardown to
+    // hide, so masking it only made the grid blink for no reason.
+    if (!q && wasQueried) return;
+    nhRqT0 = Date.now();
+    nhRqArm = null;
+    document.body.classList.remove('nh-requery-ready');
+    document.body.classList.add('nh-requery');
+  }
+
+  // Hide the shelf for a rebuild that is NOT driven by a query change (our own
+  // filter/sort chips). Reuses the requery mask's reveal conditions — cards back and
+  // geometry settled — so the rebuild happens behind opacity 0 instead of in view.
+  function nhMaskShelfForRebuild() {
+    if (nhSettings.pageTransitions === false) return;
+    if (!document.body || !document.getElementById('bookshelf')) return;
+    nhRqT0 = Date.now();
+    nhRqArm = null;
+    document.body.classList.remove('nh-requery-ready');
+    document.body.classList.add('nh-requery');
+  }
+
+  function nhRequeryReveal() {
+    const body = document.body;
+    if (!body.classList.contains('nh-requery') || body.classList.contains('nh-requery-ready')) return;
+    // Shorter failsafe than the page mask: a filter matching NOTHING is a legitimately
+    // empty shelf and must never sit hidden waiting for a card that is not coming.
+    const overdue = Date.now() - nhRqT0 > 1500;
+    if (!overdue) {
+      const bs = document.getElementById('bookshelf');
+      if (!bs) return;
+      if (!bs.querySelector('[cy-id="card"], [id^="book-card-"], [id^="cover-area-"], [id^="series-card-"], [id^="collection-card-"], [id^="author-card-"], [id^="narrator-card-"]')) return;
+      if (!nhGridSettled(bs)) return;
+    }
+    if (nhRqArm === nhRqQuery) return;
+    nhRqArm = nhRqQuery;
+    const q = nhRqQuery;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (location.search === q) body.classList.add('nh-requery-ready');
+    }));
+  }
+
+  // ---- "Rate finished" home row -------------------------------------------
+  // Books you have finished but never rated. Uses the same community-ratings
+  // store as the book page, so a rating left anywhere makes the book drop out.
+  let nhRf = { key: '', loading: false, data: null, rates: null, ratesAt: 0 };
+
+  function nhRfHome() {
+    if (nhSettings.showRateFinished === false) return null;
+    const m = location.pathname.match(/\/library\/([^/]+)\/?$/);
+    return m ? m[1] : null;
+  }
+
+  function nhRateFinished() {
+    const libId = nhRfHome();
+    const existing = document.getElementById('nh-rate-finished-row');
+    if (!libId) { if (existing) existing.remove(); return; }
+
+    // Ratings map: { items: { <itemId>: { <userId>: {...} } } }. Refreshed at most
+    // once a minute -- a rating left on the book page should remove the card here
+    // without a reload, but this must not become a per-tick request.
+    const now = Date.now();
+    if (!nhRf.loading && (!nhRf.rates || now - nhRf.ratesAt > 60000)) {
+      nhRf.loading = true;
+      fetch('/_nh/api/ratings', { headers: { Authorization: 'Bearer ' + (window.__NH_TOKEN || getTokenNH()) }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => { nhRf.rates = (j && j.items) || {}; nhRf.ratesAt = Date.now(); nhRf.loading = false; })
+        .catch(() => { nhRf.rates = {}; nhRf.ratesAt = Date.now(); nhRf.loading = false; });
+    }
+    if (!nhRf.rates) return;
+
+    let me = null, prog = [];
+    try { me = window.$nuxt.$store.state.user.user; prog = (me && me.mediaProgress) || []; } catch (e) {}
+    if (!me) return;
+
+    const ids = prog.filter((x) => x && x.isFinished && x.libraryItemId)
+      .sort((a, b) => (b.finishedAt || b.lastUpdate || 0) - (a.finishedAt || a.lastUpdate || 0))
+      .map((x) => x.libraryItemId)
+      .filter((id) => !(nhRf.rates[id] && nhRf.rates[id][me.id]))
+      .slice(0, 14);
+
+    const key = libId + '|' + ids.join(',');
+    if (!ids.length) { if (existing) existing.remove(); nhRf.key = key; return; }
+    if (existing && existing.dataset.sig === key) return;
+
+    // Titles/covers come from the store's loaded items where possible; anything
+    // missing is fetched once and memoised on the row itself.
+    const T = nhGsT();
+    const row = existing || document.createElement('div');
+    row.id = 'nh-rate-finished-row';
+    row.dataset.sig = key;
+    row.innerHTML = '';
+    const h = document.createElement('h2');
+    h.className = 'nh-rf-heading';
+    h.textContent = T.rfTitle || PANEL_T.en.rfTitle;
+    row.appendChild(h);
+    const scroll = document.createElement('div');
+    scroll.className = 'nh-rf-scroll';
+    row.appendChild(scroll);
+
+    const tk = window.__NH_TOKEN || getTokenNH();
+    ids.forEach((id) => {
+      const a = document.createElement('a');
+      a.className = 'nh-rf-card';
+      a.href = getBaseNH() + '/item/' + id;
+      a.dataset.id = id;
+      const coverUrl = '/api/items/' + id + '/cover?width=400' + (tk ? '&token=' + encodeURIComponent(tk) : '');
+      const cov = document.createElement('div');
+      cov.className = 'nh-rf-cover';
+      cov.style.backgroundImage = 'url("' + coverUrl + '")';
+      a.appendChild(cov);
+      const t = document.createElement('p');
+      t.className = 'nh-rf-title';
+      t.textContent = nhRfTitles[id] || '';
+      a.appendChild(t);
+      // The tile says what it is instead of only revealing stars under a cursor
+      // that a phone does not have. Tapping anywhere on the tile opens the sheet.
+      const cta = document.createElement('p');
+      cta.className = 'nh-rf-cta';
+      const ghost = document.createElement('span');
+      ghost.className = 'nh-rt-stars';
+      ghost.textContent = '★★★★★';
+      cta.appendChild(ghost);
+      const ctaLbl = document.createElement('span');
+      ctaLbl.textContent = T.rfRate || PANEL_T.en.rfRate;
+      cta.appendChild(ctaLbl);
+      a.appendChild(cta);
+      // Still a real <a> (middle-click / long-press / "open in new tab" all keep
+      // working), but a plain click rates rather than navigates -- the sheet
+      // carries its own link to the book page.
+      a.addEventListener('click', (ev) => {
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button > 0) return;
+        ev.preventDefault();
+        nhRfSheet(id, nhRfTitles[id] || t.textContent, nhRfAuthors[id] || '', coverUrl, () => {
+          // Force the ratings map to refetch so the row's own filter agrees on
+          // the next pass, and collapse the card out rather than blinking it away.
+          nhRf.ratesAt = 0;
+          a.classList.add('nh-rf-done');
+          setTimeout(() => { a.remove(); }, 260);
+        });
+      });
+      scroll.appendChild(a);
+      // Title + author: one cheap per-item fetch, memoised for the session.
+      if (nhRfTitles[id]) return;
+      fetch('/api/items/' + id, { headers: { Authorization: 'Bearer ' + tk } })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          const md = (j && j.media && j.media.metadata) || {};
+          if (md.title) { nhRfTitles[id] = md.title; t.textContent = md.title; }
+          nhRfAuthors[id] = md.authorName || (md.authors || []).map((x) => x.name).join(', ') || '';
+        }).catch(() => {});
+    });
+
+    if (!row.parentNode) {
+      const host = nhHomeRowHost();
+      if (host) host.appendChild(row); else return;
+    }
+    try {
+      const sib = nhShelfRows().find((r) => r.id !== 'nh-rate-finished-row' && r.id !== 'nh-recent-series-row');
+      if (sib) { const cs = getComputedStyle(sib); row.style.paddingLeft = cs.paddingLeft; row.style.paddingRight = cs.paddingRight; }
+    } catch (e) {}
+    nhRfSize();
+    nhRf.key = key;
+  }
+  const nhRfTitles = {};
+  const nhRfAuthors = {};
+
+  // Tile size for the rate row. Same approach as applyRecentSeriesSize: measure a
+  // real, visible ABS cover and title rather than guessing, so the row follows the
+  // cover-size button. It used to be hardcoded at 154px/0.82rem, which is why this
+  // one row ignored the button and sat at its own size next to everything else.
+  function nhRfSize() {
+    const row = document.getElementById('nh-rate-finished-row');
+    if (!row) return;
+    let w = 0;
+    const els = document.querySelectorAll('#bookshelf [id^="cover-area-"]');
+    for (const el of els) {
+      if (el.closest('#nh-hero-container') || el.closest('#nh-recent-series-row') || el.closest('#nh-rate-finished-row')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 40) { w = r.width; break; }
+    }
+    if (!w) { try { w = (window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.globals && window.$nuxt.$store.state.globals.bookshelfBookWidth) || 0; } catch (e) {} }
+    if (w > 40) {
+      const v = Math.round(w) + 'px';
+      if (row.style.getPropertyValue('--nh-rf-cw') !== v) row.style.setProperty('--nh-rf-cw', v);
+    }
+    const titles = document.querySelectorAll('#bookshelf [cy-id="title"]');
+    for (const el of titles) {
+      if (el.closest('#nh-hero-container') || el.closest('#nh-recent-series-row')) continue;
+      if (el.getBoundingClientRect().width > 10) {
+        const fs = getComputedStyle(el).fontSize;
+        if (row.style.getPropertyValue('--nh-rf-fs') !== fs) row.style.setProperty('--nh-rf-fs', fs);
+        break;
+      }
+    }
+  }
+
+  // Rate sheet: one book, one oversized star row, an explicit Save. Replaces
+  // rating straight off the tile — that needed hover to even appear, and where it
+  // did appear on touch a stray tap wrote a rating with no confirmation.
+  function nhRfSheet(id, title, author, coverUrl, onSaved) {
+    const T = nhGsT();
+    const old = document.getElementById('nh-rf-sheet');
+    if (old) old.remove();
+    let value = 0;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'nh-rf-sheet';
+    const bg = document.createElement('div');
+    bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div');
+    box.className = 'nh-rt-modal-box';
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    bg.addEventListener('click', close);
+
+    const head = document.createElement('div');
+    head.className = 'nh-rt-modal-head';
+    const htxt = document.createElement('span');
+    htxt.textContent = T.rfSheet || PANEL_T.en.rfSheet;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'nh-rt-modal-x';
+    x.textContent = '×';
+    x.addEventListener('click', close);
+    head.appendChild(htxt); head.appendChild(x);
+    box.appendChild(head);
+
+    const top = document.createElement('div');
+    top.className = 'nh-rf-sheet-top';
+    const cv = document.createElement('div');
+    cv.className = 'nh-rf-sheet-cover';
+    cv.style.backgroundImage = 'url("' + coverUrl + '")';
+    const meta = document.createElement('div');
+    meta.className = 'nh-rf-sheet-meta';
+    const mt = document.createElement('p');
+    mt.className = 'nh-rf-sheet-t';
+    mt.textContent = title || '';
+    const ma = document.createElement('p');
+    ma.className = 'nh-rf-sheet-a';
+    ma.textContent = author || '';
+    meta.appendChild(mt); meta.appendChild(ma);
+    top.appendChild(cv); top.appendChild(meta);
+    box.appendChild(top);
+
+    // Same two-layer widget as the book page (grey base + amber overlay clipped
+    // by width), which gives half-stars for free.
+    const pick = document.createElement('div');
+    pick.className = 'nh-rf-pick';
+    const stars = document.createElement('span');
+    stars.className = 'nh-rt-stars';
+    const base = document.createElement('span');
+    base.textContent = '★★★★★';
+    const fill = document.createElement('span');
+    fill.className = 'nh-rt-fill';
+    fill.textContent = '★★★★★';
+    fill.style.width = '0%';
+    stars.appendChild(base); stars.appendChild(fill);
+    pick.appendChild(stars);
+    box.appendChild(pick);
+
+    // Empty until a rating is picked: the old "Pick a rating" line only restated
+    // the row of stars right above it. The element stays so its reserved height
+    // keeps the buttons from jumping when the value appears.
+    const val = document.createElement('p');
+    val.className = 'nh-rf-val';
+    box.appendChild(val);
+
+    // Pointer events, not mouse events: this has to preview under a dragging
+    // thumb as well as a hovering cursor.
+    const valueAt = (clientX) => {
+      const r = stars.getBoundingClientRect();
+      if (!r.width) return 0;
+      const v = Math.ceil(((clientX - r.left) / r.width) * 10) / 2;
+      return Math.max(0.5, Math.min(5, v));
+    };
+    const preview = (v) => nhStarFill(stars, fill, v);
+    const commit = (v) => { value = v; preview(v); val.textContent = (Math.round(v * 10) / 10) + ' / 5'; save.disabled = false; };
+    stars.addEventListener('pointermove', (ev) => { if (ev.pointerType === 'mouse' && !ev.buttons) preview(valueAt(ev.clientX)); else if (ev.buttons) commit(valueAt(ev.clientX)); });
+    stars.addEventListener('pointerleave', () => preview(value));
+    stars.addEventListener('pointerdown', (ev) => { ev.preventDefault(); commit(valueAt(ev.clientX)); });
+
+    const acts = document.createElement('div');
+    acts.className = 'nh-rt-actions';
+    const save = document.createElement('button');
+    save.type = 'button';
+    save.className = 'nh-rt-btn';
+    save.textContent = T.sdSave || PANEL_T.en.sdSave;
+    save.disabled = true;
+    // A real button, matching Save's shape in a quieter fill — an underlined link
+    // beside a solid button read as two different kinds of control.
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'nh-rt-btn nh-rf-btn2';
+    open.textContent = T.rfOpen || PANEL_T.en.rfOpen;
+    open.addEventListener('click', () => { close(); nhRouterPush('/item/' + id); });
+    const status = document.createElement('span');
+    status.className = 'nh-rt-status';
+    save.addEventListener('click', () => {
+      if (!value || save.disabled) return;
+      save.disabled = true;
+      status.textContent = '…';
+      fetch('/_nh/api/ratings', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + (window.__NH_TOKEN || getTokenNH()), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ itemId: id, stars: value, review: '' })
+      }).then((r) => {
+        if (!r.ok) { save.disabled = false; status.textContent = '✗'; return; }
+        status.textContent = '';
+        close();
+        if (onSaved) onSaved();
+      }).catch(() => { save.disabled = false; status.textContent = '✗'; });
+    });
+    // Open on the left, Save on the right (Pawel).
+    acts.appendChild(open); acts.appendChild(save); acts.appendChild(status);
+    box.appendChild(acts);
+
+    overlay.appendChild(bg);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
+  // The single element that holds every home shelf row. All rows share one parent
+  // (measured), so this is where our injected rows belong too.
+  function nhHomeRowHost() {
+    const r = document.querySelector('#bookshelf .bookshelf-row');
+    if (!r) return null;
+    let row = r;
+    if (!r.querySelector('h2')) {
+      let q = r.parentElement, hop = 0;
+      while (q && hop < 4) { if (q.querySelector('h2')) { row = q; break; } q = q.parentElement; hop++; }
+    }
+    return row.parentElement;
+  }
+
+  // ---- home section order --------------------------------------------------
+  // Keys are ABS's own shelfIds plus our injected rows. Labels come from each
+  // row's live <h2>, so the reorder list is automatically in the UI language
+  // without translating ABS's shelf names ourselves.
+  // A shelf the theme has hidden is still in the DOM (applySettings sets
+  // display:none on it), so it must not appear in the reorder list -- the native
+  // "Recent Series" shelf is hidden whenever our custom row replaces it, and
+  // listing both showed "Recent Series" twice with identical labels.
+  function nhSectionHidden(el) {
+    if (!el) return true;
+    if (getComputedStyle(el).display === 'none') return true;
+    const inner = el.querySelector('.bookshelf-row');
+    return !!(inner && getComputedStyle(inner).display === 'none');
+  }
+
+  function nhHomeSections() {
+    const host = nhHomeRowHost();
+    if (!host) return [];
+    const out = [];
+    Array.prototype.forEach.call(host.children, (el) => {
+      if (!(el instanceof HTMLElement)) return;
+      if (nhSectionHidden(el)) return;
+      let key = el.id || null;
+      if (!key) {
+        const vm = el.__vue__ || {};
+        key = vm.shelfId || (vm.shelf && vm.shelf.id) || null;
+        if (!key) {
+          const inner = el.querySelector('.bookshelf-row');
+          const ivm = inner && inner.__vue__;
+          key = (ivm && (ivm.shelfId || (ivm.shelf && ivm.shelf.id))) || null;
+        }
+      }
+      if (!key) return;
+      const h2 = el.querySelector('h2');
+      out.push({ key: key, label: (h2 && h2.textContent.trim()) || key, el: el });
+    });
+    return out;
+  }
+
+  function nhHomeOrderApply() {
+    if (!nhRfHome() && !/\/library\/[^/]+\/?$/.test(location.pathname)) return;
+    const secs = nhHomeSections();
+    if (secs.length < 2) return;
+    // Remember what exists so the settings panel can offer a list even when the
+    // user is not standing on the home page. Written BEFORE the early return for
+    // "no order set yet" -- otherwise the panel can never show a list until an
+    // order exists, and an order can never be set without a list.
+    try { localStorage.setItem('nh-home-sections', JSON.stringify(secs.map((s) => ({ key: s.key, label: s.label })))); } catch (e) {}
+    const order = Array.isArray(nhSettings.homeOrder) ? nhSettings.homeOrder : [];
+    if (!order.length) return;
+    const rank = {};
+    order.forEach((k, i) => { rank[k] = i; });
+    const want = secs.slice().sort((a, b) => {
+      const ra = rank[a.key], rb = rank[b.key];
+      if (ra === undefined && rb === undefined) return 0;   // both unknown: keep ABS order
+      if (ra === undefined) return 1;                        // unknown sinks below ordered ones
+      if (rb === undefined) return -1;
+      return ra - rb;
+    });
+    // CSS order, NOT appendChild. Moving ABS's own shelf nodes desynchronised
+    // Vue's virtual DOM: it re-inserted them in its own order, we moved them
+    // back, and the shelves re-mounted on every pass -- which is what made every
+    // book tile on the home page flicker continuously. Setting `order` never
+    // touches the tree, so Vue has nothing to react to.
+    const host = nhHomeRowHost();
+    if (!host) return;
+    document.body.classList.add('nh-home-ordered');
+    want.forEach((s, i) => {
+      const v = String(i + 1);
+      if (s.el.style.order !== v) s.el.style.order = v;
+    });
+  }
+
+  // Reorder UI in the settings panel. Sections and their labels come from the
+  // last home page that was rendered (cached), so the list reads in whatever
+  // language ABS is showing rather than needing its own translations.
+  function nhHomeOrderUI(host) {
+    const T = nhGsT();
+    const wrap = document.createElement('div');
+    wrap.className = 'nh-ho-wrap';
+    const lbl = document.createElement('div');
+    lbl.className = 'nh-ho-lbl';
+    lbl.textContent = T.hoTitle || PANEL_T.en.hoTitle;
+    wrap.appendChild(lbl);
+    const list = document.createElement('div');
+    list.className = 'nh-ho-list';
+    wrap.appendChild(list);
+
+    const render = () => {
+      let known = [];
+      try { known = JSON.parse(localStorage.getItem('nh-home-sections') || '[]') || []; } catch (e) {}
+      if (!known.length) {
+        list.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'nh-ho-empty';
+        p.textContent = T.hoEmpty || PANEL_T.en.hoEmpty;
+        list.appendChild(p);
+        return;
+      }
+      const saved = Array.isArray(nhSettings.homeOrder) ? nhSettings.homeOrder : [];
+      const rank = {}; saved.forEach((k, i) => { rank[k] = i; });
+      const rows = known.slice().sort((a, b) => {
+        const ra = rank[a.key], rb = rank[b.key];
+        if (ra === undefined && rb === undefined) return 0;
+        if (ra === undefined) return 1;
+        if (rb === undefined) return -1;
+        return ra - rb;
+      });
+      const commit = () => {
+        nhSettings.homeOrder = rows.map((r) => r.key);
+        saveSettings();
+        render();
+        try { nhHomeOrderApply(); } catch (e) {}
+      };
+      list.innerHTML = '';
+      rows.forEach((r, i) => {
+        const item = document.createElement('div');
+        item.className = 'nh-ho-item';
+        const nm = document.createElement('span');
+        nm.className = 'nh-ho-name';
+        nm.textContent = r.label || r.key;
+        const up = document.createElement('button');
+        up.type = 'button'; up.className = 'nh-ho-btn';
+        up.innerHTML = '<span class="material-symbols">arrow_upward</span>';
+        up.disabled = i === 0;
+        up.addEventListener('click', () => { rows.splice(i - 1, 0, rows.splice(i, 1)[0]); commit(); });
+        const dn = document.createElement('button');
+        dn.type = 'button'; dn.className = 'nh-ho-btn';
+        dn.innerHTML = '<span class="material-symbols">arrow_downward</span>';
+        dn.disabled = i === rows.length - 1;
+        dn.addEventListener('click', () => { rows.splice(i + 1, 0, rows.splice(i, 1)[0]); commit(); });
+        item.appendChild(nm); item.appendChild(up); item.appendChild(dn);
+        list.appendChild(item);
+      });
+      const reset = document.createElement('button');
+      reset.type = 'button'; reset.className = 'nh-ho-reset';
+      reset.textContent = T.hoReset || PANEL_T.en.hoReset;
+      reset.addEventListener('click', () => { nhSettings.homeOrder = []; saveSettings(); render(); });
+      list.appendChild(reset);
+    };
+    render();
+    host.appendChild(wrap);
+  }
+
+  // Author cards carry NO id on ABS 2.35 (an [id^="author-card-"] selector matches
+  // nothing), so the only stable hooks are cy-id plus the /author/ href. Photo-less
+  // cards get an initial medallion drawn by CSS from this attribute, mirroring the
+  // narrators page. Runs globally rather than from nhAuthorsBar, because the same
+  // card appears in the home page's "Newest Authors" shelf, which that function
+  // never sees. The shelf is virtualized and recycles nodes, so this re-runs every
+  // tick; it only writes when the value actually changed, so the observer does not
+  // thrash.
+  function nhAuthorCardInitials() {
+    document.querySelectorAll('#bookshelf a[href*="/author/"] [cy-id="imageArea"]').forEach((ia) => {
+      if (ia.querySelector('img')) { if (ia.hasAttribute('data-nh-ini')) ia.removeAttribute('data-nh-ini'); return; }
+      const p = ia.parentElement && ia.parentElement.querySelector('[cy-id="textInline"] p');
+      const ch = (((p && p.textContent.trim().charAt(0)) || '?')).toUpperCase();
+      if (ia.getAttribute('data-nh-ini') !== ch) ia.setAttribute('data-nh-ini', ch);
+    });
+  }
+
+  // Multi-select puts ABS into a mode where a fixed bar covers the appbar. Flag
+  // it on <body> so the theme's own appbar additions can step out of the way --
+  // the bar and the appbar are both z-index 60, so which one wins is decided by
+  // DOM order and varies between ABS builds.
+  function nhSelectionClass() {
+    let on = false;
+    try {
+      const g = window.$nuxt.$store.state.globals;
+      on = !!(g && Array.isArray(g.selectedMediaItems) && g.selectedMediaItems.length);
+    } catch (e) {}
+    document.body.classList.toggle('nh-selecting', on);
+  }
+
+  // Cover-art gate. A settled layout is NOT a finished page: the grid revealed
+  // fully laid out with empty cover boxes and the art popped in a beat later
+  // (user: "trickle of elements, I see stuff loading"). Wait for the covers that
+  // are actually in the first viewport — rows below the fold can stream in unseen
+  // — and only on a budget that starts when the STRUCTURE settled, so a slow link
+  // degrades to the old behaviour instead of sitting on the 3.5s failsafe.
+  let nhCoverT0 = 0;
+  function nhCoversReady(scope) {
+    if (!scope) return true;
+    if (!nhCoverT0) nhCoverT0 = Date.now();
+    if (Date.now() - nhCoverT0 > 1200) return true;
+    const vh = window.innerHeight || 0;
+    const imgs = scope.querySelectorAll('img');
+    // Cap the scan: a 120-card shelf must not cost a full layout pass per tick.
+    // getBoundingClientRect (not offsetParent) — the page is opacity:0 here, which
+    // keeps layout, and fixed-position ancestors have no offsetParent.
+    for (let i = 0, seen = 0; i < imgs.length && seen < 40; i++) {
+      const img = imgs[i];
+      // No src yet = ABS has not resolved this cover; that is a structural wait,
+      // already covered by the branch gates. Only judge images actually fetching.
+      if (!img.getAttribute('src')) continue;
+      const r = img.getBoundingClientRect();
+      if (!r.width || r.bottom <= 0 || r.top >= vh) continue;
+      seen++;
+      if (!img.complete) return false;
+    }
+    return true;
+  }
+
+  // Covers that miss the reveal gate must EASE in, not snap. ABS resizes covers on
+  // demand, so a first visit to a shelf can take seconds per thumbnail — no reveal
+  // gate can wait that out without leaving the user on a blank canvas. Fading each
+  // cover as it decodes is what turns the leftover "stuff loading" into something
+  // that reads as intentional. ONE delegated capturing listener per scroller (load
+  // does not bubble, but it does capture) — a per-image handler on a 120-card shelf
+  // would cost more than it saves.
+  function nhCoverFadeIn() {
+    ['bookshelf', 'item-page-wrapper'].forEach(function (id) {
+      const el = document.getElementById(id);
+      if (!el || el.dataset.nhImgFade === '1') return;
+      el.dataset.nhImgFade = '1';
+      el.addEventListener('load', function (e) {
+        const t = e.target;
+        if (t && t.tagName === 'IMG') t.classList.add('nh-img-in');
+      }, true);
+    });
+  }
+
+  // Reveal + re-arm the entrance window. The eased card entrance has to outlive the
+  // REVEAL, not the route change: the fixed 2.2s window from navigation had already
+  // expired by the time a slow library page appeared, so every card that mounted
+  // afterwards popped in instead of fading.
+  function nhPageShown(body) {
+    body.classList.add('nh-page-ready');
+    nhEnterWindow(1200);
+  }
+
+  // ABS syncs the user's saved sort into the URL a beat AFTER the shelf first
+  // mounts (search "" -> "?sort=media.metadata.title&desc=0"), and that re-query
+  // tears the shelf down to zero cards and refetches it. Whether it lands before or
+  // after our reveal is a RACE decided by library size and link speed: on the dev
+  // sandbox it lands first and the mask covers it, on Pawel's server it lands second
+  // so the page appeared and then visibly "reloaded all elements". Hold the reveal
+  // until the sync has landed. Bounded — builds that never sync (or libraries with
+  // no saved sort) must not sit masked waiting for a param that is not coming.
+  // Pre-seed the route query so ABS's post-mount sync is a NO-OP.
+  //
+  // Verified against an UNTHEMED ABS on :13378 — stock Audiobookshelf pushes the bare
+  // path and then replaceStates the user's saved sort onto it, which re-queries and
+  // rebuilds the whole shelf. We cannot drop that without losing sort persistence and
+  // deep links. Instead we arrive with the query already applied, via a router guard
+  // that runs BEFORE the page component mounts, so ABS finds nothing to change.
+  //
+  // The params are LEARNED from ABS, never reconstructed: whatever it settles on for a
+  // route is what we replay next time. So we can't drift from its logic (the books grid
+  // and the series list use different param sets), and if it ever changes its mind it
+  // simply replaceStates once more and we re-learn.
+  // localStorage, not session: a first visit in a fresh session would otherwise still
+  // pay the double fetch. If the saved sort was changed elsewhere the replayed query
+  // is stale for exactly one navigation — ABS replaceStates its own value and we
+  // re-learn it, so this is self-correcting rather than something that can go wrong.
+  const NH_Q_KEY = 'nh-route-q';
+  let nhQMap = {};
+  try { nhQMap = JSON.parse(localStorage.getItem(NH_Q_KEY) || '{}') || {}; } catch (e) {}
+  const NH_Q_ROUTES = /\/bookshelf(\/series)?\/?$/;
+
+  // Router-relative path. location.pathname carries the deployment prefix (ABS is
+  // commonly served under /audiobookshelf) but the router's to.path never does, so
+  // keying the map on the raw pathname made every lookup miss.
+  function nhRelPath() {
+    const base = getBaseNH();
+    const p = location.pathname;
+    return (base && p.indexOf(base) === 0 ? p.slice(base.length) : p) || '/';
+  }
+
+  function nhRememberQuery() {
+    const p = nhRelPath();
+    if (!NH_Q_ROUTES.test(p) || !location.search) return;
+    if (nhQMap[p] === location.search) return;
+    nhQMap[p] = location.search;
+    try { localStorage.setItem(NH_Q_KEY, JSON.stringify(nhQMap)); } catch (e) {}
+  }
+
+  let nhRouterHooked = false;
+  function nhHookRouter() {
+    if (nhRouterHooked) return;
+    const r = window.$nuxt && window.$nuxt.$router;
+    if (!r || typeof r.beforeEach !== 'function') return;
+    nhRouterHooked = true;
+    r.beforeEach(function (to, from, next) {
+      try {
+        if (nhSettings.pageTransitions === false) return next();
+        // Only bare navigations: an explicit query (a filter link, a deep link, the
+        // user's own sort click) is the user's intent and must pass through untouched.
+        if (to.query && Object.keys(to.query).length) return next();
+        if (!NH_Q_ROUTES.test(to.path)) return next();
+        const remembered = nhQMap[to.path];
+        if (!remembered) return next();
+        const query = {};
+        remembered.replace(/^\?/, '').split('&').forEach(function (kv) {
+          if (!kv) return;
+          const i = kv.indexOf('=');
+          const k = decodeURIComponent(i < 0 ? kv : kv.slice(0, i));
+          query[k] = i < 0 ? '' : decodeURIComponent(kv.slice(i + 1));
+        });
+        // replace, not push, so this never adds a back-button step. The redirected
+        // navigation re-enters this guard with a non-empty query and passes straight
+        // through, so there is no loop.
+        return next({ path: to.path, query: query, replace: true });
+      } catch (e) {}
+      next();
+    });
+  }
+
+  function nhSortSynced(bs) {
+    // ONLY the books grid and the series list get a sort param. Collections and
+    // playlists share the same #bookshelf component — so vm.orderBy is stale from the
+    // last books grid — but never sync one, and gating them just burned the full
+    // bound (measured: collections reveal 1740ms instead of ~400ms).
+    if (!/\/bookshelf(\/series)?\/?$/.test(location.pathname)) return true;
+    if (Date.now() - nhMaskT0 > 1400) return true;
+    const vm = bs && bs.__vue__;
+    if (!vm || !vm.orderBy) return true;
+    return /[?&]sort=/.test(location.search);
+  }
+
+  function nhPageReveal() {
+    const body = document.body;
+    if (!body.classList.contains('nh-page-loading') || body.classList.contains('nh-page-ready')) return;
+    const overdue = Date.now() - nhMaskT0 > 3500; // failsafe: never stay hidden
+    if (!overdue) {
+      const path = location.pathname;
+      const page = document.querySelector('#app-content .page');
+      // Some routes render NO page container at all (the sandbox's ABS build
+      // serves a blank authors list, upstream quirk) — don't sit masked on
+      // nothing until the 3.5s failsafe.
+      if (!page) {
+        if (Date.now() - nhMaskT0 > 1200) nhPageShown(body);
+        return;
+      }
+      if (/\/library\/[^/]+\/?$/.test(path)) {
+        // HOME: wait for shelves, plus the hero (container or its skeleton — both
+        // appear the instant the Continue Listening shelf is identified) and the
+        // custom Recent Series row (or certainty that either is not coming).
+        const bs = nhShelfFresh();
+        if (!bs) return;
+        const shelves = nhShelfRows();
+        if (!shelves.length) return;
+        const clExists = shelves.some(r => nhShelfId(r) === 'continue-listening' ||
+          /continue|kontynuuj|weiter|continu/.test(((r.querySelector('h2') || {}).textContent || '').toLowerCase()));
+        // The REAL carousel, not its skeleton — with the first-slide-first build it
+        // arrives one item-fetch after the shelf, and revealing the skeleton only to
+        // swap it a beat later was the last visible home-page flicker.
+        const heroSettled = nhSettings.showHeroCarousel === false || !clExists ||
+          document.getElementById('nh-hero-container');
+        const rsOn = nhSettings.showCustomRecentSeries && nhSettings.customSeriesCards !== false && !nhSettings.hideHomeRecentSeries;
+        const rsSettled = !rsOn || document.getElementById('nh-recent-series-row') ||
+          (nhRecentSeries.key && !nhRecentSeries.loading && (!nhRecentSeries.data || !nhRecentSeries.data.length));
+        if (!heroSettled || !rsSettled) return;
+        if (!nhCoversReady(bs)) return;
+      } else if (/\/item\/[^/?#]+/.test(path)) {
+        // BOOK DETAIL: the redesign has landed once the metadata grid is classed
+        // and the HD cover swap has run (book-details.js does both in its tick).
+        const ipw = document.getElementById('item-page-wrapper');
+        if (!ipw) return;
+        if (!ipw.querySelector('.nh-metadata-container')) return;
+        // The HD cover swap is polish, not structure — wait briefly, never hostage.
+        if (!ipw.querySelector('[data-hd-fixed="true"]') && Date.now() - nhMaskT0 < 1200) return;
+        if (!nhCoversReady(ipw)) return;
+      } else if (document.body.classList.contains('nh-collections-page')) {
+        // Collections hides #bookshelf entirely and renders its own grid, so the
+        // card check below can never pass and the page sat on the 1500ms escape
+        // hatch (measured: 383ms when a stale card happened to linger, 1595ms
+        // otherwise). Gate on the grid we actually draw.
+        const g = document.getElementById('nh-cols-grid');
+        if (!g || !g.querySelector('.nh-cl-card')) {
+          if (Date.now() - nhMaskT0 < 1500) return;
+        }
+      } else if (/\/library\/[^/]+\/(bookshelf|narrators|authors)/.test(path)) {
+        // Grid pages: at least one card rendered — on the FRESH shelf, not the
+        // outgoing page's still-mounted one. Two escape hatches: some builds
+        // render authors/narrators with NO #bookshelf at all (blank-page ABS
+        // quirk), and legitimately empty grids (filter with 0 results) never
+        // get a card — neither may hold the mask to the 3.5s failsafe.
+        const bs = nhShelfFresh();
+        if (!bs) {
+          if (Date.now() - nhMaskT0 < 1200) return;
+        } else if (!bs.querySelector('[cy-id="card"], [id^="book-card-"], [id^="cover-area-"], [id^="series-card-"], [id^="collection-card-"], [id^="author-card-"], [id^="narrator-card-"]')) {
+          if (Date.now() - nhMaskT0 < 1500) return;
+        } else if (!nhSortSynced(bs)) {
+          // Checked BEFORE the geometry/cover gates: these cards are about to be
+          // destroyed by the sync, so measuring or waiting on them is wasted budget.
+          return;
+        } else if (!nhGridSettled(bs)) {
+          // Pawel's priority: no trickle-in. ABS lays the shelf out with the
+          // DEFAULT cover size and re-lays it once the user's saved size arrives,
+          // which moves every card and changes the side margins a beat after the
+          // reveal. Hold the mask until two consecutive samples agree.
+          return;
+        } else if (!nhCoversReady(bs)) {
+          // ...and the boxes must have their art in them, not just their place.
+          return;
+        }
+      } else if (path.includes('/config')) {
+        if (!document.querySelector('.configContent')) return;
+      } else {
+        // Collection/author/playlist details and anything else: content mounted.
+        if (!page.firstElementChild) return;
+      }
+      // Conditions met: reveal two animation frames from now, so everything this
+      // tick injected/restyled has actually painted underneath the mask first.
+      if (nhPgArm !== path) {
+        nhPgArm = path;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (location.pathname === path) nhPageShown(body);
+        }));
+      }
+      return;
+    }
+    nhPageShown(body);
+  }
+  try {
+    const origPush = history.pushState;
+    history.pushState = function () { const r = origPush.apply(this, arguments); try { nhRouteMask(); nhQueueTick(); } catch (e) {} return r; };
+    const origReplace = history.replaceState;
+    history.replaceState = function () { const r = origReplace.apply(this, arguments); try { nhRouteMask(); nhQueueTick(); } catch (e) {} return r; };
+    window.addEventListener('popstate', function () { try { nhRouteMask(); nhQueueTick(); } catch (e) {} });
+    nhRouteMask();
+  } catch (e) {}
+
+  function nhSeriesReveal() {
+    const body = document.body;
+    if (!body.classList.contains('nh-series-page') || body.classList.contains('nh-series-ready')) return;
+    const bookshelf = document.getElementById('bookshelf');
+    const h = document.getElementById('nh-series-header');
+    const born = h ? (parseInt(h.dataset.born, 10) || 0) : 0;
+    const overdue = born && Date.now() - born > 4000; // failsafe: never stay hidden
+    if (!overdue) {
+      if (!bookshelf || !h || !bookshelf.classList.contains('nh-with-series-header')) return;
+      if (bookshelf.dataset.nhRebuilt !== location.pathname) return;
+      // structure + badges are in: reveal two frames from now (post-paint)
+      if (bookshelf.dataset.nhRevealArm !== location.pathname) {
+        bookshelf.dataset.nhRevealArm = location.pathname;
+        const path = location.pathname;
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (location.pathname === path) body.classList.add('nh-series-ready');
+        }));
+      }
+      return;
+    }
+    body.classList.add('nh-series-ready');
+  }
+
+  // Veil lift. The head-injected FOUC blocker now paints a full-screen canvas-
+  // coloured veil (+spinner) over <body> instead of hiding it, so Vue boots and
+  // renders UNDERNEATH — users never see the stock logo / "audiobookshelf" name
+  // flash before the theme re-brands them (user report). Reveal on the first tick
+  // where the app shell exists: applySettings runs EARLIER in the same tick, so by
+  // now the logo/name are already swapped. The 4s head timeout stays as failsafe.
+  function nhLiftVeil() {
+    const html = document.documentElement;
+    if (html.classList.contains('nh-ready')) return;
+    if (nhSp.hold) return; // start-page redirect still pending — stay veiled (A4)
+    if (!document.querySelector('#appbar a[href$="/"] img') &&
+        !document.querySelector('#page-wrapper img[alt="Audiobookshelf Logo"]')) return;
+    html.classList.add('nh-ready');
+  }
+
   const nhWarned = {};
   function runMutations() {
     // One failure must not block the rest — but it must not be invisible either:
@@ -2460,24 +10116,92 @@
     safe(nhSeriesScale);
     safe(nhCoverModeClass);
     safe(nhSeriesHeader);
+    safe(nhSeriesCardCovers);
+    safe(nhGlobalSearch);
+    safe(nhStartPage);
     safe(nhTagFinished);
+    safe(nhCardRatings);
+    safe(nhCardPlayIcon);
+    safe(nhLibFilter);
+    safe(nhNarratorsPage);
+    safe(nhAuthorsBar);
+    safe(nhCollectionPage);
+    safe(nhCollectionsLanding);
+    safe(nhStatsScoreboard);
+    safe(nhWeekChart);
+    safe(nhYourStatsExtras);
+    safe(nhLibraryStats);
+    safe(nhLsNavLabel);
+    safe(nhReportsBadge);
+    safe(nhAccountReports);
+    safe(nhDpRouteGuard);
+    safe(nhModalLock);
+    safe(nhBookAuthorLinks);
+    safe(nhHeatmapSkin);
+    safe(nhStatsFit);
+    safe(nhHeatmapCaption);
+    safe(nhAutoplaySeries);
+    safe(nhFamilyStatsSync);
+    safe(nhFsAdminSeed);
+    safe(nhUsersPage);
+    safe(nhUserEditModal);
+    safe(nhSeriesReveal);
     safe(nhEreader);
     safe(nhEreaderPreviewSync);
     safe(applySettings);
+    safe(nhLiftVeil);
     safe(injectSettingsPanel);
     safe(sweepFooters);
     safe(swapStatsLinks);
     safe(remapRailIcons);
+    safe(nhApplyTabIdentity); // Nuxt re-renders <head> on navigation
     safe(localizeRail);
+    safe(nhAccountAvatar);
     safe(injectMobileMenuButton);
     safe(hideMobileUploadButton);
     safe(injectGearButton);
     safe(injectHeroBanner);
     safe(manageRecentSeries);
     safe(applyRecentSeriesSize);
+    safe(nhRfSize);
+    safe(nhShelfNudge);
+    // core.js owns the toolbar layout classes; drive them from the reactive tick too
+    // so a remounted #toolbar is re-classed within a frame, not on the 200ms poll.
+    safe(function nhLayout() { if (window.__nhManageLayout) window.__nhManageLayout(); });
+    safe(nhAuthorCardInitials);
+    safe(nhRateFinished);
+    safe(nhHomeOrderApply);
+    safe(nhSelectionClass);
+    safe(nhHookRouter);
+    safe(nhCoverFadeIn);
+    safe(nhPageReveal);
+    safe(nhRequeryReveal);
     safe(manageCinematic);
-    safe(injectGoodreads);
+    safe(injectBookSites);
   }
 
+  // Reactive scheduler: run a tick within ~80ms of any DOM change instead of only
+  // every 500ms — masks reveal (and injections land) as soon as content actually
+  // mounts, cutting up to ~1s of perceived latency per navigation. Safe against
+  // feedback loops because every function in runMutations is idempotent (checks
+  // before writing): once the page settles, a tick makes no mutations and the
+  // observer goes quiet. The interval stays as a heartbeat for non-DOM state.
+  let nhTickQueued = false;
+  let nhLastTickAt = 0;
+  function nhQueueTick() {
+    if (nhTickQueued) return;
+    nhTickQueued = true;
+    requestAnimationFrame(() => {
+      const wait = Math.max(0, 80 - (Date.now() - nhLastTickAt));
+      setTimeout(() => {
+        nhTickQueued = false;
+        nhLastTickAt = Date.now();
+        runMutations();
+      }, wait);
+    });
+  }
+  try {
+    new MutationObserver(nhQueueTick).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
   setInterval(runMutations, 500);
 })();

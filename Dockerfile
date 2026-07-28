@@ -1,7 +1,33 @@
+# --- stage 1: minify the theme payload (B1) ---------------------------------
+# Every HTML document SSI-inlines all four theme files, so their size is paid on
+# every page load. Sources in git stay readable; only the image artifact is
+# minified. The `/* NanoHive … vX.Y.Z */` header line of each file is preserved
+# so the version stamp is still visible in the served payload.
+#   NH_MINIFY=false  ->  ship the sources verbatim (escape hatch for debugging)
+FROM node:22-alpine AS themebuild
+ARG NH_MINIFY=true
+WORKDIR /src
+COPY theme/ ./theme/
+RUN if [ "$NH_MINIFY" = "true" ]; then \
+      npm install --silent --no-audit --no-fund --no-package-lock esbuild@0.24.2 && \
+      for f in core.js enhancements.js book-details.js nh-early.js; do \
+        # Rebuild the banner as a CLOSED one-line comment. Taking line 1 verbatim
+        # is wrong: nh-early.js's header spans several lines, so the copied line
+        # opened a comment that then swallowed the whole minified file.
+        hdr=$(head -n 1 "theme/$f" | sed 's|/\*||; s|\*/||; s|^ *||; s| *$||'); \
+        printf '/* %s */\n' "$hdr" > "/tmp/banner-$f"; \
+        ./node_modules/.bin/esbuild "theme/$f" --minify --target=es2020 --charset=utf8 --legal-comments=none --outfile="/tmp/min-$f"; \
+        cat "/tmp/banner-$f" "/tmp/min-$f" > "theme/$f"; \
+        # A broken artifact must fail the BUILD, not the browser.
+        node --check "theme/$f" || exit 1; \
+        printf '%-18s %s\n' "$f" "$(wc -c < "theme/$f") bytes"; \
+      done; \
+    else echo "NH_MINIFY=false — shipping readable sources"; fi
+
 FROM nginx:alpine
 
 # Theme payload, served at /_nh/ and inlined into HTML via SSI
-COPY theme/ /usr/share/nginx/nh-theme/
+COPY --from=themebuild /src/theme/ /usr/share/nginx/nh-theme/
 
 # Config template processed by the image's built-in envsubst step
 COPY default.conf.template /etc/nginx/templates/default.conf.template
@@ -19,7 +45,7 @@ RUN chmod +x /docker-entrypoint.d/05-check-env.sh
 # Every NH_* var below must match this filter or it will be left literal in the
 # generated config and the injected JSON will be invalid.
 ENV NGINX_ENVSUBST_FILTER="^(ABS_UPSTREAM|THEME_VERSION|NH_[A-Z0-9_]+)$" \
-    THEME_VERSION="core3.29.9_enh6.65.3_book1.25.1_early1.3.0"
+    THEME_VERSION="core3.114.0_enh6.167.0_book1.38.0_early1.6.0_njs1.12.0"
 
 # --- Default appearance. Each user can override any of these in the in-app
 # --- settings panel (gear icon); their choice is stored per-browser.
@@ -37,6 +63,7 @@ ENV NH_APP_NAME="" \
     NH_CUSTOM_SERIES_CARDS="true" \
     NH_SHOW_HERO_CAROUSEL="true" \
     NH_SHOW_RATINGS="true" \
+    NH_GLOBAL_SEARCH="true" \
     NH_FOUC_BG="#181512"
 
 EXPOSE 80

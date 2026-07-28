@@ -1,4 +1,4 @@
-/* NanoHive ABS — Book Details Redesign  v1.25.1  (injected build) */
+/* NanoHive ABS — Book Details Redesign  v1.38.0  (injected build) */
 
 (function () {
   'use strict';
@@ -7,30 +7,13 @@
   // 1. CSS INJECTION (Page Layout & Cinematic BG)
   // ==========================================
   const css = `
-    /* CINEMATIC BACKGROUND */
+    /* CINEMATIC BACKGROUND: the page itself goes transparent; the actual blurred-cover
+       backdrop is the body-level #nh-home-bg managed by enhancements.js (one shared,
+       crossfading background for home, series, and item pages). The old per-page
+       #nh-cinematic-bg element was removed — core.js had display:none'd it anyway. */
     #page-wrapper.nh-cinematic-mode,
     #page-wrapper.nh-cinematic-mode > #item-page-wrapper {
         background-color: transparent !important;
-    }
-
-    #nh-cinematic-bg {
-        position: fixed !important;
-        top: -10%; left: -10%; right: -10%; bottom: -10%;
-        z-index: 0 !important;
-        background-size: cover !important;
-        background-position: center !important;
-        background-color: transparent !important; /* Prevents Script 1 from painting it black */
-        filter: blur(60px) brightness(0.5) saturate(1.4) !important;
-        pointer-events: none !important;
-        opacity: 0;
-        transition: opacity 0.8s ease !important;
-    }
-
-    #nh-cinematic-bg::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(180deg, rgba(20,17,13,0.1) 0%, rgba(20,17,13,0.6) 45%, #14110d 90%) !important;
     }
 
     #item-page-wrapper > div {
@@ -281,6 +264,11 @@
     #item-page-wrapper button.text-slate-300 {
         display: none !important;
     }
+    /* Paragraphs rebuilt from a pre-line description: one controlled gap instead
+       of a whole empty line at 1.7 line-height. */
+    #item-description.nh-desc-para { white-space: normal !important; }
+    #item-description.nh-desc-para .nh-desc-p { margin: 0 0 0.62em !important; }
+    #item-description.nh-desc-para .nh-desc-p:last-child { margin-bottom: 0 !important; }
 
     /* Tables & Accordions */
     #item-page-wrapper .w-full.my-2.mt-6 > div.bg-primary {
@@ -370,7 +358,9 @@
         font-size: 0.9rem !important;
         color: #9a9085 !important;
     }
-    :is(#item-page-wrapper, .modal) .tracksTable button {
+    /* :not([role=menuitem]) — the row-kebab dropdown's items are <button>s inside the
+       table too; without the guard they render as stacked pills instead of menu rows. */
+    :is(#item-page-wrapper, .modal) .tracksTable button:not([role="menuitem"]) {
         background-color: rgba(255,255,255,0.05) !important;
         border: none !important;
         border-radius: 8px !important;
@@ -398,6 +388,12 @@
             flex-direction: row !important; align-items: baseline !important; gap: 4px !important;
         }
         .nh-metadata-container .flex.py-0\\.5 > div:first-child span { font-size: 0.58rem !important; white-space: nowrap !important; flex-shrink: 0 !important; }
+        /* The label CELL itself must never flex-shrink under its nowrap span —
+           it squeezed to "GENR" with the value painting right after (Pawel's
+           phone). max-content pins the cell to the label's own width. */
+        .nh-metadata-container .flex.py-0\\.5 > div:first-child {
+            flex: 0 0 auto !important; width: auto !important; min-width: max-content !important; margin-bottom: 0 !important;
+        }
         .nh-metadata-container .flex.py-0\\.5 > div:last-child {
             font-size: 0.72rem !important; white-space: nowrap !important; overflow: hidden !important;
             text-overflow: ellipsis !important; min-width: 0 !important; flex: 1 1 auto !important;
@@ -418,6 +414,33 @@
     /* ============ COMMUNITY RATINGS (server-wide, /_nh/api/ratings) ============ */
     /* Compact, headerless: an interactive star row directly under the Play/Read
        buttons (the buttons row carries margin-bottom:48px, so pull back up). */
+    /* Report link + its dialog */
+    #nh-rp-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 14px; background: none; border: none; padding: 4px 0; cursor: pointer; color: #8a8075; font-family: system-ui, sans-serif; font-size: 0.82rem; transition: color .15s ease; }
+    #nh-rp-link:hover { color: var(--nh-amber, #e0c27a); }
+    #nh-rp-link:focus-visible { outline: 2px solid var(--nh-amber, #e0c27a); outline-offset: 3px; border-radius: 6px; }
+    #nh-rp-link .material-symbols { font-size: 1.05rem; }
+    #nh-rp-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .nh-rp-book { font-family: var(--nh-serif), 'Spectral', serif; font-size: 1.05rem; color: #f4eee2; margin: 2px 0 12px; }
+    .nh-rp-lbl { font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: #8a8075; margin: 0 0 8px; }
+    .nh-rp-reasons { display: grid; gap: 2px; margin-bottom: 12px; }
+    .nh-rp-reason { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 9px; cursor: pointer; color: #d8cfc2; font-size: 0.92rem; transition: background .15s ease; }
+    .nh-rp-reason:hover { background: rgba(255,255,255,0.05); }
+    .nh-rp-reason input { accent-color: var(--nh-amber, #e0c27a); width: 16px; height: 16px; flex: none; }
+    .nh-rp-reason:focus-within { background: rgba(255,255,255,0.07); }
+    #nh-rp-note { width: 100%; min-height: 74px; background: rgba(0,0,0,0.25); color: #d8cfc2; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 9px 11px; font-size: 0.92rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
+    #nh-rp-note:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
+
+    /* Started / Finished, directly under the metadata block. Matches that block's
+       label/value rhythm so it reads as one more pair of metadata rows. */
+    #nh-bd-dates { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); column-gap: 16px; row-gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .nh-bd-dt { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+    .nh-bd-dt-l { font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: #8a8075; font-family: system-ui, sans-serif; margin-bottom: 4px; }
+    .nh-bd-dt-v { font-size: 0.95rem; color: #d8cfc2; }
+    .nh-bd-dt-inp { width: 100%; max-width: 190px; background: var(--nh-ctl-bg, rgba(255,255,255,0.05)); color: #d8cfc2; border: 1px solid var(--nh-ctl-bd, rgba(255,255,255,0.14)); border-radius: var(--nh-ctl-r, 11px); padding: 5px 9px; font-family: system-ui, sans-serif; font-size: 0.88rem; transition: border-color .15s ease, background .15s ease; }
+    .nh-bd-dt-inp:hover { background: rgba(255,255,255,0.09); border-color: var(--nh-tile-bd-hi, rgba(255,255,255,0.26)); }
+    .nh-bd-dt-inp:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
+    .nh-bd-dt-inp.nh-bd-dt-saving { opacity: 0.5; }
+
     #nh-ratings { margin: -26px 0 40px; max-width: 95%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; position: relative; z-index: 10; }
     #nh-ratings .nh-rt-main { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 34px; }
     #nh-ratings .nh-rt-avg { color: var(--nh-amber, #e0c27a); font-size: 0.95rem; }
@@ -494,32 +517,8 @@
       overlay.style.display = 'flex';
   }
 
-  // ==========================================
-  // 2.4 FILES-TABLE MENU DIRECTION
-  // ==========================================
-  // Flip a row's context menu upward ONLY when it would run past the bottom of the
-  // viewport (typically the last rows of the last table). Everything else keeps the
-  // native drop-down. Measured per open — a static CSS rule can't know the space.
-  document.addEventListener('click', function () {
-      setTimeout(function () {
-          document.querySelectorAll(':is(#item-page-wrapper, .modal) .tracksTable [role="menu"]').forEach(function (m) {
-              if (!m.offsetParent) return; // menu closed
-              const wrap = m.parentElement;
-              if (!wrap) return;
-              const wr = wrap.getBoundingClientRect();
-              const mh = m.getBoundingClientRect().height || 0;
-              if (window.innerHeight - wr.bottom < mh + 16) {
-                  m.style.setProperty('top', 'auto', 'important');
-                  m.style.setProperty('bottom', 'calc(100% + 4px)', 'important');
-                  m.style.setProperty('margin-top', '0', 'important');
-              } else {
-                  m.style.removeProperty('top');
-                  m.style.removeProperty('bottom');
-                  m.style.removeProperty('margin-top');
-              }
-          });
-      }, 60);
-  }, true);
+  // (2.4 files-table menu direction moved to core.js in v1.28.0: the drop-up
+  //  flip now applies to EVERY unified [role=menu] dropdown, not just tables.)
 
   // ==========================================
   // 2.5 COMMUNITY RATINGS (server-wide, /_nh/api/ratings)
@@ -574,6 +573,322 @@
     return document.documentElement.lang || navigator.language || 'en';
   }
 
+  // ---- Started / Finished dates, under the metadata block in the left column --
+  // ABS records both but shows neither. The finished date is EDITABLE (a PATCH of
+  // finishedAt sticks); the started date is not — ABS accepts the field, answers
+  // 200 and then keeps its own value, verified twice — so it is shown as plain
+  // text rather than as a picker that silently does nothing.
+  const NH_BD_DT = {
+    en: { started: 'Started', finished: 'Finished', edit: 'Change the finished date', editStart: 'Change the started date' },
+    pl: { started: 'Rozpoczęto', finished: 'Ukończono', edit: 'Zmień datę ukończenia', editStart: 'Zmień datę rozpoczęcia' },
+    de: { started: 'Begonnen', finished: 'Beendet', edit: 'Abschlussdatum ändern', editStart: 'Startdatum ändern' },
+    fr: { started: 'Commencé', finished: 'Terminé', edit: 'Modifier la date de fin', editStart: 'Modifier la date de début' },
+    es: { started: 'Empezado', finished: 'Terminado', edit: 'Cambiar la fecha de fin', editStart: 'Cambiar la fecha de inicio' }
+  };
+  function nhBdDtT() { return NH_BD_DT[(nhRtLang().split('-')[0] || 'en').toLowerCase()] || NH_BD_DT.en; }
+
+  // Our own started-date overrides, fetched once per session.
+  const nhBdStarted = {};
+  let nhBdStartedLoaded = false;
+  function nhBdLoadStarted() {
+    if (nhBdStartedLoaded) return;
+    const tk = nhRtToken();
+    if (!tk) return;                 // retry on a later tick once the token exists
+    nhBdStartedLoaded = true;
+    fetch('/_nh/api/dates', { headers: { Authorization: 'Bearer ' + tk }, credentials: 'include' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        const it = (j && j.items) || {};
+        Object.keys(it).forEach(function (k) { if (it[k] && it[k].startedAt) nhBdStarted[k] = it[k].startedAt; });
+      })
+      .catch(function () {});
+  }
+
+  function nhBdIso(ms) {
+    if (!ms) return '';
+    const d = new Date(ms);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  function nhBdDates() {
+    const m = window.location.pathname.match(/\/item\/([^/?#]+)/);
+    const host = document.querySelector('.nh-metadata-container');
+    const old = document.getElementById('nh-bd-dates');
+    if (!m || !host) { if (old) old.remove(); return; }
+    let prog = null;
+    try {
+      const mp = window.$nuxt.$store.state.user.user.mediaProgress || [];
+      prog = mp.find((x) => x && x.libraryItemId === m[1]) || null;
+    } catch (e) {}
+    if (!prog || (!prog.startedAt && !prog.finishedAt)) { if (old) old.remove(); return; }
+    const T = nhBdDtT();
+    nhBdLoadStarted();
+    const sig = m[1] + ':' + (nhBdStarted[m[1]] || prog.startedAt || 0) + ':' + (prog.finishedAt || 0);
+    let box = old;
+    if (box && box.dataset.sig === sig && box.previousElementSibling === host) return;
+    if (!box) { box = document.createElement('div'); box.id = 'nh-bd-dates'; }
+    box.dataset.sig = sig;
+    box.textContent = '';
+
+    const mk = (label) => {
+      const cell = document.createElement('div'); cell.className = 'nh-bd-dt';
+      const l = document.createElement('span'); l.className = 'nh-bd-dt-l'; l.textContent = label;
+      cell.appendChild(l);
+      return cell;
+    };
+    // readOnly date inputs render without the browser's calendar glyph, so each
+    // one is wrapped with our own accent icon (core.js .nh-date-wrap) — the cue
+    // that the field opens a picker.
+    const wrapDate = (inp) => {
+      const w = document.createElement('span'); w.className = 'nh-date-wrap';
+      w.appendChild(inp);
+      const ic = document.createElement('span'); ic.className = 'nh-date-ico';
+      w.appendChild(ic);
+      return w;
+    };
+    const startMs = nhBdStarted[m[1]] || prog.startedAt;
+    if (startMs) {
+      const c = mk(T.started);
+      const inp = document.createElement('input');
+      inp.type = 'date'; inp.className = 'nh-bd-dt-inp'; inp.title = T.editStart;
+      inp.readOnly = true;
+      inp.value = nhBdIso(startMs);
+      inp.addEventListener('change', () => {
+        if (!inp.value) return;
+        const p = inp.value.split('-');
+        const ms = new Date(+p[0], +p[1] - 1, +p[2], 12, 0, 0).getTime();
+        inp.classList.add('nh-bd-dt-saving');
+        // Our own store, not ABS: it accepts startedAt and then keeps its own
+        // value on every route that exists (verified five ways).
+        fetch('/_nh/api/dates', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + nhRtToken(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ itemId: m[1], startedAt: ms })
+        }).then((r) => {
+          inp.classList.remove('nh-bd-dt-saving');
+          if (r.ok) { nhBdStarted[m[1]] = ms; box.dataset.sig = ''; }
+        }).catch(() => { inp.classList.remove('nh-bd-dt-saving'); });
+      });
+      c.appendChild(wrapDate(inp));
+      box.appendChild(c);
+    }
+    if (prog.finishedAt) {
+      const c = mk(T.finished);
+      const inp = document.createElement('input');
+      inp.type = 'date'; inp.className = 'nh-bd-dt-inp'; inp.title = T.edit;
+      inp.readOnly = true;
+      inp.value = nhBdIso(prog.finishedAt);
+      inp.addEventListener('change', () => {
+        if (!inp.value) return;
+        const p = inp.value.split('-');
+        const ms = new Date(+p[0], +p[1] - 1, +p[2], 12, 0, 0).getTime();
+        inp.classList.add('nh-bd-dt-saving');
+        fetch('/api/me/progress/' + m[1], {
+          method: 'PATCH',
+          headers: { Authorization: 'Bearer ' + nhRtToken(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ finishedAt: ms })
+        }).then((r) => {
+          inp.classList.remove('nh-bd-dt-saving');
+          if (!r.ok) return;
+          try {
+            window.$nuxt.$store.state.user.user.mediaProgress.forEach((x) => { if (x.libraryItemId === m[1]) x.finishedAt = ms; });
+          } catch (e) {}
+        }).catch(() => { inp.classList.remove('nh-bd-dt-saving'); });
+      });
+      c.appendChild(wrapDate(inp));
+      box.appendChild(c);
+    }
+    if (!box.childNodes.length) { if (box.parentNode) box.remove(); return; }
+    if (box.previousElementSibling !== host || box.parentNode !== host.parentNode) {
+      host.parentNode.insertBefore(box, host.nextSibling);
+    }
+  }
+
+  // ---- Report a problem -----------------------------------------------------
+  // Deliberately NOT injected into ABS's three-dot menu. That button is a wrapper
+  // that is not directly clickable, its dropdown markup has changed between ABS
+  // builds, and an entry hidden in there could not be verified end to end. A
+  // labelled link under the metadata is always present, testable, and easier to
+  // find when something is actually wrong with a book.
+  const NH_RP_REASONS = ['missing', 'quality', 'play', 'wrong', 'chapters', 'other'];
+  const NH_RP_T = {
+    en: { menu: 'Report a problem', title: 'Report a problem', what: 'What is wrong?', note: 'Anything else the admin should know? (optional)', send: 'Send report', sent: 'Sent. Thanks.', fail: 'Could not send',
+      missing: 'Missing or incomplete content', quality: 'Bad audio quality', play: 'Will not play', wrong: 'Wrong book, cover or metadata', chapters: 'Chapters are wrong', other: 'Something else' },
+    pl: { menu: 'Zgłoś problem', title: 'Zgłoś problem', what: 'Co jest nie tak?', note: 'Coś jeszcze, co powinien wiedzieć administrator? (opcjonalnie)', send: 'Wyślij zgłoszenie', sent: 'Wysłano. Dzięki.', fail: 'Nie udało się wysłać',
+      missing: 'Brakująca lub niepełna treść', quality: 'Zła jakość dźwięku', play: 'Nie odtwarza się', wrong: 'Zła książka, okładka lub metadane', chapters: 'Błędne rozdziały', other: 'Coś innego' },
+    de: { menu: 'Problem melden', title: 'Problem melden', what: 'Was stimmt nicht?', note: 'Sonst noch etwas für die Administration? (optional)', send: 'Meldung senden', sent: 'Gesendet. Danke.', fail: 'Senden fehlgeschlagen',
+      missing: 'Fehlender oder unvollständiger Inhalt', quality: 'Schlechte Tonqualität', play: 'Spielt nicht ab', wrong: 'Falsches Buch, Cover oder Metadaten', chapters: 'Kapitel stimmen nicht', other: 'Etwas anderes' },
+    fr: { menu: 'Signaler un problème', title: 'Signaler un problème', what: 'Quel est le problème ?', note: 'Autre chose à signaler ? (facultatif)', send: 'Envoyer', sent: 'Envoyé. Merci.', fail: 'Envoi impossible',
+      missing: 'Contenu manquant ou incomplet', quality: 'Mauvaise qualité audio', play: 'Ne se lit pas', wrong: 'Mauvais livre, couverture ou métadonnées', chapters: 'Chapitres incorrects', other: 'Autre chose' },
+    es: { menu: 'Informar de un problema', title: 'Informar de un problema', what: '¿Qué ocurre?', note: '¿Algo más que deba saber el administrador? (opcional)', send: 'Enviar informe', sent: 'Enviado. Gracias.', fail: 'No se pudo enviar',
+      missing: 'Contenido ausente o incompleto', quality: 'Mala calidad de audio', play: 'No se reproduce', wrong: 'Libro, portada o metadatos incorrectos', chapters: 'Capítulos incorrectos', other: 'Otra cosa' }
+  };
+  function nhRpT() {
+    // The shared panel dictionary carries rp* in every language (round 12);
+    // the local table below stays as the fallback shape.
+    try {
+      const T = window.__nhPanelT && window.__nhPanelT();
+      if (T && T.rpTitle) {
+        return { menu: T.rpMenu, title: T.rpTitle, what: T.rpWhat, note: T.rpNote, send: T.rpSend, sent: T.rpSent, fail: T.rpFail,
+          missing: T.rpMissing, quality: T.rpQuality, play: T.rpPlay, wrong: T.rpWrong, chapters: T.rpChapters, other: T.rpOther };
+      }
+    } catch (e) {}
+    return NH_RP_T[(nhRtLang().split('-')[0] || 'en').toLowerCase()] || NH_RP_T.en;
+  }
+
+  function nhRpDialog(itemId, title) {
+    const T = nhRpT();
+    const old = document.getElementById('nh-rp-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-rp-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const h = document.createElement('span'); h.textContent = T.title;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×';
+    x.addEventListener('click', close);
+    head.appendChild(h); head.appendChild(x); box.appendChild(head);
+
+    const bk = document.createElement('p'); bk.className = 'nh-rp-book'; bk.textContent = title || '';
+    box.appendChild(bk);
+    const lbl = document.createElement('p'); lbl.className = 'nh-rp-lbl'; lbl.textContent = T.what;
+    box.appendChild(lbl);
+    // A real radio group: keyboard-navigable and announced correctly, unlike a
+    // row of divs.
+    const group = document.createElement('div'); group.className = 'nh-rp-reasons';
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', T.what);
+    let chosen = '';
+    NH_RP_REASONS.forEach((key, idx) => {
+      const id = 'nh-rp-r-' + key;
+      const row = document.createElement('label'); row.className = 'nh-rp-reason'; row.htmlFor = id;
+      const inp = document.createElement('input');
+      inp.type = 'radio'; inp.name = 'nh-rp-reason'; inp.id = id; inp.value = key;
+      if (idx === 0) { inp.checked = true; chosen = key; }
+      inp.addEventListener('change', () => { if (inp.checked) chosen = key; });
+      const span = document.createElement('span'); span.textContent = T[key];
+      row.appendChild(inp); row.appendChild(span);
+      group.appendChild(row);
+    });
+    box.appendChild(group);
+
+    const ta = document.createElement('textarea');
+    ta.id = 'nh-rp-note'; ta.maxLength = 600; ta.placeholder = T.note;
+    box.appendChild(ta);
+
+    const acts = document.createElement('div'); acts.className = 'nh-rt-actions';
+    const send = document.createElement('button'); send.type = 'button'; send.className = 'nh-rt-btn'; send.textContent = T.send;
+    const status = document.createElement('span'); status.className = 'nh-rt-status';
+    send.addEventListener('click', () => {
+      send.disabled = true; status.textContent = '…';
+      fetch('/_nh/api/reports', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + nhRtToken(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ itemId: itemId, title: title || '', reason: chosen, note: ta.value || '' })
+      }).then((r) => {
+        if (!r.ok) { send.disabled = false; status.textContent = T.fail; return; }
+        status.textContent = T.sent;
+        setTimeout(close, 1100);
+      }).catch(() => { send.disabled = false; status.textContent = T.fail; });
+    });
+    acts.appendChild(send); acts.appendChild(status);
+    box.appendChild(acts);
+    overlay.appendChild(bg); overlay.appendChild(box); document.body.appendChild(overlay);
+  }
+
+  // Preferred home for the report action: FIRST entry of the book page's
+  // three-dot menu. That menu is a Vue component whose `items` array we can
+  // unshift into — far more robust than injecting DOM into a dropdown whose
+  // markup ABS has changed before. Its action name is ours, so the emit is
+  // intercepted here rather than handed to ABS, which would not know it.
+  function nhKebabReport() {
+    // The tracks table's row kebabs also carry [aria-haspopup=menu] — and sit
+    // earlier in the DOM, which is exactly how the entry first shipped into the
+    // WRONG menu (Pawel's screenshot: Report above Download/Delete/More Info).
+    // The real item menu is the ui-context-menu-dropdown in the Play-button row;
+    // it has NO aria-haspopup, so it is identified by its vm's own items
+    // (Collections / Playlists / …), never by markup.
+    // First, take the entry back out of any tracks menu it was put into.
+    document.querySelectorAll('#item-page-wrapper .tracksTable [aria-haspopup="menu"], #item-page-wrapper table [aria-haspopup="menu"]').forEach((el) => {
+      let tvm = null;
+      try { tvm = el.__vue__ || (el.parentElement && el.parentElement.__vue__); } catch (e) {}
+      if (tvm && Array.isArray(tvm.items)) {
+        const idx = tvm.items.findIndex((x) => x && x.action === 'nh-report');
+        if (idx >= 0) tvm.items.splice(idx, 1);
+      }
+    });
+    let vm = null;
+    const cands = document.querySelectorAll('#item-page-wrapper div.relative');
+    for (const el of cands) {
+      if (el.closest('.tracksTable, table')) continue;
+      let cvm = null;
+      try { cvm = el.__vue__; } catch (e) {}
+      // 'playlists' too, not just 'collections': Collections needs the update
+      // permission, so a REGULAR user's item menu is e.g. [playlists, download]
+      // and matching on collections alone left them the fallback link (Pawel).
+      // Playlists is in every signed-in user's item menu; download alone is NOT
+      // a valid marker — the tracks-table kebabs are download-only.
+      if (cvm && Array.isArray(cvm.items) &&
+          cvm.items.some((x) => x && (x.action === 'collections' || x.action === 'playlists' || x.action === 'nh-report'))) { vm = cvm; break; }
+    }
+    if (!vm || !Array.isArray(vm.items)) return false;
+    if (!vm.__nhRpHooked) {
+      vm.__nhRpHooked = true;
+      const orig = vm.$emit.bind(vm);
+      vm.$emit = function (name) {
+        const args = Array.prototype.slice.call(arguments, 1);
+        const a = args[0];
+        const act = a && (a.action || a);
+        if (act === 'nh-report') {
+          const mm = window.location.pathname.match(/\/item\/([^/?#]+)/);
+          const h1 = document.querySelector('#item-page-wrapper h1');
+          if (mm) nhRpDialog(mm[1], h1 ? h1.textContent.trim() : '');
+          return;                       // never forward an action ABS cannot handle
+        }
+        return orig.apply(vm, arguments);
+      };
+    }
+    // `items` may be recomputed by ABS; the guard means the tick simply re-adds it.
+    if (!vm.items.some((x) => x && x.action === 'nh-report')) {
+      vm.items.unshift({ text: nhRpT().menu, action: 'nh-report' });
+    }
+    return true;
+  }
+
+  function nhReportLink() {
+    const m = window.location.pathname.match(/\/item\/([^/?#]+)/);
+    const host = document.querySelector('.nh-metadata-container');
+    const old = document.getElementById('nh-rp-link');
+    if (!m || !host) { if (old) old.remove(); return; }
+    // In the menu is where Pawel wants it. The standalone link stays only as a
+    // fallback for a build where the menu component is not what we expect —
+    // otherwise the feature would simply vanish.
+    if (nhKebabReport()) { if (old) old.remove(); return; }
+    let btn = old;
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button'; btn.id = 'nh-rp-link';
+      btn.innerHTML = '<span class="material-symbols">flag</span>';
+      btn.appendChild(document.createTextNode(' ' + nhRpT().menu));
+      btn.addEventListener('click', () => {
+        const h1 = document.querySelector('#item-page-wrapper h1');
+        const mm = window.location.pathname.match(/\/item\/([^/?#]+)/);
+        if (mm) nhRpDialog(mm[1], h1 ? h1.textContent.trim() : '');
+      });
+    }
+    // after the dates block when there is one, otherwise straight after metadata
+    const dates = document.getElementById('nh-bd-dates');
+    const anchor = (dates && dates.parentNode === host.parentNode) ? dates : host;
+    if (btn.previousElementSibling !== anchor || btn.parentNode !== anchor.parentNode) {
+      anchor.parentNode.insertBefore(btn, anchor.nextSibling);
+    }
+  }
+
   const NH_RT_T = {
     en: { ratingWords: ['rating', 'ratings'], reviewWords: ['review', 'reviews'], yourLabel: 'Your rating:', rateHint: 'Click to rate', ph: 'Add a short review (optional)…', save: 'Save', clear: 'Remove', addReview: 'Add a review', editReview: 'Edit review', you: 'you', err: 'Could not save', del: 'remove' },
     pl: { ratingWords: ['ocena', 'oceny', 'ocen'], reviewWords: ['recenzja', 'recenzje', 'recenzji'], yourLabel: 'Twoja ocena:', rateHint: 'Kliknij, aby ocenić', ph: 'Dodaj krótką recenzję (opcjonalnie)…', save: 'Zapisz', clear: 'Usuń', addReview: 'Dodaj recenzję', editReview: 'Edytuj recenzję', you: 'ty', err: 'Nie udało się zapisać', del: 'usuń' }
@@ -589,6 +904,14 @@
     return forms[2];
   }
 
+  // Ink-aware clip so a half star splits at the glyph's visual middle — the
+  // shared helper lives in enhancements.js (always loaded first); the naive
+  // row-percentage stays as the fallback shape.
+  function nhRtFillSet(wrap, fill, v) {
+    if (window.__nhStarFill) { window.__nhStarFill(wrap, fill, v); return; }
+    fill.style.width = (Math.max(0, Math.min(5, v || 0)) / 5 * 100) + '%';
+  }
+
   function nhRtStarsEl(value, big) {
     const wrap = document.createElement('span');
     wrap.className = 'nh-rt-stars';
@@ -598,8 +921,8 @@
     const fill = document.createElement('span');
     fill.className = 'nh-rt-fill';
     fill.textContent = '★★★★★';
-    fill.style.width = (Math.max(0, Math.min(5, value || 0)) / 5 * 100) + '%';
     wrap.appendChild(base); wrap.appendChild(fill);
+    nhRtFillSet(wrap, fill, value || 0);
     wrap._fill = fill;
     return wrap;
   }
@@ -660,7 +983,11 @@
   function nhRtSave(stars, review, forUser, statusEl) {
     const body = { itemId: nhRt.itemId, stars: stars, review: review || '' };
     if (forUser) body.forUser = forUser;
-    fetch('/_nh/api/ratings', { method: 'POST', headers: nhRtHeaders(true), credentials: 'include', body: JSON.stringify(body) })
+    // Moderating someone else's rating goes through the admin-gated twin of the
+    // endpoint: admin-ness is proven by nginx replaying the token against an
+    // admin-only ABS route, because the token itself no longer says.
+    const url = forUser ? '/_nh/api/ratings-admin' : '/_nh/api/ratings';
+    fetch(url, { method: 'POST', headers: nhRtHeaders(true), credentials: 'include', body: JSON.stringify(body) })
       .then(r => {
         if (!r.ok) {
           return r.text().then(t => {
@@ -674,6 +1001,9 @@
         nhRt.ratings = (j.items && j.items[body.itemId]) || {};
         nhRt.err = false;
         nhRtRender();
+        // Let the card badges / library filter (enhancements.js) patch their
+        // shared ratings map without a refetch.
+        try { window.dispatchEvent(new CustomEvent('nh-rating-change', { detail: { itemId: body.itemId, ratings: nhRt.ratings } })); } catch (e) {}
       })
       .catch(() => { if (statusEl) statusEl.textContent = nhRtT().err; });
   }
@@ -706,7 +1036,7 @@
     const nRev = entries.filter(e => e.review).length;
 
     const picker = nhRtStarsEl(avg, true);
-    const setFill = v => { picker._fill.style.width = (Math.max(0, Math.min(5, v)) / 5 * 100) + '%'; };
+    const setFill = v => nhRtFillSet(picker, picker._fill, v);
     if (me) {
       picker.title = T.rateHint;
       const valFrom = e => {
@@ -870,6 +1200,9 @@
     const m = window.location.pathname.match(/\/item\/([^/?#]+)/);
     const itemId = m ? m[1] : null;
     let section = document.getElementById('nh-ratings');
+    // A leftover series-mounted instance (enhancements' header can outlive the
+    // route by a tick) must never be adopted as the book-page section.
+    if (section && section.dataset.nhExternal === '1') { section.remove(); section = null; }
 
     if (!itemId || !nhRtEnabled()) {
       if (section) section.remove();
@@ -914,15 +1247,65 @@
     }
   }
 
+  // Series-page mount API: enhancements.js calls this every tick from the series
+  // header with key "series:<seriesId>". It reuses the SAME widget state, renderer
+  // and endpoints — a book page and a series page never coexist, so one instance
+  // serves both. Returns true while the widget is (or just became) live; false
+  // when disabled, torn down, or the backend is absent. Call with a null host to
+  // tear down (also clears the body-level reviews popup and the shared state).
+  window.__nhRatingsMount = function (host, key) {
+    let section = document.getElementById('nh-ratings');
+    const external = section && section.dataset.nhExternal === '1';
+    if (!host || !host.isConnected || !key || !nhRtEnabled()) {
+      // Tear down only what a series mount owns: the external section, the popup,
+      // and series-keyed state. Book-page sections are nhRtMaintain's business.
+      if (external || (!section && nhRt.itemId && nhRt.itemId.indexOf('series:') === 0)) {
+        if (external) section.remove();
+        const modal = document.getElementById('nh-rt-modal');
+        if (modal) modal.remove();
+        clearTimeout(nhRt.timer);
+        nhRt.itemId = null;
+      }
+      return false;
+    }
+    // Backend absent (404) or retries exhausted for this key: stay hidden quietly —
+    // recreating the section would refetch in a loop.
+    if (nhRt.itemId === key && (nhRt.gone || nhRt.dead)) {
+      if (external) section.remove();
+      return false;
+    }
+    if (section && (!external || section.parentNode !== host)) { section.remove(); section = null; }
+    const recreated = !section;
+    if (!section) {
+      section = document.createElement('div');
+      section.id = 'nh-ratings';
+      section.dataset.nhExternal = '1';
+      host.appendChild(section);
+    }
+    if (nhRt.itemId !== key || recreated) {
+      if (nhRt.itemId !== key) {
+        nhRt.gone = false; nhRt.dead = false; nhRt.tries = 0;
+        nhRt.editorOpen = false; nhRt.draft = null; nhRt.modalOpen = false;
+      }
+      nhRt.itemId = key;
+      nhRt.ratings = null;
+      clearTimeout(nhRt.timer);
+      nhRtRender();
+      nhRtFetch(key);
+    }
+    return true;
+  };
+
   function enhanceBookDetails() {
+    try { nhDescParagraphs(); } catch (e) {}
+    try { nhBdDates(); } catch (e) {}
+    try { nhReportLink(); } catch (e) {}
       const isBookPage = window.location.pathname.includes('/item/') || window.location.pathname.includes('/audiobook/');
       const pageWrapper = document.getElementById('page-wrapper');
 
       // Toggle cinematic mode based on page
       if (!isBookPage) {
           if (pageWrapper) pageWrapper.classList.remove('nh-cinematic-mode');
-          const bg = document.getElementById('nh-cinematic-bg');
-          if (bg) bg.style.opacity = '0';
           return;
       }
 
@@ -999,6 +1382,12 @@
       const detailsCoverContainer = document.querySelector('#item-page-wrapper > div.flex > div:first-child .w-full.h-full.relative.bg-bg');
       if (detailsCoverContainer && !detailsCoverContainer.dataset.hdFixed) {
           const origImg = detailsCoverContainer.querySelector('img:not([data-nh-clone])');
+          // Placeholder artwork (item has no cover file): there is nothing to
+          // upgrade — mark the container done anyway, or the page-reveal mask
+          // waits its full failsafe for a swap that can never happen.
+          if (origImg && origImg.src && !origImg.src.includes('/api/items/')) {
+              detailsCoverContainer.dataset.hdFixed = 'true';
+          }
           if (origImg && origImg.src && origImg.src.includes('/api/items/')) {
               detailsCoverContainer.dataset.hdFixed = 'true';
               origImg.style.opacity = '0';
@@ -1025,20 +1414,6 @@
                       e.stopPropagation();
                       showFullscreenCover(clone.src);
                   }, true);
-              }
-
-              // Inject Cinematic Background safely past Script 1's blocking rule
-              let bg = document.getElementById('nh-cinematic-bg');
-              if (!bg) {
-                  bg = document.createElement('div');
-                  bg.id = 'nh-cinematic-bg';
-                  if (pageWrapper) pageWrapper.insertBefore(bg, pageWrapper.firstChild);
-              }
-              if (bg.dataset.bgUrl !== highResSrc) {
-                  // !important is required here so Script 1 doesn't paint it black
-                  bg.style.setProperty('background-image', `url("${highResSrc}")`, 'important');
-                  bg.dataset.bgUrl = highResSrc;
-                  setTimeout(() => bg.style.opacity = '1', 50);
               }
           }
       }
@@ -1148,6 +1523,53 @@
       try { nhRtMaintain(); } catch (e) {}
   }
 
-  // Poll for Vue SPA navigation changes
+  // Reactive scheduler (mirrors enhancements.js): run within ~80ms of DOM changes so
+  // the item-page redesign (and thus the page-reveal mask) lands as soon as Vue
+  // mounts, instead of on the next 500ms poll. enhanceBookDetails is idempotent
+  // Rebuild a plain-text description into paragraphs. Only when ABS rendered it
+  // as raw text (no element children) — an HTML description is left untouched.
+  // Vue owns this node: if it ever patches the text back in, the stamp no longer
+  // matches and we simply rebuild, so the two cannot fight.
+  function nhDescParagraphs() {
+    const d = document.getElementById('item-description');
+    if (!d) return;
+    if (d.children.length && !d.classList.contains('nh-desc-para')) return; // real HTML description
+    const text = (d.classList.contains('nh-desc-para') ? (d.dataset.nhSrc || '') : d.textContent) || '';
+    if (!/\n\s*\n/.test(text)) return;
+    const stamp = String(text.length) + ':' + text.slice(0, 48);
+    if (d.dataset.nhPara === stamp) return;
+    const parts = text.split(/\n\s*\n+/).map((x) => x.trim()).filter(Boolean);
+    if (parts.length < 2) return;
+    d.dataset.nhPara = stamp;
+    d.dataset.nhSrc = text;
+    d.textContent = '';
+    parts.forEach((t) => {
+      const el = document.createElement('p');
+      el.className = 'nh-desc-p';
+      el.textContent = t;
+      d.appendChild(el);
+    });
+    d.classList.add('nh-desc-para');
+  }
+
+  // (dataset markers guard every mutation), so settled pages go quiet.
+  let bdTickQueued = false;
+  let bdLastTickAt = 0;
+  function bdQueueTick() {
+    if (bdTickQueued) return;
+    bdTickQueued = true;
+    requestAnimationFrame(() => {
+      const wait = Math.max(0, 80 - (Date.now() - bdLastTickAt));
+      setTimeout(() => {
+        bdTickQueued = false;
+        bdLastTickAt = Date.now();
+        try { enhanceBookDetails(); } catch (e) {}
+      }, wait);
+    });
+  }
+  try {
+    new MutationObserver(bdQueueTick).observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+  // Heartbeat fallback for non-DOM state changes
   setInterval(enhanceBookDetails, 500);
 })();
