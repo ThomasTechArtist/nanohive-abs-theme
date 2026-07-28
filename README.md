@@ -9,11 +9,11 @@ Nothing is written to your ABS container. Remove the proxy and you're back to st
 Web only. The ABS mobile apps render natively and are unaffected — they'll keep working
 through the proxy, they just won't be themed.
 
-| Home | Book details |
-|---|---|
-| ![Home](docs/home.png) | ![Book details](docs/book-page.png) |
-| ![Home](docs/home-2.png) | ![Home](docs/home-3.png) |
 
+| ![Home](docs/main.png) | ![Book details](docs/book.png) |
+| ![Series](docs/series.png) | ![Collections](docs/collections.png) |
+
+![Narratorsl](docs/narrators.png)
 ![Settings panel](docs/settings.png)
 
 ## What it changes
