@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.167.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.168.0  (injected build) */
 
 (function () {
   'use strict';
@@ -9114,7 +9114,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v1.9.1';
+  const NH_THEME_VERSION = 'v2.0.0';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
