@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.115.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.116.0  (injected build) */
 
 (function () {
   'use strict';
@@ -883,7 +883,18 @@ button[role="checkbox"] { border-color: var(--nh-hairline) !important; }
    the scroll flow, so it's only ever seen once you scroll to the very bottom. Home/library
    scrolls on #bookshelf, item pages on #item-page-wrapper. Only while the player is open. */
 body:has(#mediaPlayerContainer) #bookshelf,
-body:has(#mediaPlayerContainer) #item-page-wrapper { padding-bottom: 190px !important; }
+body:has(#mediaPlayerContainer) #item-page-wrapper { padding-bottom: var(--nh-player-pad, 190px) !important; }
+/* …and the two page-level scrollers that were missing it: the series header
+   COLUMN on desktop (its description ran 26px under the player) and the plain
+   page wrapper behind /account and /config (183px under). The item page is
+   excluded — #item-page-wrapper above already reserves its own clearance, and
+   padding both would double it. Phones are covered by .nh-series-cols instead,
+   hence the desktop-only guard on the header. */
+body:has(#mediaPlayerContainer) #page-wrapper:not(:has(#item-page-wrapper)),
+body:has(#mediaPlayerContainer) #nh-cols-grid { padding-bottom: var(--nh-player-pad, 190px) !important; }
+@media (min-width: 1024px) {
+  body:has(#mediaPlayerContainer) #nh-series-header { padding-bottom: var(--nh-player-pad, 190px) !important; }
+}
 
 /* Series page: the grid must be able to scroll AT LEAST as far as the header
    overflows, or a short shelf under a long description leaves the header's
@@ -1180,7 +1191,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
   /* !important: .page carries Tailwind's p-4, and ABS builds its utilities as
      !important, so a plain padding-bottom here never lands */
   body.nh-series-page .nh-series-cols { padding-bottom: 96px !important; }
-  body:has(#mediaPlayerContainer).nh-series-page .nh-series-cols { padding-bottom: 190px !important; }
+  body:has(#mediaPlayerContainer).nh-series-page .nh-series-cols { padding-bottom: var(--nh-player-pad, 190px) !important; }
   body:has(#mediaPlayerContainer) #bookshelf.nh-with-series-header { padding-bottom: 0 !important; }
 }
 @media (max-width: 640px) {

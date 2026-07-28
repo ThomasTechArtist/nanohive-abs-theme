@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.168.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.170.0  (injected build) */
 
 (function () {
   'use strict';
@@ -6981,6 +6981,25 @@
   // review). Driven from the tick rather than from every open/close site: the
   // overlays are created and removed in a dozen places, and a missed call there
   // would leave the app permanently unscrollable.
+  // How much every scroller must keep free at the bottom so its last line is not
+  // hidden behind the floating player. MEASURED, because the player is taller on
+  // phones than on the desktop — the old flat 190px cleared it on a desktop and
+  // still buried ~18-76px of content on a phone.
+  function nhPlayerPad() {
+    const root = document.documentElement;
+    const pl = document.getElementById('mediaPlayerContainer');
+    if (!pl) { if (root.style.getPropertyValue('--nh-player-pad')) root.style.removeProperty('--nh-player-pad'); return; }
+    const r = pl.getBoundingClientRect();
+    if (!r.height) return;
+    // Phones need a deeper lip: ABS paints a card's caption OUTSIDE the card box
+    // (measured 35px of title/author hanging below the last row), so padding sized
+    // to the shelf alone still left the text under the player.
+    const lip = window.innerWidth <= 640 ? 48 : 16;
+    const want = Math.ceil(window.innerHeight - r.top) + lip;
+    const cur = parseFloat(root.style.getPropertyValue('--nh-player-pad')) || 0;
+    if (Math.abs(want - cur) >= 4) root.style.setProperty('--nh-player-pad', want + 'px');
+  }
+
   const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal';
   function nhModalLock() {
     document.body.classList.toggle('nh-modal-open', !!document.querySelector(NH_MODAL_IDS));
@@ -10136,6 +10155,7 @@
     safe(nhAccountReports);
     safe(nhDpRouteGuard);
     safe(nhModalLock);
+    safe(nhPlayerPad);
     safe(nhBookAuthorLinks);
     safe(nhHeatmapSkin);
     safe(nhStatsFit);
