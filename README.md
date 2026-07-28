@@ -10,11 +10,11 @@ Web only. The ABS mobile apps render natively and are unaffected — they'll kee
 through the proxy, they just won't be themed.
 
 
-| ![Home](docs/main.png) | ![Book details](docs/book.png) |
-| ![Series](docs/series.png) | ![Collections](docs/collections.png) |
-
-![Narratorsl](docs/narrators.png)
-![Settings panel](docs/settings.png)
+|  |  |
+|:--:|:--:|
+| ![Home](docs/main.png)<br>**Home** | ![Book details](docs/book.png)<br>**Book details** |
+| ![Series](docs/series.png)<br>**Series** | ![Collections](docs/collections.png)<br>**Collections** |
+| ![Narrators](docs/narrators.png)<br>**Narrators** | ![Settings panel](docs/settings.png)<br>**Settings** |
 
 ## What it changes
 
