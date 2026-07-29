@@ -20,7 +20,8 @@ through the proxy, they just won't be themed.
 ## What it changes
 
 - A warm, cinematic dark palette with 12 base themes and a configurable accent colour
-- A hero carousel on the home page for your in-progress books
+- A hero carousel on the home page for your in-progress books, with a pause button
+  that remembers your choice
 - Redesigned book detail page: HD cover, blurred cinematic background, restructured metadata
 - A real mobile layout: drawer navigation, touch-friendly appbar, no horizontal overflow
 - An in-app settings panel (gear icon) where **each user** picks their own theme, font,
@@ -187,11 +188,20 @@ request. It persists across updates as long as the `/data/nh` volume is mounted.
 A Goodreads-style rating block sits under the Play/Read buttons on every book page:
 big stars filled to the **community average** with the numeric score beside them, and
 a "N ratings · M reviews" link that opens a popup listing everyone's stars, dates,
-and review text. Hover the stars to preview your own rating and **click to save it**
-(half-star steps, 0.5–5); your rating then shows on its own line with *Add/Edit
-review* and *Remove* actions. Ratings are shared between all users of the server.
-Turn the feature off per-user in Settings → Theme → *Book Page*, or server-wide with
-`NH_SHOW_RATINGS=false`.
+and review text. Hover the stars to preview your own rating and **click to save it**;
+your rating then shows on its own line with *Add/Edit review* and *Remove* actions.
+Ratings are shared between all users of the server. Turn the feature off per-user in
+Settings → Theme → *Book Page*, or server-wide with `NH_SHOW_RATINGS=false`.
+
+**Rating precision** is a setting of its own (*Star rating steps*): full stars, half
+stars (the default), or quarter stars for StoryGraph-style grading. It governs both
+what you can pick and how every rating is drawn, so whole-star mode never shows a
+partly-lit glyph.
+
+**Ratings are per library.** Podcast libraries are excluded by default — book ratings
+and the *Rate what you finished* home row have no business in a podcast feed — and each
+library can be switched on or off individually under *Ratings per library*. The home row
+only ever offers books from the library you are looking at.
 
 How it works and what to know:
 

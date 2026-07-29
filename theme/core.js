@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.116.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.117.0  (injected build) */
 
 (function () {
   'use strict';
@@ -460,6 +460,22 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
   font-size: 1.6rem !important; color: var(--nh-icon-base) !important; transition: color 0.15s ease;
 }
 
+/* Rail icons we restyle are painted here, from a data attribute, rather than by
+   writing into ABS's text node. Vue keeps a reference to the ORIGINAL text node,
+   so a textContent write leaves that reference dangling: when Vue later recycles
+   the same link for a different library it cannot clear what we wrote, and a
+   podcast library rendered the book library's "groups" ligature on top of its
+   own icon. Generated content is invisible to the vdom, so nothing desyncs. */
+#siderail-buttons-container a span.nh-rail-icon, #nh-mobile-drawer a span.nh-rail-icon { font-size: 0 !important; }
+#siderail-buttons-container a span.nh-rail-icon::before, #nh-mobile-drawer a span.nh-rail-icon::before {
+  content: attr(data-nh-glyph);
+  font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons";
+  font-size: 1.6rem; font-weight: normal; font-style: normal; line-height: 1;
+  letter-spacing: normal; text-transform: none; white-space: nowrap; word-wrap: normal; direction: ltr;
+  font-feature-settings: "liga"; -webkit-font-feature-settings: "liga"; -webkit-font-smoothing: antialiased;
+}
+#nh-mobile-drawer a span.nh-rail-icon::before { font-size: 1.3rem; }
+
 #siderail-buttons-container a p, #siderail-buttons-container a .truncate, #siderail-buttons-container a > span:not(.material-symbols):not(.abs-icons) { font-size: 0.72rem !important; line-height: 1.1 !important; letter-spacing: 0.01em !important; margin-top: 3px !important; }
 [aria-label="Config Navigation"] a { width: calc(100% - 12px) !important; border-radius: 10px !important; height: 2.6rem !important; border-color: var(--nh-hairline) !important; }
 
@@ -488,14 +504,23 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
    Cards are tagged .nh-finished by nhTagFinished() in enhancements.js, which inspects
    [cy-id="progressBar"] directly — resilient to ABS class-chain changes (h-1e vs h-1.5). */
 [id^="cover-area-"].nh-finished [cy-id="progressBar"], [cy-id="card"].nh-finished [cy-id="progressBar"] { display: none !important; }
+/* The badge was a dark translucent disc with a thin accent tick, which readers
+   kept missing against busy artwork. Inverted and enlarged: a solid fill with a
+   dark glyph reads at a glance on any cover, and the dark ring keeps it legible
+   over pale artwork where the fill alone would wash out. --nh-finished-* are
+   overridable so the colour is one edit rather than four. */
 [id^="cover-area-"].nh-finished::after, [cy-id="card"].nh-finished::after {
-  content: '✓'; position: absolute; bottom: 0.375em; left: 0.375em; z-index: 30;
-  width: 1.35em; height: 1.35em; display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; background: rgba(16,13,10,0.72); color: var(--nh-amber);
-  border: 1px solid rgba(255,255,255,0.22);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
-  font-weight: 700; font-size: 0.78em; line-height: 1;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.45);
+  /* U+2714 HEAVY CHECK MARK, written as an escape so the source stays readable,
+     followed by U+FE0E (text presentation selector) — bare U+2714 is rendered as
+     a colour emoji by Android and some Windows fonts, which would ignore the
+     badge's own colours. font-variant-emoji says the same thing to newer engines. */
+  content: '\\2714\\FE0E'; font-variant-emoji: text;
+  position: absolute; bottom: 0.4em; left: 0.4em; z-index: 30;
+  width: 1.75em; height: 1.75em; display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; background: var(--nh-finished-bg, #4c9a5e); color: var(--nh-finished-fg, #0d1a11);
+  border: 1.5px solid rgba(0,0,0,0.38);
+  font-weight: 800; font-size: 0.92em; line-height: 1;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.16) inset;
 }
 .bookshelf-row h2 { font-family: var(--nh-serif) !important; font-weight: 500 !important; font-size: 1.55rem !important; letter-spacing: -0.01em; color: var(--nh-text-1) !important; }
 
@@ -1043,6 +1068,14 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
     #nh-hero-nav { margin-top: 16px !important; }
     #nh-hero-nav .nh-nav-arrow { width: clamp(32px, 5vw, 40px) !important; height: clamp(32px, 5vw, 40px) !important; }
 }
+
+/* Hero auto-advance toggle. Paused is a sticky state, not a momentary press, so
+   it has to read as latched rather than as one more arrow: the accent ring is
+   what tells you the carousel is being held rather than merely idle. */
+#nh-hero-pause { margin-left: 6px; }
+#nh-hero-pause:hover { background: rgba(255,255,255,0.12) !important; }
+#nh-hero-pause.nh-hero-paused { background: var(--nh-amber-tint, rgba(224,194,122,0.12)) !important; border-color: var(--nh-amber, #e0c27a) !important; }
+#nh-hero-pause.nh-hero-paused .material-symbols { color: var(--nh-amber, #e0c27a) !important; }
 
 /* Phones: the cover IS the hero (Pawel). Eyebrow, tag chips and the description
    go; the cover grows to ~60vw; the progress bar shares ONE line with the

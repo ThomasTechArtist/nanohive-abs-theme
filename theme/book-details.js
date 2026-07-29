@@ -1,4 +1,4 @@
-/* NanoHive ABS — Book Details Redesign  v1.38.0  (injected build) */
+/* NanoHive ABS — Book Details Redesign  v1.42.0  (injected build) */
 
 (function () {
   'use strict';
@@ -89,20 +89,30 @@
         visibility: hidden !important;
     }
 
-    /* Finished indicator: frosted circular checkmark, top-right of the cover, in the accent
-       colour. Injected by JS (section 4) when the (hidden) native bar carries bg-success. */
+    /* Finished indicator, top-right of the cover. Injected by JS (section 4) when
+       the (hidden) native bar carries bg-success. This is the SAME mark the shelf
+       cards carry (core.js, .nh-finished::after) and it has to look identical —
+       it used to be a frosted disc with a thin accent tick, which read as a
+       different thing entirely once the shelf badge became a solid green fill.
+       Colours come from the same --nh-finished-* variables, so both move together. */
     #nh-finished-badge {
         position: absolute !important; top: 14px !important; right: 14px !important; z-index: 20 !important;
         width: 44px !important; height: 44px !important; border-radius: 50% !important;
         display: flex !important; align-items: center !important; justify-content: center !important;
-        background: rgba(20, 17, 13, 0.35) !important;
-        backdrop-filter: blur(12px) saturate(1.3) !important; -webkit-backdrop-filter: blur(12px) saturate(1.3) !important;
-        border: 1px solid rgba(255, 255, 255, 0.22) !important;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45) !important; pointer-events: none !important;
+        background: var(--nh-finished-bg, #4c9a5e) !important;
+        border: 1.5px solid rgba(0, 0, 0, 0.38) !important;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255,255,255,0.16) inset !important;
+        pointer-events: none !important;
     }
-    #nh-finished-badge .material-symbols {
-        font-size: 26px !important; line-height: 1 !important; color: var(--nh-amber, #e8a23e) !important;
-        font-variation-settings: 'wght' 700 !important; text-shadow: 0 0 10px var(--nh-amber-shadow, rgba(232,162,62,0.45)) !important;
+    /* The glyph is drawn here rather than taken from the injected <span>, so it is
+       byte-for-byte the shelf badge's mark: U+2714 with the U+FE0E text-presentation
+       selector, which stops Android rendering it as a colour emoji. */
+    #nh-finished-badge .material-symbols { display: none !important; }
+    #nh-finished-badge::after {
+        content: '\\2714\\FE0E'; font-variant-emoji: text;
+        font-family: var(--nh-sans, system-ui), sans-serif !important;
+        font-size: 23px !important; font-weight: 800 !important; line-height: 1 !important;
+        color: var(--nh-finished-fg, #0d1a11) !important;
     }
 
     /* Metadata Container */
@@ -448,6 +458,15 @@
     .nh-rt-stars .nh-rt-fill { position: absolute; top: 0; left: 0; height: 100%; overflow: hidden; white-space: nowrap; color: var(--nh-amber, #e0c27a); pointer-events: none; }
     #nh-rt-picker { cursor: pointer; font-size: 2.1rem; letter-spacing: 3px; }
     .nh-rt-score { font-size: 1.6rem; font-weight: 600; color: #f4eee2; font-family: var(--nh-serif), 'Spectral', serif; line-height: 1; }
+    /* The readout changes value under a moving cursor, so it gets a fixed box:
+       wide enough for the longest value ("4.25"), centred, and with tabular
+       figures so even the digits keep their places. Without this the "N ratings"
+       link beside it slid left and right the whole time you were choosing.
+       :not(:empty) so an unrated book reserves nothing until there is a value. */
+    .nh-rt-score:not(:empty) { display: inline-block; min-width: 2.4em; text-align: center; font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+    /* While the stars are previewing YOUR rating the number follows them, so it
+       has to stop reading as the community average for those few seconds. */
+    .nh-rt-score.nh-rt-score-preview { color: var(--nh-amber, #e0c27a); }
     .nh-rt-your { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
     .nh-rt-your-label { color: #9a9085; font-size: 0.9rem; }
     .nh-rt-link { background: none; border: none; color: #9a9085; cursor: pointer; font-size: 0.85rem; text-decoration: underline; padding: 0; font-family: inherit; }
@@ -534,6 +553,10 @@
   const nhRt = { itemId: null, ratings: null, tries: 0, timer: null, fetching: false, gone: false, dead: false, editorOpen: false, draft: null, modalOpen: false };
 
   function nhRtEnabled() {
+    // A library can opt out of ratings entirely (podcast libraries do by
+    // default) — that decision is owned by enhancements.js, which knows the
+    // current library's media type. Absent, assume the library takes part.
+    if (window.__nhRatingsHere && !window.__nhRatingsHere()) return false;
     // Same precedence as the rest of the theme: user setting > UI server
     // defaults > operator env config > default ON.
     let saved = {};
@@ -912,6 +935,12 @@
     fill.style.width = (Math.max(0, Math.min(5, v || 0)) / 5 * 100) + '%';
   }
 
+  // Every rating number on this page, formatted for the chosen precision — a
+  // hardcoded toFixed(1) turned a 4.25 quarter-star rating into "4.3".
+  function nhRtStarText(v) {
+    return window.__nhStarText ? window.__nhStarText(v) : String(Number((+v || 0).toFixed(2)));
+  }
+
   function nhRtStarsEl(value, big) {
     const wrap = document.createElement('span');
     wrap.className = 'nh-rt-stars';
@@ -1037,28 +1066,43 @@
 
     const picker = nhRtStarsEl(avg, true);
     const setFill = v => nhRtFillSet(picker, picker._fill, v);
+    // Always present, even before anyone has rated: it is the readout the hover
+    // preview writes into, and with quarter stars the number is the only way to
+    // tell 4.25 from 4.5 while dragging along the row.
+    const score = document.createElement('span');
+    score.className = 'nh-rt-score';
+    score.textContent = entries.length ? nhRtStarText(avg) : '';
+    const restoreScore = () => {
+      score.textContent = entries.length ? nhRtStarText(avg) : '';
+      score.classList.remove('nh-rt-score-preview');
+    };
     if (me) {
       picker.title = T.rateHint;
       const valFrom = e => {
         const rect = picker.getBoundingClientRect();
         const cx = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
-        const v = Math.ceil(((cx - rect.left) / rect.width) * 10) / 2;
-        return Math.max(0.5, Math.min(5, v));
+        // Rating precision is a setting (full / half / quarter stars); the step
+        // comes from enhancements.js, which is injected before this file.
+        const st = (window.__nhStarStep && window.__nhStarStep()) || 0.5;
+        const v = Math.ceil(((cx - rect.left) / rect.width) * (5 / st)) * st;
+        return Math.max(st, Math.min(5, v));
       };
-      picker.addEventListener('mousemove', e => setFill(valFrom(e)));
-      picker.addEventListener('mouseleave', () => setFill(avg));
+      const preview = v => {
+        setFill(v);
+        score.textContent = nhRtStarText(v);
+        score.classList.add('nh-rt-score-preview');
+      };
+      picker.addEventListener('mousemove', e => preview(valFrom(e)));
+      picker.addEventListener('mouseleave', () => { setFill(avg); restoreScore(); });
       picker.addEventListener('click', e => {
         status.textContent = '…';
         nhRtSave(valFrom(e), nhRt.editorOpen ? (nhRt.draft || '') : ((mine && mine.review) || ''), null, status);
       });
     }
     main.appendChild(picker);
+    main.appendChild(score);
 
     if (entries.length) {
-      const score = document.createElement('span');
-      score.className = 'nh-rt-score';
-      score.textContent = String(Number(avg.toFixed(2)));
-      main.appendChild(score);
       const counts = document.createElement('button');
       counts.type = 'button';
       counts.className = 'nh-rt-link';
@@ -1080,7 +1124,7 @@
       yr.appendChild(nhRtStarsEl(mine.stars));
       const num = document.createElement('span');
       num.className = 'nh-rt-avg';
-      num.textContent = String(Number(mine.stars.toFixed(1)));
+      num.textContent = nhRtStarText(mine.stars);
       yr.appendChild(num);
       const revBtn = document.createElement('button');
       revBtn.type = 'button';
@@ -1164,7 +1208,7 @@
         top.appendChild(nhRtStarsEl(e.stars));
         const num = document.createElement('span');
         num.className = 'nh-rt-avg';
-        num.textContent = e.stars.toFixed(1);
+        num.textContent = nhRtStarText(e.stars);
         top.appendChild(num);
         if (e.ts) {
           const date = document.createElement('span');
