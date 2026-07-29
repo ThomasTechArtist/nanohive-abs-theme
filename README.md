@@ -39,6 +39,8 @@ through the proxy, they just won't be themed.
 - Covers follow your library's aspect setting everywhere, including the details page
 - **Server-wide book ratings**: Goodreads-style stars, score, and short
   reviews on every book page, shared between all users of the server — see below
+- **Import your ratings** from a StoryGraph or Goodreads CSV export, matched to your
+  library by ISBN/ASIN or title and author, with every match shown before anything is saved
 - Rating **stars on every card** (library grid, home shelves, series, collections)
 - A **multi-level sort** built into ABS's own Sort menu: author, then series, then
   title — up to 8 dimensions, each direction chosen, precedence numbered as you pick
@@ -203,6 +205,16 @@ and the *Rate what you finished* home row have no business in a podcast feed —
 library can be switched on or off individually under *Ratings per library*. The home row
 only ever offers books from the library you are looking at.
 
+**Import from StoryGraph or Goodreads.** Export your books there as CSV and pick the file
+under *Import ratings* (Settings → Theme → *Book Page*). Rows are matched against your own
+libraries by ISBN-13/ISBN-10 or Amazon ASIN first, then by title and author, then by a scored
+close-match pass for the rows an export leaves without an identifier — and **nothing is written
+until you confirm it**. The dry run lists what matched and why, what is worth a second look
+(with a picker over the runner-up candidates and an explicit *skip*), what you have already
+rated, and what is not in your library at all. Books you rated yourself are held back unless
+you tick *overwrite*, written reviews come along if you want them, and quarter-star ratings keep
+their exact value. Only libraries that take part in ratings are searched.
+
 How it works and what to know:
 
 - Ratings are stored on the proxy at `/data/nh/ratings.json` — the same volume as the
@@ -218,6 +230,9 @@ How it works and what to know:
   (`/_nh/api/ratings-admin`), because current ABS tokens no longer say whether the
   caller is an admin — nginx proves it by replaying the token against an admin-only
   ABS endpoint instead of trusting the token's contents.
+- Stars are stored in quarter steps (0.25–5). The same endpoint also takes a bulk form,
+  `{ "items": [ … ] }`, which the importer uses so a whole export is one write rather than
+  a hundred; a bulk call can only ever write the caller's own ratings.
 
 ### Family listening stats
 

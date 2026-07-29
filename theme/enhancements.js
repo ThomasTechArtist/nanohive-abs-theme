@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.177.1  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.178.1  (injected build) */
 
 (function () {
   'use strict';
@@ -666,8 +666,8 @@
   }
 
   const PANEL_T = {
-    en: {"title": "Theme Customizations", "subtitle": "Personalise the look of your library. Changes save automatically.", "branding": "Branding & Style", "colour": "Colour & Theme", "homeCar": "Home & Carousel", "sidebar": "Sidebar Menus", "appName": "App Name", "appNameHint": "Leave empty for the default name.", "logoUrl": "Custom Logo URL", "logoHint": "Leave empty for the default logo.", "accent": "Accent Colour", "baseTheme": "Base Theme", "mainFont": "Main Font", "carousel": "Carousel Auto-Advance", "carouselHint": "Seconds between slides. Set to 0 to disable.", "customSeries": "Expanded Recent Series", "seriesCount": "Recent Series Count", "seriesCountHint": "How many series to show in the expanded shelf.", "hideShelves": "Hide Homepage Shelves", "sidebarHint": "Hide left-rail entries you don't use.", "showAppName": "Show App Name Text", "colorizeLogo": "Colorize Logo with Accent Colour", "hideSeries": "Hide Series", "hideCollections": "Hide Collections", "hideAuthors": "Hide Authors", "hideNarrators": "Hide Narrators", "hideStats": "Hide Stats", "hideRecentlyAdded": "Hide Recently Added", "hideRecentSeries": "Hide Recent Series", "hideContinueSeries": "Hide Continue Series", "hideListenAgain": "Hide Listen Again", "hideDiscover": "Hide Discover", "hideNewestAuthors": "Hide Newest Authors", "seriesCards": "Stacked Series Covers", "heroCarousel": "Home Carousel", "gearLabel": "Theme", "srvTitle": "Server Defaults", "srvHint": "Save your current settings as the defaults for every user of this server. Users can still personalise their own look on top. Mount a volume at /data/nh in the theme container to keep these across updates.", "srvSave": "Save as server defaults", "srvClear": "Clear server defaults", "srvSaved": "Saved", "srvCleared": "Cleared", "srvErr": "Failed — admin login required", "crMode": "Continue Reading Shelf", "crCombine": "Combine into carousel", "crSeparate": "Keep as separate shelf", "crHide": "Hidden", "logoUpload": "Upload from device…", "logoUploaded": "Uploaded ✓", "logoBadType": "Unsupported image type", "logoTooBig": "Image too large (max 4 MB)", "logoOr": "or", "bookPage": "Book Page", "ratingsToggle": "Community ratings (stars & reviews)", "ratingsHint": "Star ratings with short reviews on each book page, shared with every user of this server.", "searchCard": "Search", "gsToggle": "Search all libraries at once", "gsHint": "One merged result list across every library you can access, with a library badge on each match. Turn off to restore the per-library dropdown.", "gsNoResults": "No results", "gsSearching": "Searching…", "gsBooks": "Books", "gsSeries": "Series", "gsAuthors": "Authors", "spTitle": "Start Page", "spHint": "Open the app on a chosen library view every time (this browser only). Direct links are never redirected.", "spDefault": "App default", "spViewHome": "Home", "spViewLibrary": "Library", "spViewSeries": "Series", "spViewCollections": "Collections", "spViewAuthors": "Authors", "scSet": "Set series cover", "scRemove": "Remove series cover", "scEditDesc": "Edit series description", "scmTitle": "Series Page", "scmHint": "How the generated cover above a series title looks when no custom cover was uploaded (this browser only).", "scmDeck": "Layered deck", "scmFirst": "First book's cover", "scmGrid": "Cover grid (default)", "scmOff": "Hidden", "cardStars": "Star badges on book covers", "hoverPolish": "Card hover polish (softer dim, accent play, stars on hover)", "sectUser": "Your settings", "sectAdmin": "Administration", "lockTitle": "Feature switches", "lockHint": "Force-disable a feature for every user of this server. Wins over personal settings; others see it after their next reload.", "lockRatings": "Disable ratings everywhere", "lockCardRatings": "Disable star badges on covers", "lockGlobalSearch": "Disable global search", "lockHoverPolish": "Disable card hover polish", "lockHeroCarousel": "Disable home carousel", "lockedNote": "disabled by admin", "nrBooksForms": ["book", "books"], "nrSearch": "Filter narrators…", "nrSortName": "Name", "nrSortBooks": "Most books", "nrForms": ["Narrator", "Narrators"], "lfSort": "Rating", "lfRated": "Rated", "lfUnrated": "Unrated", "lfClear": "Clear", "lfNone": "No books match", "lfSection": "Rating", "sdSave": "Save", "sdClear": "Restore book description", "sdMore": "Read more", "sdLess": "Show less", "shSeries": "Series", "shBy": "by ", "shMore": " & more", "shBookForms": ["book", "books"], "shAvg": "book avg", "shRated": "rated", "ssLabel": "Star rating steps", "ssHint": "How precise a rating can be. Applies to what you can pick and to how every rating is drawn.", "ssFull": "Full stars", "ssHalf": "Half stars", "ssQuarter": "Quarter stars", "rlLabel": "Ratings per library", "rlHint": "Which libraries take part in ratings. Podcast libraries are off unless you turn them on.", "rlPodcast": "podcasts", "rfHide": "Hide Rate what you finished"},
-    pl: {"title": "Personalizacja motywu", "subtitle": "Dostosuj wygląd swojej biblioteki. Zmiany zapisują się automatycznie.", "branding": "Marka i styl", "colour": "Kolor i motyw", "homeCar": "Strona główna i karuzela", "sidebar": "Menu boczne", "appName": "Nazwa aplikacji", "appNameHint": "Pozostaw puste, aby użyć domyślnej nazwy.", "logoUrl": "Adres URL własnego logo", "logoHint": "Pozostaw puste, aby użyć domyślnego logo.", "accent": "Kolor akcentu", "baseTheme": "Motyw bazowy", "mainFont": "Czcionka główna", "carousel": "Automatyczne przewijanie karuzeli", "carouselHint": "Sekundy między slajdami. Ustaw 0, aby wyłączyć.", "customSeries": "Rozszerzone ostatnie serie", "seriesCount": "Liczba ostatnich serii", "seriesCountHint": "Ile serii pokazać na rozszerzonej półce.", "hideShelves": "Ukryj półki strony głównej", "sidebarHint": "Ukryj nieużywane pozycje menu bocznego.", "showAppName": "Pokaż nazwę aplikacji", "colorizeLogo": "Pokoloruj logo kolorem akcentu", "hideSeries": "Ukryj Serie", "hideCollections": "Ukryj Kolekcje", "hideAuthors": "Ukryj Autorów", "hideNarrators": "Ukryj Lektorów", "hideStats": "Ukryj Statystyki", "hideRecentlyAdded": "Ukryj Ostatnio dodane", "hideRecentSeries": "Ukryj Ostatnie serie", "hideContinueSeries": "Ukryj Kontynuuj serię", "hideListenAgain": "Ukryj Słuchaj ponownie", "hideDiscover": "Ukryj Odkrywaj", "hideNewestAuthors": "Ukryj Najnowszych autorów", "seriesCards": "Nakładane okładki serii", "heroCarousel": "Karuzela na stronie głównej", "gearLabel": "Motyw", "srvTitle": "Domyślne ustawienia serwera", "srvHint": "Zapisz bieżące ustawienia jako domyślne dla wszystkich użytkowników tego serwera. Użytkownicy nadal mogą personalizować swój wygląd. Zamontuj wolumin w /data/nh w kontenerze motywu, aby zachować je między aktualizacjami.", "srvSave": "Zapisz jako domyślne serwera", "srvClear": "Wyczyść domyślne serwera", "srvSaved": "Zapisano", "srvCleared": "Wyczyszczono", "srvErr": "Błąd — wymagane konto administratora", "crMode": "Półka Kontynuuj czytanie", "crCombine": "Połącz z karuzelą", "crSeparate": "Osobna półka", "crHide": "Ukryta", "logoUpload": "Wgraj z urządzenia…", "logoUploaded": "Wgrano ✓", "logoBadType": "Nieobsługiwany typ obrazu", "logoTooBig": "Obraz za duży (maks. 4 MB)", "logoOr": "lub", "bookPage": "Strona książki", "ratingsToggle": "Oceny społeczności (gwiazdki i recenzje)", "ratingsHint": "Oceny z krótkimi recenzjami na stronie książki, wspólne dla wszystkich użytkowników tego serwera.", "searchCard": "Wyszukiwanie", "gsToggle": "Szukaj we wszystkich bibliotekach naraz", "gsHint": "Jedna lista wyników ze wszystkich dostępnych bibliotek, z odznaką biblioteki przy każdym trafieniu. Wyłącz, aby wrócić do wyszukiwania w bieżącej bibliotece.", "gsNoResults": "Brak wyników", "gsSearching": "Szukam…", "gsBooks": "Książki", "gsSeries": "Serie", "gsAuthors": "Autorzy", "spTitle": "Strona startowa", "spHint": "Otwieraj aplikację na wybranym widoku biblioteki (tylko ta przeglądarka). Linki bezpośrednie nie są przekierowywane.", "spDefault": "Domyślna aplikacji", "spViewHome": "Strona główna", "spViewLibrary": "Biblioteka", "spViewSeries": "Serie", "spViewCollections": "Kolekcje", "spViewAuthors": "Autorzy", "scSet": "Ustaw okładkę serii", "scRemove": "Usuń okładkę serii", "scEditDesc": "Edytuj opis serii", "scmTitle": "Strona serii", "scmHint": "Wygląd generowanej okładki nad tytułem serii, gdy nie wgrano własnej okładki (tylko ta przeglądarka).", "scmDeck": "Warstwowa talia", "scmFirst": "Okładka pierwszej książki", "scmGrid": "Siatka okładek (domyślnie)", "scmOff": "Ukryta", "cardStars": "Gwiazdki na okładkach książek", "hoverPolish": "Dopracowany hover kart (mniej przyciemnienia, akcentowy przycisk, gwiazdki po najechaniu)", "sectUser": "Twoje ustawienia", "sectAdmin": "Administracja", "lockTitle": "Przełączniki funkcji", "lockHint": "Wyłącza funkcję dla wszystkich użytkowników tego serwera. Nadpisuje ustawienia osobiste; inni zobaczą zmianę po odświeżeniu.", "lockRatings": "Wyłącz oceny całkowicie", "lockCardRatings": "Wyłącz gwiazdki na okładkach", "lockGlobalSearch": "Wyłącz wyszukiwanie globalne", "lockHoverPolish": "Wyłącz dopracowany hover kart", "lockHeroCarousel": "Wyłącz karuzelę główną", "lockedNote": "wyłączone przez administratora", "nrBooksForms": ["książka", "książki", "książek"], "nrSearch": "Filtruj lektorów…", "nrSortName": "Nazwa", "nrSortBooks": "Najwięcej książek", "nrForms": ["Lektor", "Lektorzy", "Lektorów"], "lfSort": "Ocena", "lfRated": "Ocenione", "lfUnrated": "Nieocenione", "lfClear": "Wyczyść", "lfNone": "Brak pasujących książek", "lfSection": "Ocena", "sdSave": "Zapisz", "sdClear": "Przywróć opis z książki", "sdMore": "Czytaj dalej", "sdLess": "Zwiń", "shSeries": "Seria", "shBy": "", "shMore": " i inni", "shBookForms": ["książka", "książki", "książek"], "shAvg": "śr. ocen książek", "shRated": "ocenionych", "ssLabel": "Dokładność ocen", "ssHint": "Jak precyzyjna może być ocena. Dotyczy zarówno wyboru, jak i sposobu rysowania każdej oceny.", "ssFull": "Całe gwiazdki", "ssHalf": "Połówki gwiazdek", "ssQuarter": "Ćwiartki gwiazdek", "rlLabel": "Oceny wg biblioteki", "rlHint": "Które biblioteki biorą udział w ocenach. Biblioteki podcastów są wyłączone, dopóki ich nie włączysz.", "rlPodcast": "podcasty", "rfHide": "Ukryj Oceń, co przeczytałeś"},
+    en: {"title": "Theme Customizations", "subtitle": "Personalise the look of your library. Changes save automatically.", "branding": "Branding & Style", "colour": "Colour & Theme", "homeCar": "Home & Carousel", "sidebar": "Sidebar Menus", "appName": "App Name", "appNameHint": "Leave empty for the default name.", "logoUrl": "Custom Logo URL", "logoHint": "Leave empty for the default logo.", "accent": "Accent Colour", "baseTheme": "Base Theme", "mainFont": "Main Font", "carousel": "Carousel Auto-Advance", "carouselHint": "Seconds between slides. Set to 0 to disable.", "customSeries": "Expanded Recent Series", "seriesCount": "Recent Series Count", "seriesCountHint": "How many series to show in the expanded shelf.", "hideShelves": "Hide Homepage Shelves", "sidebarHint": "Hide left-rail entries you don't use.", "showAppName": "Show App Name Text", "colorizeLogo": "Colorize Logo with Accent Colour", "hideSeries": "Hide Series", "hideCollections": "Hide Collections", "hideAuthors": "Hide Authors", "hideNarrators": "Hide Narrators", "hideStats": "Hide Stats", "hideRecentlyAdded": "Hide Recently Added", "hideRecentSeries": "Hide Recent Series", "hideContinueSeries": "Hide Continue Series", "hideListenAgain": "Hide Listen Again", "hideDiscover": "Hide Discover", "hideNewestAuthors": "Hide Newest Authors", "seriesCards": "Stacked Series Covers", "heroCarousel": "Home Carousel", "gearLabel": "Theme", "srvTitle": "Server Defaults", "srvHint": "Save your current settings as the defaults for every user of this server. Users can still personalise their own look on top. Mount a volume at /data/nh in the theme container to keep these across updates.", "srvSave": "Save as server defaults", "srvClear": "Clear server defaults", "srvSaved": "Saved", "srvCleared": "Cleared", "srvErr": "Failed — admin login required", "crMode": "Continue Reading Shelf", "crCombine": "Combine into carousel", "crSeparate": "Keep as separate shelf", "crHide": "Hidden", "logoUpload": "Upload from device…", "logoUploaded": "Uploaded ✓", "logoBadType": "Unsupported image type", "logoTooBig": "Image too large (max 4 MB)", "logoOr": "or", "bookPage": "Book Page", "ratingsToggle": "Community ratings (stars & reviews)", "ratingsHint": "Star ratings with short reviews on each book page, shared with every user of this server.", "searchCard": "Search", "gsToggle": "Search all libraries at once", "gsHint": "One merged result list across every library you can access, with a library badge on each match. Turn off to restore the per-library dropdown.", "gsNoResults": "No results", "gsSearching": "Searching…", "gsBooks": "Books", "gsSeries": "Series", "gsAuthors": "Authors", "spTitle": "Start Page", "spHint": "Open the app on a chosen library view every time (this browser only). Direct links are never redirected.", "spDefault": "App default", "spViewHome": "Home", "spViewLibrary": "Library", "spViewSeries": "Series", "spViewCollections": "Collections", "spViewAuthors": "Authors", "scSet": "Set series cover", "scRemove": "Remove series cover", "scEditDesc": "Edit series description", "scmTitle": "Series Page", "scmHint": "How the generated cover above a series title looks when no custom cover was uploaded (this browser only).", "scmDeck": "Layered deck", "scmFirst": "First book's cover", "scmGrid": "Cover grid (default)", "scmOff": "Hidden", "cardStars": "Star badges on book covers", "hoverPolish": "Card hover polish (softer dim, accent play, stars on hover)", "sectUser": "Your settings", "sectAdmin": "Administration", "lockTitle": "Feature switches", "lockHint": "Force-disable a feature for every user of this server. Wins over personal settings; others see it after their next reload.", "lockRatings": "Disable ratings everywhere", "lockCardRatings": "Disable star badges on covers", "lockGlobalSearch": "Disable global search", "lockHoverPolish": "Disable card hover polish", "lockHeroCarousel": "Disable home carousel", "lockedNote": "disabled by admin", "nrBooksForms": ["book", "books"], "nrSearch": "Filter narrators…", "nrSortName": "Name", "nrSortBooks": "Most books", "nrForms": ["Narrator", "Narrators"], "lfSort": "Rating", "lfRated": "Rated", "lfUnrated": "Unrated", "lfClear": "Clear", "lfNone": "No books match", "lfSection": "Rating", "sdSave": "Save", "sdClear": "Restore book description", "sdMore": "Read more", "sdLess": "Show less", "shSeries": "Series", "shBy": "by ", "shMore": " & more", "shBookForms": ["book", "books"], "shAvg": "book avg", "shRated": "rated", "ssLabel": "Star rating steps", "ssHint": "How precise a rating can be. Applies to what you can pick and to how every rating is drawn.", "ssFull": "Full stars", "ssHalf": "Half stars", "ssQuarter": "Quarter stars", "rlLabel": "Ratings per library", "rlHint": "Which libraries take part in ratings. Podcast libraries are off unless you turn them on.", "rlPodcast": "podcasts", "rfHide": "Hide Rate what you finished", "impLabel": "Import ratings", "impHint": "Bring ratings over from StoryGraph or Goodreads. Export your books there as CSV, then pick the file here — every match is shown for you to confirm and nothing is saved until you do.", "impBtn": "Choose CSV file…", "impReading": "Reading the file…", "impMatching": "Matching against your libraries…", "impErrUnknown": "That does not look like a StoryGraph or Goodreads export. It should be the CSV they give you, with a \"Star Rating\" or \"My Rating\" column.", "impErrEmpty": "That file has no rows.", "impErrNoRated": "There are no rated books in that file.", "impErrRead": "The file could not be read.", "impErrLoad": "Your libraries could not be loaded. Try again in a moment.", "impErrNoLibs": "No library takes part in ratings, so there is nothing to import into.", "impTitle": "Import ratings", "impFrom": "%s export — %d books, %d of them rated", "impLibs": "Searching: %s", "impMatched": "Matched", "impCheck": "Worth a look", "impCheckHint": "Close but not certain — check the match, or pick another one.", "impAlready": "Already rated by you", "impAlreadyHint": "Left alone unless you ask for them to be overwritten.", "impNone": "Not in your library", "impNoneHint": "Nothing on this server matches these.", "impAll": "All", "impSkip": "Skip this one", "impDup": "duplicate", "impByTitle": "title", "impYours": "yours: %s", "impReviews": "Import written reviews too (%d)", "impOver": "Overwrite ratings I already have", "impGo": "Import %d ratings", "impCancel": "Cancel", "impCloseBtn": "Close", "impWorking": "Saving… %d of %d", "impDone": "Imported %d ratings.", "impFail": "%d could not be saved." },
+    pl: {"title": "Personalizacja motywu", "subtitle": "Dostosuj wygląd swojej biblioteki. Zmiany zapisują się automatycznie.", "branding": "Marka i styl", "colour": "Kolor i motyw", "homeCar": "Strona główna i karuzela", "sidebar": "Menu boczne", "appName": "Nazwa aplikacji", "appNameHint": "Pozostaw puste, aby użyć domyślnej nazwy.", "logoUrl": "Adres URL własnego logo", "logoHint": "Pozostaw puste, aby użyć domyślnego logo.", "accent": "Kolor akcentu", "baseTheme": "Motyw bazowy", "mainFont": "Czcionka główna", "carousel": "Automatyczne przewijanie karuzeli", "carouselHint": "Sekundy między slajdami. Ustaw 0, aby wyłączyć.", "customSeries": "Rozszerzone ostatnie serie", "seriesCount": "Liczba ostatnich serii", "seriesCountHint": "Ile serii pokazać na rozszerzonej półce.", "hideShelves": "Ukryj półki strony głównej", "sidebarHint": "Ukryj nieużywane pozycje menu bocznego.", "showAppName": "Pokaż nazwę aplikacji", "colorizeLogo": "Pokoloruj logo kolorem akcentu", "hideSeries": "Ukryj Serie", "hideCollections": "Ukryj Kolekcje", "hideAuthors": "Ukryj Autorów", "hideNarrators": "Ukryj Lektorów", "hideStats": "Ukryj Statystyki", "hideRecentlyAdded": "Ukryj Ostatnio dodane", "hideRecentSeries": "Ukryj Ostatnie serie", "hideContinueSeries": "Ukryj Kontynuuj serię", "hideListenAgain": "Ukryj Słuchaj ponownie", "hideDiscover": "Ukryj Odkrywaj", "hideNewestAuthors": "Ukryj Najnowszych autorów", "seriesCards": "Nakładane okładki serii", "heroCarousel": "Karuzela na stronie głównej", "gearLabel": "Motyw", "srvTitle": "Domyślne ustawienia serwera", "srvHint": "Zapisz bieżące ustawienia jako domyślne dla wszystkich użytkowników tego serwera. Użytkownicy nadal mogą personalizować swój wygląd. Zamontuj wolumin w /data/nh w kontenerze motywu, aby zachować je między aktualizacjami.", "srvSave": "Zapisz jako domyślne serwera", "srvClear": "Wyczyść domyślne serwera", "srvSaved": "Zapisano", "srvCleared": "Wyczyszczono", "srvErr": "Błąd — wymagane konto administratora", "crMode": "Półka Kontynuuj czytanie", "crCombine": "Połącz z karuzelą", "crSeparate": "Osobna półka", "crHide": "Ukryta", "logoUpload": "Wgraj z urządzenia…", "logoUploaded": "Wgrano ✓", "logoBadType": "Nieobsługiwany typ obrazu", "logoTooBig": "Obraz za duży (maks. 4 MB)", "logoOr": "lub", "bookPage": "Strona książki", "ratingsToggle": "Oceny społeczności (gwiazdki i recenzje)", "ratingsHint": "Oceny z krótkimi recenzjami na stronie książki, wspólne dla wszystkich użytkowników tego serwera.", "searchCard": "Wyszukiwanie", "gsToggle": "Szukaj we wszystkich bibliotekach naraz", "gsHint": "Jedna lista wyników ze wszystkich dostępnych bibliotek, z odznaką biblioteki przy każdym trafieniu. Wyłącz, aby wrócić do wyszukiwania w bieżącej bibliotece.", "gsNoResults": "Brak wyników", "gsSearching": "Szukam…", "gsBooks": "Książki", "gsSeries": "Serie", "gsAuthors": "Autorzy", "spTitle": "Strona startowa", "spHint": "Otwieraj aplikację na wybranym widoku biblioteki (tylko ta przeglądarka). Linki bezpośrednie nie są przekierowywane.", "spDefault": "Domyślna aplikacji", "spViewHome": "Strona główna", "spViewLibrary": "Biblioteka", "spViewSeries": "Serie", "spViewCollections": "Kolekcje", "spViewAuthors": "Autorzy", "scSet": "Ustaw okładkę serii", "scRemove": "Usuń okładkę serii", "scEditDesc": "Edytuj opis serii", "scmTitle": "Strona serii", "scmHint": "Wygląd generowanej okładki nad tytułem serii, gdy nie wgrano własnej okładki (tylko ta przeglądarka).", "scmDeck": "Warstwowa talia", "scmFirst": "Okładka pierwszej książki", "scmGrid": "Siatka okładek (domyślnie)", "scmOff": "Ukryta", "cardStars": "Gwiazdki na okładkach książek", "hoverPolish": "Dopracowany hover kart (mniej przyciemnienia, akcentowy przycisk, gwiazdki po najechaniu)", "sectUser": "Twoje ustawienia", "sectAdmin": "Administracja", "lockTitle": "Przełączniki funkcji", "lockHint": "Wyłącza funkcję dla wszystkich użytkowników tego serwera. Nadpisuje ustawienia osobiste; inni zobaczą zmianę po odświeżeniu.", "lockRatings": "Wyłącz oceny całkowicie", "lockCardRatings": "Wyłącz gwiazdki na okładkach", "lockGlobalSearch": "Wyłącz wyszukiwanie globalne", "lockHoverPolish": "Wyłącz dopracowany hover kart", "lockHeroCarousel": "Wyłącz karuzelę główną", "lockedNote": "wyłączone przez administratora", "nrBooksForms": ["książka", "książki", "książek"], "nrSearch": "Filtruj lektorów…", "nrSortName": "Nazwa", "nrSortBooks": "Najwięcej książek", "nrForms": ["Lektor", "Lektorzy", "Lektorów"], "lfSort": "Ocena", "lfRated": "Ocenione", "lfUnrated": "Nieocenione", "lfClear": "Wyczyść", "lfNone": "Brak pasujących książek", "lfSection": "Ocena", "sdSave": "Zapisz", "sdClear": "Przywróć opis z książki", "sdMore": "Czytaj dalej", "sdLess": "Zwiń", "shSeries": "Seria", "shBy": "", "shMore": " i inni", "shBookForms": ["książka", "książki", "książek"], "shAvg": "śr. ocen książek", "shRated": "ocenionych", "ssLabel": "Dokładność ocen", "ssHint": "Jak precyzyjna może być ocena. Dotyczy zarówno wyboru, jak i sposobu rysowania każdej oceny.", "ssFull": "Całe gwiazdki", "ssHalf": "Połówki gwiazdek", "ssQuarter": "Ćwiartki gwiazdek", "rlLabel": "Oceny wg biblioteki", "rlHint": "Które biblioteki biorą udział w ocenach. Biblioteki podcastów są wyłączone, dopóki ich nie włączysz.", "rlPodcast": "podcasty", "rfHide": "Ukryj Oceń, co przeczytałeś", "impLabel": "Import ocen", "impHint": "Przenieś oceny ze StoryGraph lub Goodreads. Wyeksportuj tam swoje książki do pliku CSV i wskaż go tutaj — każde dopasowanie zobaczysz przed zapisem i nic nie zostanie zapisane, dopóki nie potwierdzisz.", "impBtn": "Wybierz plik CSV…", "impReading": "Czytanie pliku…", "impMatching": "Dopasowywanie do Twoich bibliotek…", "impErrUnknown": "To nie wygląda na eksport ze StoryGraph ani Goodreads. Potrzebny jest plik CSV z tych serwisów, z kolumną „Star Rating” lub „My Rating”.", "impErrEmpty": "Ten plik nie zawiera żadnych wierszy.", "impErrNoRated": "W tym pliku nie ma ocenionych książek.", "impErrRead": "Nie udało się odczytać pliku.", "impErrLoad": "Nie udało się wczytać bibliotek. Spróbuj ponownie za chwilę.", "impErrNoLibs": "Żadna biblioteka nie uczestniczy w ocenach, więc nie ma gdzie zaimportować.", "impTitle": "Import ocen", "impFrom": "Eksport z %s — %d książek, ocenionych %d", "impLibs": "Szukam w: %s", "impMatched": "Dopasowane", "impCheck": "Warto sprawdzić", "impCheckHint": "Blisko, ale bez pewności — sprawdź dopasowanie albo wybierz inne.", "impAlready": "Już ocenione przez Ciebie", "impAlreadyHint": "Pozostaną bez zmian, chyba że zaznaczysz nadpisywanie.", "impNone": "Brak w Twojej bibliotece", "impNoneHint": "Nic na tym serwerze nie odpowiada tym pozycjom.", "impAll": "Wszystkie", "impSkip": "Pomiń tę pozycję", "impDup": "duplikat", "impByTitle": "tytuł", "impYours": "Twoja: %s", "impReviews": "Importuj też recenzje (%d)", "impOver": "Nadpisz oceny, które już mam", "impGo": "Importuj %d ocen", "impCancel": "Anuluj", "impCloseBtn": "Zamknij", "impWorking": "Zapisywanie… %d z %d", "impDone": "Zaimportowano %d ocen.", "impFail": "Nie udało się zapisać: %d." },
     de: {"title": "Design-Anpassungen", "subtitle": "Personalisiere das Aussehen deiner Bibliothek. Änderungen werden automatisch gespeichert.", "branding": "Branding & Stil", "colour": "Farbe & Design", "homeCar": "Startseite & Karussell", "sidebar": "Seitenmenüs", "appName": "App-Name", "appNameHint": "Leer lassen für den Standardnamen.", "logoUrl": "Eigene Logo-URL", "logoHint": "Leer lassen für das Standardlogo.", "accent": "Akzentfarbe", "baseTheme": "Basis-Design", "mainFont": "Hauptschriftart", "carousel": "Karussell-Autowechsel", "carouselHint": "Sekunden zwischen Folien. 0 zum Deaktivieren.", "customSeries": "Erweiterte neueste Serien", "seriesCount": "Anzahl neuester Serien", "seriesCountHint": "Wie viele Serien im erweiterten Regal gezeigt werden.", "hideShelves": "Startseiten-Regale ausblenden", "sidebarHint": "Nicht genutzte Menüeinträge ausblenden.", "showAppName": "App-Namen anzeigen", "colorizeLogo": "Logo mit Akzentfarbe einfärben", "hideSeries": "Serien ausblenden", "hideCollections": "Sammlungen ausblenden", "hideAuthors": "Autoren ausblenden", "hideNarrators": "Sprecher ausblenden", "hideStats": "Statistiken ausblenden", "hideRecentlyAdded": "Kürzlich hinzugefügt ausblenden", "hideRecentSeries": "Neueste Serien ausblenden", "hideContinueSeries": "Serie fortsetzen ausblenden", "hideListenAgain": "Erneut anhören ausblenden", "hideDiscover": "Entdecken ausblenden", "hideNewestAuthors": "Neueste Autoren ausblenden", "seriesCards": "Gestapelte Serien-Cover", "heroCarousel": "Startseiten-Karussell", "gearLabel": "Design", "srvTitle": "Server-Standardwerte", "srvHint": "Speichere deine aktuellen Einstellungen als Standard für alle Nutzer dieses Servers. Nutzer können ihren Look weiterhin selbst anpassen. Binde ein Volume unter /data/nh im Theme-Container ein, um sie über Updates hinweg zu behalten.", "srvSave": "Als Server-Standard speichern", "srvClear": "Server-Standard löschen", "srvSaved": "Gespeichert", "srvCleared": "Gelöscht", "srvErr": "Fehlgeschlagen — Admin-Anmeldung erforderlich", "crMode": "Weiterlesen-Regal", "crCombine": "In Karussell integrieren", "crSeparate": "Als eigenes Regal", "crHide": "Ausgeblendet", "ssLabel": "Bewertungsschritte", "ssHint": "Wie genau eine Bewertung sein kann. Gilt für die Auswahl und für die Darstellung jeder Bewertung.", "ssFull": "Ganze Sterne", "ssHalf": "Halbe Sterne", "ssQuarter": "Viertelsterne", "rlLabel": "Bewertungen pro Bibliothek", "rlHint": "Welche Bibliotheken an Bewertungen teilnehmen. Podcast-Bibliotheken sind aus, bis du sie einschaltest.", "rlPodcast": "Podcasts", "rfHide": "Bewerte, was du beendet hast ausblenden"},
     fr: {"title": "Personnalisation du thème", "subtitle": "Personnalisez l’apparence de votre bibliothèque. Les modifications sont enregistrées automatiquement.", "branding": "Image de marque et style", "colour": "Couleur et thème", "homeCar": "Accueil et carrousel", "sidebar": "Menus latéraux", "appName": "Nom de l’application", "appNameHint": "Laissez vide pour le nom par défaut.", "logoUrl": "URL du logo personnalisé", "logoHint": "Laissez vide pour le logo par défaut.", "accent": "Couleur d’accent", "baseTheme": "Thème de base", "mainFont": "Police principale", "carousel": "Défilement automatique du carrousel", "carouselHint": "Secondes entre les diapositives. 0 pour désactiver.", "customSeries": "Séries récentes étendues", "seriesCount": "Nombre de séries récentes", "seriesCountHint": "Nombre de séries à afficher dans l’étagère étendue.", "hideShelves": "Masquer les étagères d’accueil", "sidebarHint": "Masquer les entrées du menu latéral inutilisées.", "showAppName": "Afficher le nom de l’application", "colorizeLogo": "Coloriser le logo avec la couleur d’accent", "hideSeries": "Masquer les séries", "hideCollections": "Masquer les collections", "hideAuthors": "Masquer les auteurs", "hideNarrators": "Masquer les narrateurs", "hideStats": "Masquer les statistiques", "hideRecentlyAdded": "Masquer Ajouts récents", "hideRecentSeries": "Masquer Séries récentes", "hideContinueSeries": "Masquer Continuer la série", "hideListenAgain": "Masquer Réécouter", "hideDiscover": "Masquer Découvrir", "hideNewestAuthors": "Masquer Nouveaux auteurs", "seriesCards": "Couvertures de séries empilées", "heroCarousel": "Carrousel d’accueil", "gearLabel": "Thème", "ssLabel": "Précision des notes", "ssHint": "La précision possible d’une note. S’applique au choix et à l’affichage de chaque note.", "ssFull": "Étoiles entières", "ssHalf": "Demi-étoiles", "ssQuarter": "Quarts d’étoile", "rlLabel": "Notes par bibliothèque", "rlHint": "Quelles bibliothèques participent aux notes. Les bibliothèques de podcasts sont désactivées tant que vous ne les activez pas.", "rlPodcast": "podcasts", "rfHide": "Masquer Notez ce que vous avez terminé"},
     es: {"title": "Personalización del tema", "subtitle": "Personaliza el aspecto de tu biblioteca. Los cambios se guardan automáticamente.", "branding": "Marca y estilo", "colour": "Color y tema", "homeCar": "Inicio y carrusel", "sidebar": "Menús laterales", "appName": "Nombre de la aplicación", "appNameHint": "Déjalo vacío para el nombre predeterminado.", "logoUrl": "URL de logotipo personalizado", "logoHint": "Déjalo vacío para el logotipo predeterminado.", "accent": "Color de acento", "baseTheme": "Tema base", "mainFont": "Fuente principal", "carousel": "Avance automático del carrusel", "carouselHint": "Segundos entre diapositivas. 0 para desactivar.", "customSeries": "Series recientes ampliadas", "seriesCount": "Número de series recientes", "seriesCountHint": "Cuántas series mostrar en el estante ampliado.", "hideShelves": "Ocultar estantes de inicio", "sidebarHint": "Oculta entradas del menú lateral que no uses.", "showAppName": "Mostrar nombre de la aplicación", "colorizeLogo": "Colorear logotipo con el color de acento", "hideSeries": "Ocultar Series", "hideCollections": "Ocultar Colecciones", "hideAuthors": "Ocultar Autores", "hideNarrators": "Ocultar Narradores", "hideStats": "Ocultar Estadísticas", "hideRecentlyAdded": "Ocultar Añadidos recientemente", "hideRecentSeries": "Ocultar Series recientes", "hideContinueSeries": "Ocultar Continuar serie", "hideListenAgain": "Ocultar Escuchar de nuevo", "hideDiscover": "Ocultar Descubrir", "hideNewestAuthors": "Ocultar Autores más recientes", "seriesCards": "Portadas de series apiladas", "heroCarousel": "Carrusel de inicio", "gearLabel": "Tema", "ssLabel": "Precisión de las valoraciones", "ssHint": "Con qué precisión se puede valorar. Se aplica a lo que puedes elegir y a cómo se dibuja cada valoración.", "ssFull": "Estrellas completas", "ssHalf": "Medias estrellas", "ssQuarter": "Cuartos de estrella", "rlLabel": "Valoraciones por biblioteca", "rlHint": "Qué bibliotecas participan en las valoraciones. Las bibliotecas de pódcast están desactivadas salvo que las actives.", "rlPodcast": "pódcast", "rfHide": "Ocultar Valora lo que has terminado"},
@@ -786,6 +786,60 @@
   // native element (hidden) as the source of truth for value + change events,
   // and gets a frosted button/menu pair (same chrome as the unified menus).
   // Handles async option rebuilds (start-page select) and optgroups (fonts).
+
+  // The close() of the menu that is currently open, if any. One at a time, and a
+  // handle the route guard can pull.
+  let nhSelOpen = null;
+  // Is the button hidden inside one of its own scrollers right now? A portaled
+  // menu follows the button, and the button can be scrolled clean out of the
+  // pop-up while the menu still floats over the page.
+  // The box the menu should try to stay inside: the viewport intersected with
+  // every clipping ancestor. Fixed positioning MAY escape the pop-up, but a menu
+  // hanging past a dialog's rounded corner looks like a mistake — so we prefer
+  // the side that fits inside the dialog, and only fall back to the raw viewport
+  // when neither side can hold a usable menu there.
+  function nhSelClipBox(btn) {
+    let top = 0, bottom = innerHeight;
+    let el = btn.parentElement;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const cs = getComputedStyle(el);
+      if (!/visible/.test(cs.overflowY) || !/visible/.test(cs.overflowX)) {
+        const b = el.getBoundingClientRect();
+        if (b.height) { top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); }
+      }
+      el = el.parentElement;
+    }
+    return { top: top, bottom: bottom };
+  }
+  function nhSelBtnClipped(btn) {
+    const r = btn.getBoundingClientRect();
+    const mid = r.top + r.height / 2;
+    let el = btn.parentElement;
+    while (el && el !== document.body && el !== document.documentElement) {
+      const cs = getComputedStyle(el);
+      if (/auto|scroll|hidden/.test(cs.overflowY) || /auto|scroll|hidden/.test(cs.overflowX)) {
+        const b = el.getBoundingClientRect();
+        if (b.height && (mid < b.top || mid > b.bottom)) return true;
+        if (b.width && (r.left > b.right || r.right < b.left)) return true;
+      }
+      el = el.parentElement;
+    }
+    return false;
+  }
+  // Keyboard or programmatic navigation fires no pointerdown, so nothing would
+  // close a portaled menu — it would float over the next page (the same trap the
+  // date picker hit in round 10). The menu closes itself in place() when its
+  // button goes away, but place() only runs on scroll/resize; this runs on the tick.
+  // The same tick sweeps menus whose select has been destroyed (the panel is rebuilt
+  // on navigation, and the import dialog's rows go with it) — they live in <body>,
+  // so nothing else would ever collect them.
+  function nhSelGuard() {
+    if (nhSelOpen && !document.querySelector('.nh-sel.nh-open')) nhSelOpen();
+    document.querySelectorAll('body > .nh-sel-menu').forEach((m) => {
+      if (!m.__nhOwner || !m.__nhOwner.isConnected) m.remove();
+    });
+  }
+
   function nhSelectify(sel, inline) {
     if (!sel || sel.__nhSel) return;
     sel.__nhSel = true;
@@ -804,19 +858,95 @@
     const menu = document.createElement('div');
     menu.className = 'nh-sel-menu';
     menu.setAttribute('role', 'listbox');
-    wrap.appendChild(btn); wrap.appendChild(menu);
+    wrap.appendChild(btn);
 
+    // THE MENU LIVES IN <body>, NOT IN THE SELECT, and is a position:fixed layer
+    // when open. It used to be an absolutely positioned CHILD of the panel, which
+    // in the customizations pop-up is a scroller inside an overflow:hidden dialog
+    // AND a multi-column box. Three defects came out of that, all measured:
+    //   - the menu was sliced off at the pop-up's bottom edge (14px on the Series
+    //     Page select at 1500x1000);
+    //   - its overflow inflated the scroller's scrollHeight by however far it stuck
+    //     out, so scrolling down to see the cut-off part and then closing the menu
+    //     snapped scrollTop back and the WHOLE panel jumped (126px, end to end);
+    //   - and in FIREFOX, merely adding or removing nodes inside a card made the
+    //     multi-column balancer re-settle on a different solution, nudging the panel
+    //     ~8px on every open. That last one is why the menu is parented to <body> at
+    //     creation instead of being moved there on open: the panel's DOM is then
+    //     never touched at all, so there is nothing for the balancer to react to.
+    // A fixed layer at body level also cannot be clipped by an ancestor and takes
+    // part in no scroll geometry. It costs us the automatic tracking an absolute
+    // child got for free, hence place()/reflow below, and it has to be swept when
+    // its select goes away (nhSelGuard).
+    menu.__nhOwner = wrap;
+    document.body.appendChild(menu);
+    let placeQueued = false;
+    const place = () => {
+      // panel rebuilt or navigated away underneath us
+      if (!btn.isConnected) { close(); return; }
+      const r = btn.getBoundingClientRect();
+      if (!r.width && !r.height) { close(); return; }
+      const GAP = 6, EDGE = 10, MIN = 120;
+      // scrollHeight is the unclamped content height; read it with no max-height on
+      menu.style.maxHeight = 'none';
+      const want = Math.min(menu.scrollHeight + 2, Math.min(innerHeight * 0.42, 380));
+      const box = nhSelClipBox(btn);
+      let below = box.bottom - r.bottom - GAP - EDGE;
+      let above = r.top - box.top - GAP - EDGE;
+      // Inside the dialog is preferred, but not at the price of a useless sliver.
+      if (Math.max(below, above) < Math.min(want, MIN)) {
+        below = innerHeight - r.bottom - GAP - EDGE;
+        above = r.top - GAP - EDGE;
+      }
+      // flip up only when down genuinely cannot hold it AND up holds more
+      const up = want > below && above > below;
+      menu.style.maxHeight = Math.max(96, Math.min(want, up ? above : below)) + 'px';
+      menu.style.minWidth = Math.round(r.width) + 'px';
+      menu.style.left = Math.round(r.left) + 'px';
+      // a long option list can be wider than its button — clamp after measuring
+      const mw = menu.getBoundingClientRect().width;
+      menu.style.left = Math.round(Math.max(EDGE, Math.min(r.left, innerWidth - mw - EDGE))) + 'px';
+      if (up) {
+        menu.style.top = 'auto';
+        menu.style.bottom = Math.round(innerHeight - r.top + GAP) + 'px';
+      } else {
+        menu.style.bottom = 'auto';
+        menu.style.top = Math.round(r.bottom + GAP) + 'px';
+      }
+      wrap.classList.toggle('nh-up', up);
+      // The button can be scrolled out of its own scroller while the menu floats
+      // free of it; hide rather than leave a menu pointing at nothing.
+      menu.style.visibility = nhSelBtnClipped(btn) ? 'hidden' : '';
+    };
+    const reflow = () => {
+      if (placeQueued) return;
+      placeQueued = true;
+      requestAnimationFrame(() => { placeQueued = false; if (wrap.classList.contains('nh-open')) place(); });
+    };
     const close = () => {
       wrap.classList.remove('nh-open', 'nh-up');
       btn.setAttribute('aria-expanded', 'false');
+      menu.classList.remove('nh-sel-fixed');
+      menu.removeAttribute('style');
+      if (nhSelOpen === close) nhSelOpen = null;
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('keydown', onKey, true);
+      removeEventListener('scroll', reflow, true);
+      removeEventListener('resize', reflow, true);
     };
-    const outside = (e) => { if (!wrap.contains(e.target)) close(); };
+    // The menu is no longer inside `wrap`, so it has to be tested separately or
+    // pointerdown on an option closes the menu before its click can fire.
+    const outside = (e) => { if (!wrap.contains(e.target) && !menu.contains(e.target)) close(); };
     const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
     const rebuild = () => {
       const opt = sel.options[sel.selectedIndex];
-      lab.textContent = opt ? opt.textContent : '';
+      // Only write the label when it actually changed. Assigning the SAME string
+      // still replaces the text node, and in FIREFOX that alone makes the
+      // customizations panel's multi-column balancer re-settle on a different
+      // solution — measured 8.4px of card movement on every open, with the class
+      // toggles, the aria attribute and the body-level menu all ruled out one by one.
+      const txt = opt ? opt.textContent : '';
+      if (lab.textContent !== txt) lab.textContent = txt;
       menu.textContent = '';
       const addOpt = (o) => {
         const row = document.createElement('div');
@@ -842,15 +972,18 @@
     };
     btn.addEventListener('click', () => {
       if (wrap.classList.contains('nh-open')) { close(); return; }
+      if (nhSelOpen) nhSelOpen();               // only one open at a time
       rebuild();
       wrap.classList.add('nh-open');
       btn.setAttribute('aria-expanded', 'true');
-      // flip up only when there is no room below AND enough above
-      const r = btn.getBoundingClientRect();
-      const mh = Math.min(menu.scrollHeight + 12, Math.min(innerHeight * 0.42, 380));
-      wrap.classList.toggle('nh-up', r.bottom + mh > innerHeight - 10 && r.top - mh > 10);
+      menu.classList.add('nh-sel-fixed');
+      nhSelOpen = close;
+      place();
       document.addEventListener('pointerdown', outside, true);
       document.addEventListener('keydown', onKey, true);
+      // capture:true so a scroll inside ANY ancestor scroller is seen, not just window
+      addEventListener('scroll', reflow, true);
+      addEventListener('resize', reflow, true);
     });
     sel.addEventListener('change', rebuild);
     // options that arrive async (start-page libraries) refresh the label
@@ -1024,6 +1157,10 @@
           <div class="nh-subhead">${T.rlLabel || PANEL_T.en.rlLabel}</div>
           <p class="nh-hint" style="margin-top:0;">${T.rlHint || PANEL_T.en.rlHint}</p>
           <div id="nh-rating-libs" class="nh-toggle-group"></div>
+          <div class="nh-divider"></div>
+          <div class="nh-subhead">${T.impLabel || PANEL_T.en.impLabel}</div>
+          <p class="nh-hint" style="margin-top:0;">${T.impHint || PANEL_T.en.impHint}</p>
+          <div class="nh-field" id="nh-imp-mount"></div>
         </section>
 
         <section class="nh-card">
@@ -1122,6 +1259,17 @@
       });
       panel.querySelector('#nh-sel-starstep').appendChild(sel);
       nhSelectify(sel);
+    })();
+    // Importing writes ratings, so it follows the same admin kill-switch as the
+    // rest of the ratings feature rather than offering a button that cannot work.
+    (function () {
+      const host = panel.querySelector('#nh-imp-mount');
+      if (!host) return;
+      if (nhIsLocked('showRatings')) {
+        host.innerHTML = '<p class="nh-hint" style="margin:0;">' + (T.lockedNote || PANEL_T.en.lockedNote) + '</p>';
+        return;
+      }
+      nhImpMountCard(host);
     })();
     // Per-library ratings. The list is the libraries you can actually see, so a
     // server with one book library gets one row rather than an empty concept.
@@ -4488,6 +4636,888 @@
     nhLf.viewSig = '';
   });
 
+  // ===================== RATING IMPORT — StoryGraph / Goodreads CSV =====================
+  // Bring an existing reading history in. The export has no idea what a library
+  // item id is, so everything hinges on matching its rows to books on THIS server:
+  //   1. ISBN-13 / ISBN-10 (indexed in both forms, so a 10 in the file finds a 13
+  //      in the library and vice versa) or Amazon ASIN — an identity, trusted.
+  //   2. Normalised title + author, exact after folding.
+  //   3. A scored fuzzy pass, which is what actually carries most real files:
+  //      StoryGraph leaves the ISBN empty for a good share of rows (35 of 317 in
+  //      the file this was built against, 8 of them rated) and the titles differ
+  //      in subtitle, edition noise and punctuation.
+  // Nothing is written until the user has seen the matches: everything below only
+  // BUILDS a plan, and the modal is where it gets confirmed.
+
+  // --- CSV ---------------------------------------------------------------------
+  // Written out rather than split(',') because reviews contain commas, quotes and
+  // newlines, and Goodreads wraps its ISBNs as ="9780…" to stop Excel eating them.
+  function nhImpCsv(text) {
+    const s = String(text == null ? '' : text).replace(/^\uFEFF/, '');
+    const rows = [];
+    let row = [], cur = '', q = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (q) {
+        if (c === '"') {
+          if (s[i + 1] === '"') { cur += '"'; i++; } else q = false;
+        } else if (c !== '\r') cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r') cur += c;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows;
+  }
+
+  function nhImpCell(v) {
+    // Goodreads: ="9780306406157"  ->  9780306406157
+    const s = String(v == null ? '' : v).trim();
+    const m = /^="?(.*?)"?$/.exec(s);
+    return (m ? m[1] : s).trim();
+  }
+
+  // --- ISBN --------------------------------------------------------------------
+  function nhIsbnTo13(i10) {
+    if (!/^[0-9]{9}[0-9X]$/.test(i10)) return '';
+    const core = '978' + i10.slice(0, 9);
+    let sum = 0;
+    for (let i = 0; i < 12; i++) sum += (+core[i]) * (i % 2 ? 3 : 1);
+    return core + String((10 - (sum % 10)) % 10);
+  }
+  function nhIsbnTo10(i13) {
+    if (!/^978[0-9]{10}$/.test(i13)) return '';
+    const core = i13.slice(3, 12);
+    let sum = 0;
+    for (let i = 0; i < 9; i++) sum += (+core[i]) * (10 - i);
+    const c = (11 - (sum % 11)) % 11;
+    return core + (c === 10 ? 'X' : String(c));
+  }
+  // Every form one identifier can be written as, so both sides of a comparison can
+  // be indexed under all of them and the lookup is a plain hash hit.
+  function nhImpIsbnKeys(raw) {
+    const out = [];
+    const add = (v) => { if (v && out.indexOf(v) < 0) out.push(v); };
+    String(raw == null ? '' : raw).split(/[\s,;|]+/).forEach((part) => {
+      const v = nhImpCell(part).toUpperCase().replace(/[^0-9X]/g, '');
+      if (/^[0-9]{13}$/.test(v)) { add(v); add(nhIsbnTo10(v)); }
+      else if (/^[0-9]{9}[0-9X]$/.test(v)) { add(v); add(nhIsbnTo13(v)); }
+    });
+    return out;
+  }
+  function nhImpAsin(raw) {
+    const v = nhImpCell(raw).toUpperCase().replace(/[^0-9A-Z]/g, '');
+    return /^B[0-9A-Z]{9}$/.test(v) ? v : '';
+  }
+
+  // --- folding + keys ----------------------------------------------------------
+  // NFD strips accents from composed letters, but a fair few are single code points
+  // that never decompose — Polish ł above all, which matters here (the file that
+  // drove this is half Polish). Those are transliterated by hand first.
+  const NH_IMP_XLIT = {
+    'ł': 'l', 'đ': 'd', 'ø': 'o', 'æ': 'ae', 'œ': 'oe', 'ß': 'ss',
+    'þ': 'th', 'ð': 'd', 'ı': 'i', 'ħ': 'h', 'ŋ': 'n', 'ŧ': 't'
+  };
+  function nhImpFold(s) {
+    let out = String(s == null ? '' : s).toLowerCase();
+    out = out.replace(/[‘’ʼ´`]/g, "'")
+      .replace(/[“”]/g, '"')
+      .replace(/[–—−]/g, '-');
+    out = out.replace(/[łđøæœßþðıħŋŧ]/g, (c) => NH_IMP_XLIT[c] || c);
+    try { out = out.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (e) {}
+    return out;
+  }
+  function nhImpKey(t) {
+    return nhImpFold(t)
+      .replace(/\([^)]*\)/g, ' ')        // (Discworld #3), (Unabridged)
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  }
+  // A leading article is dropped as an ALTERNATIVE key, never as the only one: this
+  // list cannot be right for 40 languages ("de" is an article in Dutch and a
+  // preposition in Polish), so both forms are indexed and either may match.
+  const NH_IMP_ART = /^(?:the|a|an|der|die|das|den|dem|le|la|les|un|une|el|los|las|il|lo|gli|os|het|een|de|ett|en)\s+/;
+  function nhImpTitleKeys(title, subtitle) {
+    const keys = [];
+    const push = (v) => {
+      const k = nhImpKey(v);
+      if (k && keys.indexOf(k) < 0) keys.push(k);
+    };
+    const t = String(title == null ? '' : title);
+    if (subtitle) push(t + ' ' + subtitle);
+    push(t);
+    // "The Sixth Extinction: An Unnatural History" -> "The Sixth Extinction",
+    // which is how the same book is usually catalogued in a library.
+    push(t.split(/\s*[:;]\s+|\s+[-–—]\s+/)[0]);
+    keys.slice().forEach((k) => { const s = k.replace(NH_IMP_ART, ''); if (s && keys.indexOf(s) < 0) keys.push(s); });
+    return keys;
+  }
+  // Surnames, not full names: "H.P. Lovecraft" and "Howard Phillips Lovecraft" have
+  // to agree, and the same book is credited differently on either side. The two-word
+  // tail is kept as well for "Le Guin" / "van Gogh" style names.
+  // Author fields on BOTH sides are comma-joined lists that can hold translators and
+  // illustrators (StoryGraph's own export puts the Polish translator first on some
+  // rows), so this deliberately returns a SET and matching is any-to-any.
+  function nhImpSurnames(raw) {
+    const out = [];
+    nhImpFold(raw).split(/[,;&/|]|\band\b/).forEach((part) => {
+      const toks = part.replace(/\([^)]*\)/g, ' ').replace(/[^a-z0-9']+/g, ' ').trim().split(/\s+/).filter(Boolean);
+      if (!toks.length) return;
+      const last = toks[toks.length - 1];
+      if (last.length >= 2 && out.indexOf(last) < 0) out.push(last);
+      if (toks.length >= 2) {
+        const tail = toks[toks.length - 2] + ' ' + last;
+        if (out.indexOf(tail) < 0) out.push(tail);
+      }
+    });
+    return out;
+  }
+
+  // Dice coefficient over character bigrams: cheap, needs no matrix, and unlike a
+  // raw edit distance it is not thrown by a missing subtitle or a swapped word.
+  function nhImpSim(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
+    const A = {};
+    let na = 0, nb = 0, inter = 0;
+    for (let i = 0; i < a.length - 1; i++) { const g = a.substr(i, 2); A[g] = (A[g] || 0) + 1; na++; }
+    for (let i = 0; i < b.length - 1; i++) {
+      const g = b.substr(i, 2);
+      nb++;
+      if (A[g] > 0) { A[g]--; inter++; }
+    }
+    return (na + nb) ? (2 * inter) / (na + nb) : 0;
+  }
+
+  // --- parse a whole export ----------------------------------------------------
+  // Both exports carry a rating column and a title; everything else is optional,
+  // so the detector keys on the rating column's name and nothing more fragile.
+  function nhImpParse(text) {
+    const rows = nhImpCsv(text).filter((r) => r.length > 1);
+    if (rows.length < 2) return { error: 'empty' };
+    const head = rows[0].map((h) => nhImpCell(h));
+    const at = (name) => head.indexOf(name);
+    const col = { title: at('Title') };
+    let src = '';
+    if (at('Star Rating') >= 0) {
+      src = 'storygraph';
+      col.stars = at('Star Rating'); col.authors = at('Authors');
+      col.review = at('Review'); col.uid = [at('ISBN/UID')];
+    } else if (at('My Rating') >= 0) {
+      src = 'goodreads';
+      col.stars = at('My Rating'); col.authors = at('Author');
+      col.extra = at('Additional Authors'); col.review = at('My Review');
+      col.uid = [at('ISBN13'), at('ISBN')];
+    }
+    if (!src || col.title < 0) return { error: 'unknown' };
+
+    const out = { src: src, total: rows.length - 1, unrated: 0, items: [] };
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      const cell = (n) => (n >= 0 && n < r.length ? nhImpCell(r[n]) : '');
+      const raw = parseFloat(cell(col.stars));
+      if (!isFinite(raw) || raw <= 0) { out.unrated++; continue; }
+      // The store takes quarter steps, which is exactly StoryGraph's own precision,
+      // so a 3.75 survives intact. Goodreads only ever exports whole stars.
+      const stars = Math.max(0.25, Math.min(5, Math.round(raw * 4) / 4));
+      const title = cell(col.title);
+      if (!title) { out.unrated++; continue; }
+      let authors = cell(col.authors);
+      if (col.extra >= 0) {
+        const ex = cell(col.extra);
+        if (ex) authors = authors ? (authors + ', ' + ex) : ex;
+      }
+      const isbns = [], asins = [];
+      (col.uid || []).forEach((n) => {
+        const v = cell(n);
+        if (!v) return;
+        nhImpIsbnKeys(v).forEach((k) => { if (isbns.indexOf(k) < 0) isbns.push(k); });
+        const a = nhImpAsin(v);
+        if (a && asins.indexOf(a) < 0) asins.push(a);
+      });
+      out.items.push({
+        n: i, title: title, authors: authors, stars: stars,
+        review: cell(col.review), isbns: isbns, asins: asins,
+        tKeys: nhImpTitleKeys(title), surs: nhImpSurnames(authors)
+      });
+    }
+    if (!out.items.length) return { error: 'norated', total: out.total };
+    return out;
+  }
+
+  // --- library index -----------------------------------------------------------
+  // The token buckets keep the fuzzy pass off a full cross product. Three-letter
+  // words have to be in them: an earlier cut indexed only words of 4+, which left
+  // every title built entirely of short words unreachable — "The Art of War" sat in
+  // no bucket at all, so nothing could ever fuzzy-match it. Three letters only pays
+  // off with a stop list, or "the" alone would put the whole library in one bucket.
+  const NH_IMP_STOP = (
+    'the and of a an to in on for with at by or from my is it as but be no not ' +
+    'de la le les el il un une los las das der die den dem ein eine het een ett ' +
+    'van von di del al e y o os as w z i na do po za od se si sie jest'
+  ).split(' ').reduce((m, w) => { m[w] = 1; return m; }, {});
+  const nhImpTok = (tk) => tk.split(' ').filter((w) => w.length >= 3 && !NH_IMP_STOP[w]);
+
+  function nhImpIndex(recs) {
+    const idx = { recs: recs, isbn: {}, asin: {}, ta: {}, t: {}, tok: {} };
+    const push = (bag, k, rec) => { if (!k) return; (bag[k] || (bag[k] = [])).push(rec); };
+    recs.forEach((rec) => {
+      rec.isbns.forEach((k) => push(idx.isbn, k, rec));
+      if (rec.asin) push(idx.asin, rec.asin, rec);
+      rec.tKeys.forEach((tk) => {
+        push(idx.t, tk, rec);
+        rec.surs.forEach((s) => push(idx.ta, tk + '|' + s, rec));
+        nhImpTok(tk).forEach((w) => push(idx.tok, w, rec));
+      });
+    });
+    return idx;
+  }
+
+  function nhImpRec(it, libName) {
+    const md = (it.media && it.media.metadata) || {};
+    const isbns = md.isbn ? nhImpIsbnKeys(md.isbn) : [];
+    return {
+      id: it.id, libId: it.libraryId, libName: libName || '',
+      title: md.title || '', subtitle: md.subtitle || '', author: md.authorName || '',
+      isbns: isbns, asin: nhImpAsin(md.asin),
+      tKeys: nhImpTitleKeys(md.title, md.subtitle), surs: nhImpSurnames(md.authorName)
+    };
+  }
+
+  const nhImpOnce = (arr) => arr.filter((v, i) => arr.indexOf(v) === i);
+
+  // --- match one row -----------------------------------------------------------
+  // Confidence, in order: an identifier is an identity; an exact folded title WITH
+  // an agreeing author is safe; anything else is a suggestion for the user to
+  // confirm. `how` is what the row shows as its reason, so a questionable match is
+  // never presented as a certainty.
+  const NH_IMP_AUTO = 0.90;   // fuzzy score that may be pre-checked, author agreeing
+  const NH_IMP_SHOW = 0.70;   // fuzzy score worth offering at all
+  const NH_IMP_BLIND = 0.95;  // fuzzy score accepted with no author to check against
+
+  function nhImpMatch(row, idx) {
+    const seen = {};
+    const cands = [];
+    const add = (rec, how, score) => {
+      if (!rec || seen[rec.id]) return;
+      seen[rec.id] = 1;
+      cands.push({ rec: rec, how: how, score: score });
+    };
+    const titleFit = (rec) => {
+      let best = 0;
+      row.tKeys.forEach((a) => { rec.tKeys.forEach((b) => { const s = nhImpSim(a, b); if (s > best) best = s; }); });
+      return best;
+    };
+    const authorFit = (rec) => row.surs.some((s) => rec.surs.indexOf(s) >= 0);
+
+    // 1. identifiers
+    row.isbns.forEach((k) => (idx.isbn[k] || []).forEach((rec) => add(rec, 'isbn', 1)));
+    row.asins.forEach((k) => (idx.asin[k] || []).forEach((rec) => add(rec, 'asin', 1)));
+    // 2. exact folded title + agreeing author
+    row.tKeys.forEach((tk) => {
+      row.surs.forEach((s) => (idx.ta[tk + '|' + s] || []).forEach((rec) => add(rec, 'title', 1)));
+    });
+    // 3. exact folded title, author unknown or credited differently
+    row.tKeys.forEach((tk) => (idx.t[tk] || []).forEach((rec) => add(rec, 'titleonly', titleFit(rec))));
+    // 4. fuzzy, over books that share a distinctive word with the title
+    const pool = {};
+    row.tKeys.forEach((tk) => nhImpTok(tk).forEach((w) => {
+      (idx.tok[w] || []).forEach((rec) => { pool[rec.id] = rec; });
+    }));
+    // A title made only of stop words ("It", "Us") shares no indexable word with
+    // anything, so it would never reach the fuzzy pass. Fall back to the whole
+    // shelf, but only while that is cheap — a huge library must not freeze the tab.
+    if (!Object.keys(pool).length && idx.recs.length <= 4000) {
+      idx.recs.forEach((rec) => { pool[rec.id] = rec; });
+    }
+    Object.keys(pool).forEach((id) => {
+      const rec = pool[id];
+      const s = titleFit(rec);
+      if (s >= NH_IMP_SHOW) add(rec, 'fuzzy', s);
+    });
+
+    cands.forEach((c) => { c.author = authorFit(c.rec); });
+    const rank = { isbn: 4, asin: 4, title: 3, titleonly: 2, fuzzy: 1 };
+    cands.sort((a, b) => (rank[b.how] - rank[a.how]) || (b.score - a.score) || (b.author - a.author));
+
+    if (!cands.length) return { row: row, how: 'none', cands: [] };
+    const top = cands[0];
+    // Two different books answering the same identifier or the same exact title is
+    // not a match, it is a question — a duplicate edition, or two books that really
+    // are called the same thing. Only fall through to certainty when it is unique.
+    const ties = cands.filter((c) => c.how === top.how && c.score >= top.score - 0.001).length;
+    let sure = false;
+    if (top.how === 'isbn' || top.how === 'asin') sure = ties === 1;
+    else if (top.how === 'title') sure = ties === 1;
+    else if (top.how === 'fuzzy' && top.author && top.score >= NH_IMP_AUTO) sure = ties === 1;
+    else if ((top.how === 'fuzzy' || top.how === 'titleonly') && !row.surs.length && top.score >= NH_IMP_BLIND) sure = ties === 1;
+    return { row: row, how: sure ? top.how : 'check', pick: top, cands: cands.slice(0, 6), ties: ties };
+  }
+
+  // Build the whole plan: parsed rows x the libraries that take part in ratings.
+  // Returns groups the modal renders directly. `already` is split out rather than
+  // silently overwritten — someone else's import must not quietly rewrite a rating
+  // the user typed in by hand.
+  function nhImpPlan(parsed, idx, mine) {
+    const groups = { auto: [], check: [], already: [], none: [] };
+    parsed.items.forEach((row) => {
+      const m = nhImpMatch(row, idx);
+      m.sel = m.how !== 'none' && m.how !== 'check';
+      m.chosen = m.pick ? m.pick.rec.id : '';
+      if (m.how === 'none') groups.none.push(m);
+      else if (mine[m.chosen] !== undefined) { m.mine = mine[m.chosen]; m.sel = false; groups.already.push(m); }
+      else if (m.how === 'check') groups.check.push(m);
+      else groups.auto.push(m);
+    });
+    // Two rows landing on one book (two editions of the same title) — the second
+    // would silently overwrite the first, so it is flagged and left unchecked.
+    const taken = {};
+    ['auto', 'check', 'already'].forEach((g) => groups[g].forEach((m) => {
+      if (!m.chosen) return;
+      if (taken[m.chosen]) { m.dup = true; m.sel = false; }
+      else taken[m.chosen] = m;
+    }));
+    groups.check.sort((a, b) => ((b.pick && b.pick.score) || 0) - ((a.pick && a.pick.score) || 0));
+    return groups;
+  }
+
+  // --- data the plan needs -----------------------------------------------------
+  function nhImpMe() {
+    try {
+      const u = window.$nuxt && window.$nuxt.$store.state.user.user;
+      return u && u.id ? String(u.id) : '';
+    } catch (e) { return ''; }
+  }
+
+  // Only libraries that take part in ratings — a match in a library whose ratings
+  // are switched off would be written and then never shown anywhere.
+  function nhImpFetchIndex() {
+    const tok = nhSrToken();
+    if (!tok) return Promise.reject(new Error('no token'));
+    return nhGsLibs().then((libs) => {
+      const use = (libs || []).filter((l) => nhRatingsLibOn(l.id));
+      if (!use.length) return { idx: nhImpIndex([]), libs: [] };
+      return Promise.all(use.map((l) => fetch('/api/libraries/' + l.id + '/items?limit=0', {
+        headers: { Authorization: 'Bearer ' + tok }, credentials: 'include'
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null).then((j) => ({ lib: l, j: j }))))
+        .then((res) => {
+          const recs = [];
+          res.forEach((pair) => {
+            if (!pair.j || !Array.isArray(pair.j.results)) return;
+            pair.j.results.forEach((it) => recs.push(nhImpRec(it, pair.lib.name)));
+          });
+          return { idx: nhImpIndex(recs), libs: use.map((l) => l.name), failed: res.filter((x) => !x.j).length };
+        });
+    });
+  }
+
+  // What the caller has already rated, so those rows can be held back instead of
+  // silently overwritten. Read fresh rather than from the 60s cache: the whole
+  // point is to be accurate about what is already there.
+  function nhImpFetchMine() {
+    const tok = nhSrToken(), me = nhImpMe();
+    if (!tok || !me) return Promise.resolve({});
+    return fetch('/_nh/api/ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const out = {};
+        const items = (j && j.items) || {};
+        Object.keys(items).forEach((id) => {
+          const mine = items[id] && items[id][me];
+          if (mine && typeof mine.stars === 'number') out[id] = mine.stars;
+        });
+        return out;
+      })
+      .catch(() => ({}));
+  }
+
+  // --- write -------------------------------------------------------------------
+  // Chunked by SERIALISED SIZE, not by row count: the nginx location caps the body
+  // at 64k and njs cannot read a body nginx spooled to a temp file, so a hundred
+  // long reviews must not be sent as one request. Each chunk is one store rewrite.
+  const NH_IMP_CHUNK = 44000;
+  function nhImpChunks(rows) {
+    const out = [];
+    let cur = [], size = 2;
+    rows.forEach((row) => {
+      const len = JSON.stringify(row).length + 1;
+      if (cur.length && (size + len > NH_IMP_CHUNK || cur.length >= 200)) { out.push(cur); cur = []; size = 2; }
+      cur.push(row); size += len;
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+
+  function nhImpWrite(rows, onProgress) {
+    const tok = nhSrToken();
+    if (!tok) return Promise.reject(new Error('no token'));
+    const chunks = nhImpChunks(rows);
+    const res = { saved: 0, rejected: 0, failed: 0 };
+    let done = 0;
+    return chunks.reduce((chain, chunk) => chain.then(() => fetch('/_nh/api/ratings', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ items: chunk })
+    }).then((r) => (r.ok ? r.json() : null)).then((j) => {
+      if (j && j.ok) { res.saved += j.saved || 0; res.rejected += j.rejected || 0; }
+      else res.failed += chunk.length;
+      done += chunk.length;
+      if (onProgress) onProgress(done, rows.length);
+    }).catch(() => {
+      res.failed += chunk.length;
+      done += chunk.length;
+      if (onProgress) onProgress(done, rows.length);
+    })), Promise.resolve()).then(() => res);
+  }
+
+  // Everything above is pure; expose it so the test rig can drive the matcher on
+  // real exports without a browser session.
+  window.__nhImp = {
+    csv: nhImpCsv, parse: nhImpParse, index: nhImpIndex, rec: nhImpRec,
+    match: nhImpMatch, plan: nhImpPlan, sim: nhImpSim, fold: nhImpFold,
+    titleKeys: nhImpTitleKeys, surnames: nhImpSurnames, isbnKeys: nhImpIsbnKeys,
+    to13: nhIsbnTo13, to10: nhIsbnTo10, chunks: nhImpChunks,
+    fetchIndex: nhImpFetchIndex, fetchMine: nhImpFetchMine, write: nhImpWrite,
+    open: nhImpOpen
+  };
+
+  // --- the review dialog -------------------------------------------------------
+  // A dry run is the whole feature: fuzzy matching against someone's library WILL
+  // get things wrong, so every row is shown with the reason it matched before
+  // anything is written, and the questionable ones carry a picker over the runners-up.
+  function nhImpT() {
+    const T = nhGsT();
+    return (k) => T[k] || PANEL_T.en[k] || k;
+  }
+  // The dialog shows what is in the FILE and what will be written, at the store's
+  // own quarter precision — deliberately NOT through nhStarText(), which snaps to
+  // the reader's display-granularity setting. On the default half-star setting that
+  // printed an imported 4.25 as "4.5" next to a row that was about to save 4.25.
+  const nhImpStars = (v) => String(Number((+v || 0).toFixed(2)));
+
+  // "%d rows, %d rated" style filling — positional, in order, no library needed.
+  function nhImpFmt(s, args) {
+    let i = 0;
+    return String(s == null ? '' : s).replace(/%[sd]/g, () => {
+      const v = args[i++];
+      return v === undefined ? '' : String(v);
+    });
+  }
+
+  function nhImpClose() {
+    const m = document.getElementById('nh-imp-modal');
+    if (m) m.remove();
+    nhModalLock();
+  }
+
+  function nhImpOpen(parsed, idx, mine, libs) {
+    nhImpClose();
+    const t = nhImpT();
+    const groups = nhImpPlan(parsed, idx, mine);
+    const all = groups.auto.concat(groups.check, groups.already);
+    const anyReview = parsed.items.some((r) => r.review);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'nh-imp-modal';
+    overlay.innerHTML =
+      '<div class="nh-imp-bg"></div>' +
+      '<div class="nh-imp-box" role="dialog" aria-modal="true">' +
+        '<div class="nh-imp-head">' +
+          '<span class="nh-imp-h">' + t('impTitle') + '</span>' +
+          '<button type="button" class="nh-imp-x" aria-label="' + t('impCancel') + '">×</button>' +
+        '</div>' +
+        '<div class="nh-imp-sub"></div>' +
+        '<div class="nh-imp-tiles"></div>' +
+        '<div class="nh-imp-opts"></div>' +
+        '<div class="nh-imp-body"></div>' +
+        '<div class="nh-imp-foot">' +
+          '<div class="nh-imp-prog"><div class="nh-imp-bar"></div><span class="nh-imp-pt"></span></div>' +
+          '<div class="nh-imp-acts">' +
+            '<button type="button" class="nh-imp-cancel">' + t('impCancel') + '</button>' +
+            '<button type="button" class="nh-imp-go"></button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    nhModalLock();
+
+    const box = overlay.querySelector('.nh-imp-box');
+    const sub = overlay.querySelector('.nh-imp-sub');
+    const tiles = overlay.querySelector('.nh-imp-tiles');
+    const opts = overlay.querySelector('.nh-imp-opts');
+    const body = overlay.querySelector('.nh-imp-body');
+    const go = overlay.querySelector('.nh-imp-go');
+    const foot = overlay.querySelector('.nh-imp-foot');
+
+    sub.textContent = nhImpFmt(t('impFrom'), [parsed.src === 'goodreads' ? 'Goodreads' : 'StoryGraph', parsed.total, parsed.items.length]);
+    if (libs && libs.length) {
+      const l = document.createElement('div');
+      l.className = 'nh-imp-libs';
+      l.textContent = nhImpFmt(t('impLibs'), [libs.join(', ')]);
+      sub.appendChild(l);
+    }
+
+    const tile = (n, lab, cls) => {
+      const d = document.createElement('div');
+      d.className = 'nh-imp-tile' + (cls ? ' ' + cls : '');
+      d.innerHTML = '<div class="nh-imp-tn">' + n + '</div><div class="nh-imp-tl"></div>';
+      d.querySelector('.nh-imp-tl').textContent = lab;
+      return d;
+    };
+    tiles.appendChild(tile(groups.auto.length, t('impMatched'), 'nh-imp-ok'));
+    tiles.appendChild(tile(groups.check.length, t('impCheck'), 'nh-imp-warn'));
+    tiles.appendChild(tile(groups.already.length, t('impAlready')));
+    tiles.appendChild(tile(groups.none.length, t('impNone')));
+
+    // options
+    const optRow = (label, on, cb) => {
+      const w = document.createElement('label');
+      w.className = 'nh-imp-opt';
+      const cb2 = document.createElement('input');
+      cb2.type = 'checkbox'; cb2.checked = !!on;
+      const sp = document.createElement('span');
+      sp.textContent = label;
+      w.appendChild(cb2); w.appendChild(sp);
+      cb2.addEventListener('change', () => cb(cb2.checked));
+      return w;
+    };
+    const state = { reviews: anyReview, over: false };
+    if (anyReview) {
+      opts.appendChild(optRow(nhImpFmt(t('impReviews'), [parsed.items.filter((r) => r.review).length]), true, (v) => { state.reviews = v; refresh(); }));
+    }
+    if (groups.already.length) {
+      opts.appendChild(optRow(t('impOver'), false, (v) => {
+        state.over = v;
+        groups.already.forEach((m) => { m.sel = v && !m.dup; });
+        render();
+        refresh();
+      }));
+    }
+
+    // rows
+    const howLabel = (m) => {
+      if (m.dup) return t('impDup');
+      const c = m.cands.find((x) => x.rec.id === m.chosen) || m.pick;
+      const h = c ? c.how : '';
+      if (!c) return '';
+      if (h === 'isbn') return 'ISBN';
+      if (h === 'asin') return 'ASIN';
+      if (h === 'title') return t('impByTitle');
+      return Math.round((c.score || 0) * 100) + '%';
+    };
+    // Two candidates can be the SAME book in two libraries — the sandbox has Pride
+    // and Prejudice twice — and then a title-and-author label reads identically for
+    // both, which makes the picker useless. The library name is what tells them apart.
+    const candLabel = (c) => c.rec.title + (c.rec.author ? ' — ' + c.rec.author : '')
+      + (libs && libs.length > 1 && c.rec.libName ? ' · ' + c.rec.libName : '')
+      + '  (' + (c.how === 'isbn' || c.how === 'asin' ? c.how.toUpperCase() : Math.round(c.score * 100) + '%') + ')';
+
+    const mkRow = (m, group) => {
+      const row = document.createElement('div');
+      row.className = 'nh-imp-row' + (m.dup ? ' nh-imp-isdup' : '');
+      row.dataset.n = String(m.row.n);
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'nh-imp-cb';
+      cb.checked = !!m.sel;
+      cb.disabled = !m.chosen;
+      cb.addEventListener('change', () => { m.sel = cb.checked; refresh(); });
+      // A 17px checkbox is not a thumb-sized target; the label around it is what
+      // gets the 34px hit area on a touchscreen (a wrapping label toggles natively).
+      const cbw = document.createElement('label');
+      cbw.className = 'nh-imp-cbw';
+      cbw.appendChild(cb);
+      row.appendChild(cbw);
+
+      const stars = document.createElement('span');
+      stars.className = 'nh-imp-stars';
+      stars.textContent = nhImpStars(m.row.stars);
+      row.appendChild(stars);
+
+      const src = document.createElement('span');
+      src.className = 'nh-imp-src';
+      src.innerHTML = '<b></b><i></i>';
+      src.querySelector('b').textContent = m.row.title;
+      src.querySelector('i').textContent = m.row.authors || '';
+      row.appendChild(src);
+
+      const arrow = document.createElement('span');
+      arrow.className = 'nh-imp-arrow';
+      arrow.textContent = '→';
+      row.appendChild(arrow);
+
+      const why = document.createElement('span');
+      why.className = 'nh-imp-why' + (m.dup ? ' nh-imp-whydup' : '');
+
+      // The questionable rows get a picker over the runners-up, plus an explicit
+      // "skip" — leaving a wrong match selectable but unchecked is worse UX than
+      // letting the reader correct it here. The picker IS the destination on those
+      // rows: printing the chosen book beside it said the same thing twice and left
+      // the row cramped on a phone.
+      if (group === 'check' && m.cands.length) {
+        const sel = document.createElement('select');
+        sel.className = 'nh-imp-pick';
+        m.cands.forEach((c) => {
+          const o = document.createElement('option');
+          o.value = c.rec.id;
+          o.textContent = candLabel(c);
+          sel.appendChild(o);
+        });
+        const skip = document.createElement('option');
+        skip.value = ''; skip.textContent = t('impSkip');
+        sel.appendChild(skip);
+        sel.value = m.chosen || '';
+        sel.addEventListener('change', () => {
+          m.chosen = sel.value;
+          if (!m.chosen) { m.sel = false; cb.checked = false; }
+          cb.disabled = !m.chosen;
+          why.textContent = howLabel(m);
+          refresh();
+        });
+        row.appendChild(sel);
+        nhSelectify(sel, true);
+      } else {
+        const dst = document.createElement('span');
+        dst.className = 'nh-imp-dst';
+        const rec = (m.cands.find((c) => c.rec.id === m.chosen) || m.pick || {}).rec;
+        if (rec) {
+          const b = document.createElement('b');
+          b.textContent = rec.title;
+          const i2 = document.createElement('i');
+          i2.textContent = rec.author || '';
+          dst.appendChild(b); dst.appendChild(i2);
+          if (libs && libs.length > 1 && rec.libName) {
+            const chip = document.createElement('em');
+            chip.className = 'nh-imp-lib';
+            chip.textContent = rec.libName;
+            dst.appendChild(chip);
+          }
+        }
+        row.appendChild(dst);
+      }
+
+      why.textContent = howLabel(m);
+      row.appendChild(why);
+
+      if (group === 'already' && typeof m.mine === 'number') {
+        const cur = document.createElement('span');
+        cur.className = 'nh-imp-mine';
+        cur.textContent = nhImpFmt(t('impYours'), [nhImpStars(m.mine)]);
+        row.appendChild(cur);
+      }
+
+      return row;
+    };
+
+    const section = (key, list, group, hint) => {
+      if (!list.length) return;
+      const sec = document.createElement('section');
+      sec.className = 'nh-imp-sec';
+      sec.dataset.group = group;
+      const h = document.createElement('h3');
+      h.innerHTML = '<span></span>';
+      h.querySelector('span').textContent = t(key) + ' (' + list.length + ')';
+      if (group !== 'none') {
+        const tog = document.createElement('button');
+        tog.type = 'button';
+        tog.className = 'nh-imp-all';
+        tog.textContent = t('impAll');
+        tog.addEventListener('click', () => {
+          const want = list.some((m) => !m.sel && m.chosen);
+          list.forEach((m) => { if (m.chosen && !m.dup) m.sel = want; });
+          render();
+          refresh();
+        });
+        h.appendChild(tog);
+      }
+      sec.appendChild(h);
+      if (hint) {
+        const p = document.createElement('p');
+        p.className = 'nh-imp-hint';
+        p.textContent = hint;
+        sec.appendChild(p);
+      }
+      if (group === 'none') {
+        const ul = document.createElement('div');
+        ul.className = 'nh-imp-nolist';
+        list.forEach((m) => {
+          const d = document.createElement('div');
+          d.textContent = m.row.title + (m.row.authors ? ' — ' + m.row.authors : '');
+          ul.appendChild(d);
+        });
+        sec.appendChild(ul);
+      } else {
+        list.forEach((m) => sec.appendChild(mkRow(m, group)));
+      }
+      body.appendChild(sec);
+    };
+
+    function render() {
+      body.textContent = '';
+      section('impCheck', groups.check, 'check', t('impCheckHint'));
+      section('impMatched', groups.auto, 'auto');
+      section('impAlready', groups.already, 'already', t('impAlreadyHint'));
+      section('impNone', groups.none, 'none', t('impNoneHint'));
+    }
+
+    function chosenRows() {
+      const out = [], taken = {};
+      all.forEach((m) => {
+        if (!m.sel || !m.chosen || taken[m.chosen]) return;
+        taken[m.chosen] = 1;
+        const row = { itemId: m.chosen, stars: m.row.stars };
+        if (state.reviews && m.row.review) row.review = m.row.review;
+        out.push(row);
+      });
+      return out;
+    }
+
+    function refresh() {
+      const n = chosenRows().length;
+      go.textContent = nhImpFmt(t('impGo'), [n]);
+      go.disabled = !n;
+    }
+
+    render();
+    refresh();
+
+    // The Escape listener is on `document`, so it has to come off on EVERY close path
+    // (the ✕ and the scrim included) or each opened dialog leaves one behind.
+    const esc = (e) => {
+      if (e.key !== 'Escape' || !document.getElementById('nh-imp-modal')) return;
+      // a themed dropdown inside the dialog owns Escape first
+      if (document.querySelector('.nh-sel.nh-open')) return;
+      e.stopPropagation();
+      close();
+    };
+    const close = () => {
+      document.removeEventListener('keydown', esc, true);
+      nhImpClose();
+    };
+    overlay.querySelector('.nh-imp-x').addEventListener('click', close);
+    overlay.querySelector('.nh-imp-cancel').addEventListener('click', close);
+    overlay.querySelector('.nh-imp-bg').addEventListener('click', close);
+    document.addEventListener('keydown', esc, true);
+    overlay.__nhClose = close;
+
+    go.addEventListener('click', () => {
+      // After the run this same button becomes "Close" (nhImpDone rebinds it), and an
+      // `onclick` assignment does NOT replace a listener added with addEventListener —
+      // so without this guard clicking Close would re-import everything first.
+      if (overlay.dataset.nhDone) return;
+      const rows = chosenRows();
+      if (!rows.length) return;
+      box.classList.add('nh-imp-busy');
+      go.disabled = true;
+      const bar = overlay.querySelector('.nh-imp-bar');
+      const pt = overlay.querySelector('.nh-imp-pt');
+      foot.classList.add('nh-imp-working');
+      pt.textContent = nhImpFmt(t('impWorking'), [0, rows.length]);
+      nhImpWrite(rows, (done, total) => {
+        bar.style.width = Math.round((done / total) * 100) + '%';
+        pt.textContent = nhImpFmt(t('impWorking'), [done, total]);
+      }).then((res) => {
+        // Every browse surface caches the store for 60s and card badges cache their
+        // own rendered value; both have to be dropped or nothing shows until reload.
+        nhRs.items = null; nhRs.at = 0; nhRs.tries = 0;
+        document.querySelectorAll('.nh-cr').forEach((b) => { delete b.dataset.nhCrSig; });
+        nhLf.viewSig = '';
+        nhImpDone(res, rows.length);
+      });
+    });
+
+    return overlay;
+  }
+
+  // The result replaces the dialog's body: a list of rows the user has already
+  // approved is not information any more, and a bare toast would hide a failure.
+  function nhImpDone(res, wanted) {
+    const t = nhImpT();
+    const overlay = document.getElementById('nh-imp-modal');
+    if (!overlay) return;
+    overlay.dataset.nhDone = '1';          // the import handler must not fire again
+    const box = overlay.querySelector('.nh-imp-box');
+    box.classList.remove('nh-imp-busy');
+    overlay.querySelector('.nh-imp-sub').textContent = '';
+    overlay.querySelector('.nh-imp-tiles').textContent = '';
+    overlay.querySelector('.nh-imp-opts').textContent = '';
+    const body = overlay.querySelector('.nh-imp-body');
+    body.textContent = '';
+    const p = document.createElement('p');
+    p.className = 'nh-imp-result';
+    p.textContent = nhImpFmt(t('impDone'), [res.saved]);
+    body.appendChild(p);
+    const lost = (res.failed || 0) + (res.rejected || 0);
+    if (lost) {
+      const w = document.createElement('p');
+      w.className = 'nh-imp-result nh-imp-bad';
+      w.textContent = nhImpFmt(t('impFail'), [lost]);
+      body.appendChild(w);
+    }
+    overlay.querySelector('.nh-imp-foot').classList.remove('nh-imp-working');
+    const go = overlay.querySelector('.nh-imp-go');
+    go.textContent = t('impCloseBtn');
+    go.disabled = false;
+    // the dialog's own close, so the document-level Escape listener comes off too
+    go.onclick = overlay.__nhClose || nhImpClose;
+    overlay.querySelector('.nh-imp-cancel').style.display = 'none';
+  }
+
+  // --- the panel card ----------------------------------------------------------
+  function nhImpMountCard(host) {
+    if (!host || host.dataset.nhImp) return;
+    host.dataset.nhImp = '1';
+    const t = nhImpT();
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'nh-imp-btn';
+    btn.textContent = t('impBtn');
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.accept = '.csv,text/csv';
+    file.className = 'nh-imp-file';
+    const note = document.createElement('div');
+    note.className = 'nh-imp-note';
+    host.appendChild(btn);
+    host.appendChild(file);
+    host.appendChild(note);
+
+    const say = (msg, bad) => {
+      note.textContent = msg || '';
+      note.classList.toggle('nh-imp-bad', !!bad);
+    };
+
+    btn.addEventListener('click', () => { file.value = ''; file.click(); });
+    file.addEventListener('change', () => {
+      const f = file.files && file.files[0];
+      if (!f) return;
+      say(t('impReading'));
+      const fr = new FileReader();
+      fr.onerror = () => say(t('impErrRead'), true);
+      fr.onload = () => {
+        let parsed;
+        try { parsed = nhImpParse(fr.result); } catch (e) { parsed = { error: 'unknown' }; }
+        if (parsed.error) {
+          say(t(parsed.error === 'norated' ? 'impErrNoRated' : (parsed.error === 'empty' ? 'impErrEmpty' : 'impErrUnknown')), true);
+          return;
+        }
+        say(t('impMatching'));
+        Promise.all([nhImpFetchIndex(), nhImpFetchMine()]).then((out) => {
+          const built = out[0];
+          if (!built.libs.length) { say(t('impErrNoLibs'), true); return; }
+          say('');
+          nhImpOpen(parsed, built.idx, out[1], built.libs);
+        }).catch(() => say(t('impErrLoad'), true));
+      };
+      fr.readAsText(f, 'utf-8');
+    });
+  }
+
   // ===================== STAR-FILL GEOMETRY (shared) =====================
   // Every star widget is two text layers ('★★★★★' grey + amber) with the amber
   // one clipped by width. Clipping at value/5 of the ROW lands mid-BOX of the
@@ -7268,7 +8298,7 @@
     if (Math.abs(want - cur) >= 4) root.style.setProperty('--nh-player-pad', want + 'px');
   }
 
-  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal';
+  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal, #nh-imp-modal';
   function nhModalLock() {
     document.body.classList.toggle('nh-modal-open', !!document.querySelector(NH_MODAL_IDS));
   }
@@ -9401,7 +10431,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.0.3';
+  const NH_THEME_VERSION = 'v2.0.4';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
@@ -10523,6 +11553,7 @@
     safe(nhReportsBadge);
     safe(nhAccountReports);
     safe(nhDpRouteGuard);
+    safe(nhSelGuard);
     safe(nhModalLock);
     safe(nhPlayerPad);
     safe(nhBookAuthorLinks);

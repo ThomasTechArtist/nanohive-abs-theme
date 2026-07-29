@@ -45,7 +45,7 @@ RUN chmod +x /docker-entrypoint.d/05-check-env.sh
 # Every NH_* var below must match this filter or it will be left literal in the
 # generated config and the injected JSON will be invalid.
 ENV NGINX_ENVSUBST_FILTER="^(ABS_UPSTREAM|THEME_VERSION|NH_[A-Z0-9_]+)$" \
-    THEME_VERSION="core3.117.0_enh6.177.1_book1.42.0_early1.6.0_njs1.12.0"
+    THEME_VERSION="core3.118.0_enh6.178.1_book1.42.0_early1.6.0_njs1.13.0"
 
 # --- Default appearance. Each user can override any of these in the in-app
 # --- settings panel (gear icon); their choice is stored per-browser.

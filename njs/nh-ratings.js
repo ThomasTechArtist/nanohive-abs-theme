@@ -1,4 +1,4 @@
-/* NanoHive ABS — Server-wide Ratings API  v1.12.0  (nginx njs module)
+/* NanoHive ABS — Server-wide Ratings API  v1.13.0  (nginx njs module)
 
    A tiny JSON API that lets every user of this server rate books (stars +
    short review, Plex-style) and see everyone else's ratings. Runs entirely
@@ -26,6 +26,14 @@
                                          stars 0/absent removes the rating;
                                          admins may pass forUser to remove
                                          someone else's.
+     POST /_nh/api/ratings            -> { items: [ { itemId, stars, review } ] }
+                                         bulk form (rating import), max 500 rows,
+                                         ONE store rewrite, caller's own id only —
+                                         forUser is not honoured in this form.
+
+   Stars are 0.25-5 in QUARTER steps (v1.13.0; halves and wholes are a subset).
+   The location caps the body at 64k, so a bulk caller must chunk to fit — njs
+   cannot read a body that nginx spooled to a temp file.
 
    Known limit: the read-modify-write is not locked across nginx workers.
    At family scale simultaneous rating writes are vanishingly rare, and the
@@ -98,13 +106,80 @@ function handleGet(r) {
   send(r, 200, store);
 }
 
+/* QUARTER steps, not half. v2.0.1 added a "star rating steps" setting with a
+   quarter-star option, but this check still demanded halves — so every quarter
+   rating the UI could produce (4.25, 3.75) was answered with a 400 and silently
+   failed to save. Quarter is now the finest the store accepts, which is also what
+   StoryGraph exports, so an imported 3.75 keeps its value. Halves and wholes are
+   a subset, so nothing that used to be accepted is rejected now. */
+function validStars(v) {
+  return v >= 0.25 && v <= 5 && Math.round(v * 4) === v * 4;
+}
+
+function cleanReview(v) {
+  const s = typeof v === 'string' ? v : '';
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, 1500);
+}
+
+const ITEM_ID_RE = /^(?:series:)?[A-Za-z0-9_-]{4,64}$/;
+
+/* Bulk write, one file rewrite for the whole lot (importing a StoryGraph or
+   Goodreads export is ~100 ratings; as single POSTs that is 100 read-modify-write
+   cycles over the same file, each one a chance to lose a concurrent write).
+   Rows are written ONLY under the caller's own verified id — there is deliberately
+   no forUser here, so a bulk call can never touch anyone else's ratings. */
+const BATCH_MAX = 500;
+
+function handleBatch(r, user, rows) {
+  if (!rows.length) return send(r, 400, { error: 'empty items' });
+  if (rows.length > BATCH_MAX) return send(r, 400, { error: 'too many items (max ' + BATCH_MAX + ')' });
+
+  const store = readStore();
+  let saved = 0, removed = 0;
+  const bad = [];
+  const out = {};
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || typeof row !== 'object') { bad.push(i); continue; }
+    const itemId = String(row.itemId || '');
+    if (!ITEM_ID_RE.test(itemId)) { bad.push(i); continue; }
+    const stars = Number(row.stars);
+    const drop = !stars;
+    if (!drop && !validStars(stars)) { bad.push(i); continue; }
+
+    const item = store.items[itemId] || {};
+    if (drop) {
+      if (item[user.id]) removed++;
+      delete item[user.id];
+    } else {
+      item[user.id] = { user: user.name, stars: stars, review: cleanReview(row.review), ts: Date.now() };
+      saved++;
+    }
+    if (Object.keys(item).length) store.items[itemId] = item;
+    else delete store.items[itemId];
+    out[itemId] = store.items[itemId] || {};
+  }
+
+  if (saved || removed) {
+    try {
+      writeStore(store);
+    } catch (e) {
+      return send(r, 500, { error: 'write failed' });
+    }
+  }
+  send(r, 200, { ok: true, saved: saved, removed: removed, rejected: bad.length, badRows: bad.slice(0, 20), items: out });
+}
+
 async function handlePost(r, user) {
   let body = null;
   try { body = JSON.parse(r.requestText); } catch (e) {}
   if (!body || typeof body !== 'object') return send(r, 400, { error: 'invalid JSON body' });
 
+  if (Array.isArray(body.items)) return handleBatch(r, user, body.items);
+
   const itemId = String(body.itemId || '');
-  if (!/^(?:series:)?[A-Za-z0-9_-]{4,64}$/.test(itemId)) return send(r, 400, { error: 'invalid itemId' });
+  if (!ITEM_ID_RE.test(itemId)) return send(r, 400, { error: 'invalid itemId' });
 
   // Admins may target someone else's rating (delete only, in practice);
   // everyone else can only ever write under their own verified id.
@@ -122,12 +197,11 @@ async function handlePost(r, user) {
 
   const stars = Number(body.stars);
   const remove = !stars;
-  if (!remove && !(stars >= 0.5 && stars <= 5 && Math.round(stars * 2) === stars * 2)) {
-    return send(r, 400, { error: 'stars must be 0.5-5 in half steps (0 removes)' });
+  if (!remove && !validStars(stars)) {
+    return send(r, 400, { error: 'stars must be 0.25-5 in quarter steps (0 removes)' });
   }
 
-  let review = typeof body.review === 'string' ? body.review : '';
-  review = review.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, 1500);
+  const review = cleanReview(body.review);
 
   const store = readStore();
   const item = store.items[itemId] || {};

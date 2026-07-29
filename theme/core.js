@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.117.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.118.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1432,8 +1432,113 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 .nh-sel-chev { flex: none; font-size: 0.7rem; color: var(--nh-muted-2, #9a9085); transition: transform .15s ease; }
 .nh-sel.nh-open .nh-sel-chev { transform: rotate(180deg); }
 .nh-sel-menu { position: absolute; top: calc(100% + 6px); left: 0; min-width: 100%; z-index: 620; display: none; box-sizing: border-box; padding: 5px; border-radius: 12px; background: rgba(var(--nh-bg-rgb, 24, 21, 18), 0.97); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.14)); backdrop-filter: blur(24px) saturate(140%); -webkit-backdrop-filter: blur(24px) saturate(140%); box-shadow: 0 18px 50px rgba(0,0,0,0.55); max-height: min(42vh, 380px); overflow-y: auto; scrollbar-width: thin; }
-.nh-sel.nh-open .nh-sel-menu { display: block; }
-.nh-sel.nh-up .nh-sel-menu { top: auto; bottom: calc(100% + 6px); }
+/* No .nh-sel.nh-open / .nh-sel.nh-up descendant rules here on purpose: the menu is
+   not inside the select any more (see .nh-sel-fixed further down). */
+/* ---- rating import (StoryGraph / Goodreads CSV) ----
+   The dialog opens FROM the customizations pop-up (z-index 1000), so it sits above
+   it at 1100 — and the themed dropdowns inside it are a fixed layer at 1200, above
+   both. It is not in the shared modal rule for that reason (that one is z-index
+   500), but it repeats the same centring so it is a centred box and not a static
+   block. It carries its own scroller: a match list can be hundreds of rows. */
+#nh-imp-modal { position: fixed; inset: 0; z-index: 1100; display: flex; align-items: center; justify-content: center; font-family: var(--nh-sans, system-ui); }
+#nh-imp-modal .nh-imp-bg { position: absolute; inset: 0; background: rgba(6,5,4,0.66); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#nh-imp-modal .nh-imp-box { position: relative; z-index: 1; display: flex; flex-direction: column; width: min(94vw, 1080px); max-height: 88vh; background: var(--nh-canvas, #0b1618); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.13)); border-radius: 18px; box-shadow: 0 26px 74px rgba(0,0,0,0.7); overflow: hidden; }
+#nh-imp-modal .nh-imp-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
+#nh-imp-modal .nh-imp-h { font-family: var(--nh-serif), Georgia, serif; font-size: 1.24rem; color: var(--nh-amber, #e0c27a); }
+#nh-imp-modal .nh-imp-x { background: none; border: none; color: var(--nh-muted-2, #9a9085); font-size: 1.7rem; line-height: 1; cursor: pointer; padding: 2px 8px; border-radius: 8px; min-width: 36px; min-height: 36px; }
+#nh-imp-modal .nh-imp-x:hover { color: #fff; background: rgba(255,255,255,0.08); }
+#nh-imp-modal .nh-imp-sub { padding: 0 20px; font-size: 0.86rem; color: var(--nh-text-2, #cfc6b8); }
+#nh-imp-modal .nh-imp-libs { margin-top: 3px; font-size: 0.78rem; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-tiles { display: flex; flex-wrap: wrap; gap: 10px; padding: 14px 20px 4px; }
+#nh-imp-modal .nh-imp-tile { flex: 1 1 120px; min-width: 104px; background: rgba(0,0,0,0.24); border: 1px solid var(--nh-hairline, rgba(255,255,255,0.07)); border-radius: 12px; padding: 9px 12px; }
+#nh-imp-modal .nh-imp-tn { font-family: var(--nh-serif), Georgia, serif; font-size: 1.5rem; line-height: 1.1; color: var(--nh-text-1, #f4eee2); }
+#nh-imp-modal .nh-imp-tl { font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); margin-top: 2px; }
+#nh-imp-modal .nh-imp-ok .nh-imp-tn { color: #7fd18b; }
+#nh-imp-modal .nh-imp-warn .nh-imp-tn { color: var(--nh-amber, #e0c27a); }
+#nh-imp-modal .nh-imp-opts { display: flex; flex-wrap: wrap; gap: 8px 22px; padding: 12px 20px 0; }
+#nh-imp-modal .nh-imp-opt { display: inline-flex; align-items: center; gap: 8px; font-size: 0.86rem; color: var(--nh-text-2, #cfc6b8); cursor: pointer; min-height: 32px; }
+#nh-imp-modal .nh-imp-opt input { accent-color: var(--nh-amber, #e0c27a); width: 16px; height: 16px; }
+#nh-imp-modal .nh-imp-body { flex: 1; overflow-y: auto; scrollbar-gutter: stable; padding: 6px 20px 10px; }
+#nh-imp-modal .nh-imp-sec { margin-top: 14px; }
+#nh-imp-modal .nh-imp-sec h3 { display: flex; align-items: center; gap: 12px; margin: 0 0 6px; font-size: 0.7rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); border-bottom: 1px solid var(--nh-hairline, rgba(255,255,255,0.07)); padding-bottom: 6px; }
+#nh-imp-modal .nh-imp-all { margin-left: auto; background: none; border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.14)); border-radius: 999px; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 12px; cursor: pointer; min-height: 32px; }
+#nh-imp-modal .nh-imp-all:hover { border-color: var(--nh-amber, #e0c27a); color: #fff; }
+#nh-imp-modal .nh-imp-hint { margin: 0 0 8px; font-size: 0.78rem; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-row { display: flex; align-items: center; gap: 10px; padding: 5px 2px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.84rem; }
+#nh-imp-modal .nh-imp-row:hover { background: rgba(255,255,255,0.03); }
+#nh-imp-modal .nh-imp-cbw { flex: none; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: -4px; cursor: pointer; }
+#nh-imp-modal .nh-imp-cb { flex: none; width: 17px; height: 17px; accent-color: var(--nh-amber, #e0c27a); cursor: pointer; }
+#nh-imp-modal .nh-imp-cb:disabled { opacity: 0.35; cursor: default; }
+/* wide enough for "4.25 <star>" on one line — at 2.6em the glyph wrapped under the digits */
+#nh-imp-modal .nh-imp-stars { flex: none; width: 3.6em; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--nh-amber, #e0c27a); }
+/* the star glyph is written as a CSS escape; inside this template literal it needs
+   DOUBLING — a single-backslash CSS escape is read as an octal escape here and is a
+   hard SyntaxError, in a comment just as much as in a rule */
+#nh-imp-modal .nh-imp-stars::after { content: ' \\2605'; font-size: 0.85em; }
+#nh-imp-modal .nh-imp-src, #nh-imp-modal .nh-imp-dst { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+#nh-imp-modal .nh-imp-src b, #nh-imp-modal .nh-imp-dst b { font-weight: 500; color: var(--nh-text-1, #f4eee2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nh-imp-modal .nh-imp-src i, #nh-imp-modal .nh-imp-dst i { font-style: normal; font-size: 0.76rem; color: var(--nh-muted-2, #9a9085); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nh-imp-modal .nh-imp-arrow { flex: none; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-lib { font-style: normal; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--nh-amber, #e0c27a); opacity: 0.85; }
+#nh-imp-modal .nh-imp-skip { font-style: italic; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-why { flex: none; min-width: 4.6em; text-align: right; font-size: 0.7rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-whydup { color: #e08a6a; }
+#nh-imp-modal .nh-imp-isdup { opacity: 0.62; }
+#nh-imp-modal .nh-imp-mine { flex: none; font-size: 0.72rem; color: var(--nh-amber, #e0c27a); }
+#nh-imp-modal .nh-imp-row .nh-sel.nh-sel-inline { flex: 1 1 0; min-width: 0; width: auto; }
+#nh-imp-modal .nh-imp-row .nh-sel-btn { padding: 5px 9px; font-size: 0.78rem; border-radius: 8px; }
+#nh-imp-modal .nh-imp-nolist { max-height: 190px; overflow-y: auto; font-size: 0.8rem; color: var(--nh-muted-2, #9a9085); }
+#nh-imp-modal .nh-imp-nolist div { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nh-imp-modal .nh-imp-foot { display: flex; align-items: center; gap: 16px; padding: 12px 20px 16px; border-top: 1px solid var(--nh-hairline, rgba(255,255,255,0.07)); }
+#nh-imp-modal .nh-imp-prog { flex: 1 1 auto; display: none; align-items: center; gap: 10px; }
+#nh-imp-modal .nh-imp-foot.nh-imp-working .nh-imp-prog { display: flex; }
+#nh-imp-modal .nh-imp-prog { position: relative; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.09); overflow: visible; }
+#nh-imp-modal .nh-imp-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: var(--nh-amber, #e0c27a); transition: width .2s ease; }
+#nh-imp-modal .nh-imp-pt { position: absolute; left: 0; top: 12px; font-size: 0.74rem; color: var(--nh-muted-2, #9a9085); white-space: nowrap; }
+#nh-imp-modal .nh-imp-acts { margin-left: auto; display: flex; gap: 10px; }
+#nh-imp-modal .nh-imp-cancel, #nh-imp-modal .nh-imp-go { font-family: inherit; font-size: 0.86rem; padding: 9px 18px; border-radius: 10px; cursor: pointer; min-height: 38px; border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.14)); background: rgba(0,0,0,0.25); color: var(--nh-text-2, #cfc6b8); }
+#nh-imp-modal .nh-imp-cancel:hover { border-color: rgba(255,255,255,0.26); color: #fff; }
+#nh-imp-modal .nh-imp-go { border-color: var(--nh-amber, #e0c27a); color: var(--nh-amber, #e0c27a); }
+#nh-imp-modal .nh-imp-go:hover:not(:disabled) { background: var(--nh-amber, #e0c27a); color: #1a1512; }
+#nh-imp-modal .nh-imp-go:disabled { opacity: 0.4; cursor: default; }
+#nh-imp-modal .nh-imp-busy .nh-imp-body { opacity: 0.5; pointer-events: none; }
+#nh-imp-modal .nh-imp-result { margin: 18px 0 0; font-family: var(--nh-serif), Georgia, serif; font-size: 1.05rem; color: var(--nh-text-1, #f4eee2); }
+#nh-imp-modal .nh-imp-bad { color: #e08a6a; }
+/* the trigger in the customizations panel */
+.nh-imp-file { display: none; }
+.nh-imp-btn { font-family: var(--nh-sans, system-ui); font-size: 0.86rem; padding: 9px 16px; border-radius: 10px; border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.14)); background: rgba(0,0,0,0.25); color: var(--nh-text-2, #cfc6b8); cursor: pointer; min-height: 38px; }
+.nh-imp-btn:hover { border-color: var(--nh-amber, #e0c27a); color: #fff; }
+.nh-imp-note { margin-top: 8px; font-size: 0.8rem; color: var(--nh-muted-2, #9a9085); }
+.nh-imp-note.nh-imp-bad { color: #e08a6a; }
+/* phones: the two sides of a match row stack, and the picker gets a full line */
+@media (max-width: 760px) {
+  #nh-imp-modal .nh-imp-box { width: 96vw; max-height: 92vh; }
+  #nh-imp-modal .nh-imp-row { flex-wrap: wrap; gap: 6px 8px; padding: 8px 2px; }
+  #nh-imp-modal .nh-imp-arrow { display: none; }
+  #nh-imp-modal .nh-imp-src, #nh-imp-modal .nh-imp-dst { flex: 1 1 100%; }
+  /* line the stacked destination up under the source text, past the tap target */
+  #nh-imp-modal .nh-imp-dst { padding-left: 42px; }
+  #nh-imp-modal .nh-imp-row .nh-sel.nh-sel-inline { flex: 1 1 100%; margin-left: 42px; }
+  #nh-imp-modal .nh-imp-why { margin-left: auto; }
+  /* The checkbox itself stays 17px (the OS draws it); the label around it takes the
+     thumb-sized hit area. Keyed off WIDTH, not (hover: none): that query does not
+     fire on a touchscreen laptop and cannot be relied on here — the same finding
+     that moved the card rating badges into the caption. */
+  #nh-imp-modal .nh-imp-cbw { width: 34px; height: 34px; margin-left: -8px; }
+}
+/* and on any touch device, whatever its width */
+@media (hover: none) {
+  #nh-imp-modal .nh-imp-cbw { width: 34px; height: 34px; margin-left: -8px; }
+}
+
+/* The menu is a child of <body>, not of the select, and becomes a fixed layer when
+   open — so no ancestor overflow can clip it, no scroller's scrollHeight changes, and
+   the panel's own DOM is never mutated (Firefox re-balances a multi-column box when
+   nodes come or go inside it, nudging every card). top/left/bottom/min-width/max-height
+   are set inline by place(). Display is keyed off the menu's OWN class for the same
+   reason: it is not a descendant of .nh-sel.nh-open any more. The z-index clears both
+   the settings pop-up (1000) and the import dialog (1100). */
+.nh-sel-menu.nh-sel-fixed { display: block; position: fixed; z-index: 1200; }
 .nh-sel-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 11px; border-radius: 8px; color: var(--nh-text-2, #d8cfc2); font-family: var(--nh-sans, system-ui); font-size: 0.9rem; cursor: pointer; white-space: nowrap; }
 .nh-sel-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
 .nh-sel-item.nh-on { color: var(--nh-text-1, #f4eee2); }
