@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.176.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.177.0  (injected build) */
 
 (function () {
   'use strict';
@@ -10141,8 +10141,32 @@
       reset.addEventListener('click', () => { nhSettings.homeOrder = []; saveSettings(); render(); });
       list.appendChild(reset);
     };
+    render.wrap = wrap;
+    nhHoRender = render;
+    nhHoSig = nhHoSnapshotSig();
     render();
     host.appendChild(wrap);
+  }
+
+  // Hiding a shelf changes what this list should contain, but the list was built
+  // once when the panel opened — so a hidden section sat there until you closed
+  // the panel and reopened it. The underlying snapshot is already correct within a
+  // tick (nhHomeOrderApply re-records it from the live home page, which is right
+  // behind the settings modal), so all that was missing was a re-render.
+  let nhHoRender = null;
+  let nhHoSig = '';
+  function nhHoSnapshotSig() {
+    let raw = '';
+    try { raw = localStorage.getItem('nh-home-sections') || ''; } catch (e) {}
+    return raw + '|' + JSON.stringify(nhSettings.homeOrder || []);
+  }
+  function nhHomeOrderSync() {
+    // A rebuilt panel leaves the previous closure pointing at a detached node.
+    if (!nhHoRender || !nhHoRender.wrap || !nhHoRender.wrap.isConnected) { nhHoRender = null; nhHoSig = ''; return; }
+    const sig = nhHoSnapshotSig();
+    if (sig === nhHoSig) return;
+    nhHoSig = sig;
+    nhHoRender();
   }
 
   // Author cards carry NO id on ABS 2.35 (an [id^="author-card-"] selector matches
@@ -10537,6 +10561,7 @@
     safe(nhAuthorCardInitials);
     safe(nhRateFinished);
     safe(nhHomeOrderApply);
+    safe(nhHomeOrderSync);
     safe(nhSelectionClass);
     safe(nhHookRouter);
     safe(nhCoverFadeIn);
