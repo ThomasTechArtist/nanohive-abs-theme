@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.119.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.120.0  (injected build) */
 
 (function () {
   'use strict';
@@ -553,6 +553,18 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
 #bookshelf .categoryPlacard { position: static !important; transform: none !important; width: auto !important; text-align: left !important; letter-spacing: normal !important; border-radius: 0 !important; }
 #bookshelf .categoryPlacard > .shinyBlack { background: none !important; background-image: none !important; border: 0 !important; border-radius: 0 !important; height: auto !important; padding: 0 !important; justify-content: flex-start !important; }
 #bookshelf .categoryPlacard h2 { font-family: var(--nh-serif) !important; font-weight: 500 !important; font-size: 1.55rem !important; letter-spacing: -0.01em !important; color: var(--nh-text-1) !important; margin: 0 0 0.5rem !important; }
+
+/* Settings -> General: ABS's two "use bookshelf view" switches are hidden, because the
+   theme owns both layouts and forces them to the detail view (nhForceDetailView). Left
+   available they would let an admin switch the library grid to a view that has no card
+   captions — and the caption line is where our rating badges live, so the ratings would
+   vanish from every tile with no explanation.
+   Matched on ABS's own element ids, which are language-independent (the labels are not —
+   see the shelf-hiding fix). The row is div.flex.items-center.py-2 ; :has() matches
+   ancestors too, so the class list has to be the row's exact one or the whole settings
+   card would disappear. */
+div.flex.items-center.py-2:has(> div > p > #settings-home-page-uses-bookshelf),
+div.flex.items-center.py-2:has(> div > p > #settings-library-uses-bookshelf) { display: none !important; }
 
 [cy-id="leftScrollButton"]:hover, [cy-id="rightScrollButton"]:hover { color: var(--nh-amber) !important; background-color: var(--nh-amber-tint) !important; }
 

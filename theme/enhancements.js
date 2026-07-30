@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.179.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.180.0  (injected build) */
 
 (function () {
   'use strict';
@@ -2520,6 +2520,40 @@
       if (row && rows.indexOf(row) === -1) rows.push(row);
     });
     return rows;
+  }
+
+  // ABS can draw both the home page and the library grid as skeuomorphic wooden
+  // shelves — its "bookshelf view", server settings `homeBookshelfView` and
+  // `bookshelfView` (STANDARD = 0, DETAIL = 1). The theme owns that layout instead,
+  // so both are forced to DETAIL and their two switches are hidden from Settings →
+  // General (core.js hides them by ABS's own element ids).
+  // WHY, on the library grid specifically: the bookshelf view drops the card
+  // captions entirely — books sit on a shelf with no title line under them — and the
+  // caption line is where every rating badge lives. Measured on the sandbox: 8 badges
+  // in detail view, 0 in bookshelf view. A headline feature of the theme silently
+  // disappears, and there is nowhere sensible to put it back.
+  // Only an admin may write server settings, so for everyone else this is a no-op and
+  // the CSS normalisation of the standard HOME view carries the page until an admin
+  // next opens the app. ONE attempt per load either way — never a retry loop against
+  // a server that is refusing the write.
+  let nhBsvDone = false;
+  const NH_BSV_DETAIL = 1;
+  function nhForceDetailView() {
+    if (nhBsvDone) return;
+    const st = window.$nuxt && window.$nuxt.$store;
+    if (!st || !st.state || !st.state.serverSettings) return;
+    if (!st.getters['user/getIsAdminOrUp']) { nhBsvDone = true; return; }
+    const s = st.state.serverSettings;
+    if (s.homeBookshelfView === NH_BSV_DETAIL && s.bookshelfView === NH_BSV_DETAIL) { nhBsvDone = true; return; }
+    nhBsvDone = true;
+    fetch('/api/settings', {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + (window.__NH_TOKEN || getTokenNH()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ homeBookshelfView: NH_BSV_DETAIL, bookshelfView: NH_BSV_DETAIL })
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (j && j.serverSettings) st.commit('setServerSettings', j.serverSettings); })
+      .catch(() => {});
   }
 
   // The left indent of a shelf's CARDS. In DETAIL view the row is the strip and
@@ -11692,6 +11726,7 @@
     safe(function nhLayout() { if (window.__nhManageLayout) window.__nhManageLayout(); });
     safe(nhAuthorCardInitials);
     safe(nhRateFinished);
+    safe(nhForceDetailView);
     safe(nhStdShelfTitles);
     safe(nhHomeOrderApply);
     safe(nhHomeOrderSync);
