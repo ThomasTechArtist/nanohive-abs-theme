@@ -16,7 +16,10 @@ services:
     ports:
       - "8080:80"
     volumes:
-      # UI-saved server defaults (Settings -> Theme -> Server Defaults) persist here.
+      # KEEP THIS. Everything the theme stores lives here: book ratings and reviews,
+      # UI-saved server defaults, your uploaded logo, series covers, profile photos.
+      # Without it all of that is gone the next time the container is recreated —
+      # which is what pulling a new image does.
       - nh_theme_data:/data/nh
     environment:
       ABS_UPSTREAM: "http://audiobookshelf:80"

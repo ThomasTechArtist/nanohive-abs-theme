@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.118.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.119.0  (injected build) */
 
 (function () {
   'use strict';
@@ -524,6 +524,36 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
 }
 .bookshelf-row h2 { font-family: var(--nh-serif) !important; font-weight: 500 !important; font-size: 1.55rem !important; letter-spacing: -0.01em; color: var(--nh-text-1) !important; }
 
+/* ---- ABS's STANDARD (skeuomorphic) home view -------------------------------
+   ABS ships two home layouts. In DETAIL view each shelf is a .bookshelf-row that
+   CONTAINS its own <h2>, which the rule above styles. In STANDARD view — the one
+   a user reported from the field — the strip is .bookshelf-row.categorizedBookshelfRow
+   and the heading lives in a SIBLING placard: a small plate on a wooden shelf edge,
+   drawn BELOW its books. So the rule above matched nothing there, the native titles
+   kept ABS's plate (0.9em, and it scales with the cover-size widget) while our own
+   injected rows drew 1.55rem serif headings above their books — "the titles are
+   inconsistent in font and layout and size", which is exactly what it looked like.
+   The whole theme is a restyle, so the fix is to bring this view into it rather than
+   dress our rows up as wooden shelves: the plate loses its chrome, the shelf edge and
+   the wood texture go, and the heading is promoted ABOVE the strip at our size. Both
+   ABS views then present a home page identically, which is also what makes reordering
+   and shelf-hiding behave the same in both.
+   Scoped by :has(> .bookshelf-row.categorizedBookshelfRow) so it cannot reach DETAIL
+   view; a browser without :has() simply keeps stock ABS. The left indent is copied
+   from the strip in JS (nhStdShelfTitles) — it is an em value ABS computes.
+   NOTE the display below is deliberately NOT !important: Hide Homepage Shelves hides a
+   shelf with an inline display:none, and an !important stylesheet rule outranks a plain
+   inline style — with it, no shelf could be hidden in this view at all. The selector is
+   specific enough (id + :has) to win on its own. */
+#bookshelf div:has(> .bookshelf-row.categorizedBookshelfRow) { display: flex; flex-direction: column; }
+#bookshelf div:has(> .bookshelf-row.categorizedBookshelfRow) > .bookshelf-row { order: 2; }
+#bookshelf div:has(> .bookshelf-row.categorizedBookshelfRow) > div:not(.bookshelf-row) { order: 1; }
+#bookshelf .categorizedBookshelfRow { background-image: none !important; }
+#bookshelf .bookshelfDividerCategorized { display: none !important; }
+#bookshelf .categoryPlacard { position: static !important; transform: none !important; width: auto !important; text-align: left !important; letter-spacing: normal !important; border-radius: 0 !important; }
+#bookshelf .categoryPlacard > .shinyBlack { background: none !important; background-image: none !important; border: 0 !important; border-radius: 0 !important; height: auto !important; padding: 0 !important; justify-content: flex-start !important; }
+#bookshelf .categoryPlacard h2 { font-family: var(--nh-serif) !important; font-weight: 500 !important; font-size: 1.55rem !important; letter-spacing: -0.01em !important; color: var(--nh-text-1) !important; margin: 0 0 0.5rem !important; }
+
 [cy-id="leftScrollButton"]:hover, [cy-id="rightScrollButton"]:hover { color: var(--nh-amber) !important; background-color: var(--nh-amber-tint) !important; }
 
 /* Drawer and backdrop are built in JS at every viewport, but all their styling lives in
@@ -683,9 +713,12 @@ html.nh-covers-std #nh-rate-finished-row .nh-rf-cover { height: calc(var(--nh-rf
    moves (see nhHomeOrderApply). Flex does not collapse adjacent vertical
    margins the way block layout did, which would double every gap -- zeroing
    only margin-top leaves each row's own margin-bottom as the single spacer, so
-   the rhythm is identical to before. */
-body.nh-home-ordered #bookshelf div:has(> .bookshelf-row) { display: flex !important; flex-direction: column !important; }
-body.nh-home-ordered #bookshelf div:has(> .bookshelf-row) > * { margin-top: 0 !important; }
+   the rhythm is identical to before.
+   The class is stamped by nhHomeOrderApply on the exact element whose children it
+   ordered -- never inferred from the DOM shape, which differs between ABS's two home
+   views and silently put the flex context one level too deep in the standard one. */
+.nh-home-flexed { display: flex !important; flex-direction: column !important; }
+.nh-home-flexed > * { margin-top: 0 !important; }
 
 /* ---- home section reorder (settings panel) -------------------------------- */
 .nh-ho-wrap { margin-top: 14px; }
@@ -1023,7 +1056,9 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
 
     /* Welcome heading — scoped to #bookshelf so book detail titles aren't touched */
     #bookshelf h1, #bookshelf .text-3xl, #bookshelf .text-4xl, #bookshelf .text-5xl { font-size: 1.3rem !important; line-height: 1.15 !important; }
-    .bookshelf-row h2, .nh-rs-heading { font-size: 1.05rem !important; }
+    /* #bookshelf .categoryPlacard h2 is the STANDARD-view shelf title; it has to step
+       down with its DETAIL-view twin or the two views disagree on a phone. */
+    .bookshelf-row h2, .nh-rs-heading, #bookshelf .categoryPlacard h2 { font-size: 1.05rem !important; }
 
     /* Card labels (title/author under the covers): ABS scales them by inheritance from
        the cover-size slider, so at small sizes (60) they shrink to ~7px. Floor the text

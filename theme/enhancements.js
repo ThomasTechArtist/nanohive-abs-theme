@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.178.1  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.179.0  (injected build) */
 
 (function () {
   'use strict';
@@ -91,11 +91,29 @@
   let nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings };
   try {
     let saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {};
-    // Legacy full-dump migration — mirror of the identical check in nh-early.js
-    // (which normally runs first; this covers builds where it didn't).
+    // Legacy full-dump migration. Pre-diff-era saves (<= v1.9.1) dumped EVERY setting
+    // into the browser, which pinned the then-current defaults forever — an admin could
+    // change the server defaults and a pinned browser would never follow.
+    // This used to DISCARD the dump, which cost everyone upgrading from 1.9.x their whole
+    // saved look on the first load after the update, with no warning (reported from the
+    // field). Converting costs nothing and keeps what they actually chose: any key that
+    // still differs from the effective default is kept verbatim; keys that merely restate
+    // a default are dropped, which is what unpins them. The result is stamped `_v` and
+    // written back, so this runs once per browser and never again.
+    // Deliberately the same shape saveSettings writes — the two can never disagree.
     if (saved && !saved._v && Object.keys(saved).length >= 20) {
-      localStorage.removeItem('nh-settings');
-      saved = {};
+      const legacyBase = { ...defaultSettings, ...serverSettings, ...uiServerSettings };
+      const kept = { _v: 2 };
+      Object.keys(saved).forEach((k) => {
+        if (k === '_v') return;
+        // Never restore the fossil build stamp: pre-r19 dumps carried themeVersion, and
+        // restoring it would shadow the real one again (see the delete above).
+        if (k === 'themeVersion') return;
+        if (!(k in legacyBase)) return; // a setting this build no longer has
+        if (JSON.stringify(saved[k]) !== JSON.stringify(legacyBase[k])) kept[k] = saved[k];
+      });
+      try { localStorage.setItem('nh-settings', JSON.stringify(kept)); } catch (e2) {}
+      saved = kept;
     }
     delete saved._v;
     nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings, ...saved };
@@ -330,6 +348,19 @@
     return null;
   }
 
+  // ABS's home shelf ids -> the setting that hides that shelf. Read off a live server
+  // (`/api/libraries/<id>/personalized`); ids are language-independent, which the
+  // heading text this used to match on is not. continue-listening / continue-reading
+  // are deliberately absent — that shelf is the hero carousel's business (crMode).
+  const NH_HIDE_BY_SHELF_ID = {
+    'recently-added': 'hideHomeRecentlyAdded',
+    'recent-series': 'hideHomeRecentSeries',
+    'continue-series': 'hideHomeContinueSeries',
+    'listen-again': 'hideHomeListenAgain',
+    'discover': 'hideHomeDiscover',
+    'newest-authors': 'hideHomeNewAuthors'
+  };
+
   function applySettings() {
     try {
       let style = document.getElementById('nh-dynamic-styles');
@@ -453,14 +484,27 @@
         const h2 = row.querySelector('h2');
         if (!h2) return;
         const title = h2.textContent.trim().toLowerCase();
+        // ABS's own shelf id where the row exposes one — both home views do. The title
+        // text below is a FALLBACK only: it is matched in English and Polish, so on a
+        // German, French or Spanish server every one of these toggles silently did
+        // nothing at all. The id is the same string in every language.
+        const shelfKey = NH_HIDE_BY_SHELF_ID[nhShelfId(row)];
 
         let hide = false;
-        if (nhSettings.hideHomeRecentlyAdded && (title.includes('recently added') || title.includes('ostatnio dodane') || title.includes('niedawno dodane'))) hide = true;
-        if ((nhSettings.hideHomeRecentSeries || (nhSettings.showCustomRecentSeries && nhSettings.customSeriesCards !== false)) && (title.includes('recent series') || title.includes('ostatnie serie') || title.includes('najnowsze serie'))) hide = true;
-        if (nhSettings.hideHomeContinueSeries && (title.includes('continue series') || title.includes('kontynuuj seri'))) hide = true;
-        if (nhSettings.hideHomeListenAgain && (title.includes('listen again') || title.includes('słuchaj ponownie'))) hide = true;
-        if (nhSettings.hideHomeDiscover && (title.includes('discover') || title.includes('odkry'))) hide = true;
-        if (nhSettings.hideHomeNewAuthors && (title.includes('newest authors') || title.includes('authors') || title.includes('autor'))) hide = true;
+        if (shelfKey) {
+          hide = !!nhSettings[shelfKey];
+        } else {
+          if (nhSettings.hideHomeRecentlyAdded && (title.includes('recently added') || title.includes('ostatnio dodane') || title.includes('niedawno dodane'))) hide = true;
+          if (nhSettings.hideHomeRecentSeries && (title.includes('recent series') || title.includes('ostatnie serie') || title.includes('najnowsze serie'))) hide = true;
+          if (nhSettings.hideHomeContinueSeries && (title.includes('continue series') || title.includes('kontynuuj seri'))) hide = true;
+          if (nhSettings.hideHomeListenAgain && (title.includes('listen again') || title.includes('słuchaj ponownie'))) hide = true;
+          if (nhSettings.hideHomeDiscover && (title.includes('discover') || title.includes('odkry'))) hide = true;
+          if (nhSettings.hideHomeNewAuthors && (title.includes('newest authors') || title.includes('authors') || title.includes('autor'))) hide = true;
+        }
+        // Our expanded Recent Series row replaces the native one wholesale, so that
+        // shelf goes whichever way it was identified.
+        if ((shelfKey === 'hideHomeRecentSeries' || (!shelfKey && (title.includes('recent series') || title.includes('ostatnie serie') || title.includes('najnowsze serie'))))
+          && nhSettings.showCustomRecentSeries && nhSettings.customSeriesCards !== false) hide = true;
 
         if (hide) {
           row.style.display = 'none';
@@ -2478,6 +2522,33 @@
     return rows;
   }
 
+  // The left indent of a shelf's CARDS. In DETAIL view the row is the strip and
+  // carries it directly; in STANDARD view the row is a bare wrapper with no padding
+  // at all and the indent (an em value ABS computes from the cover size) sits on the
+  // inner strip. Reading the wrapper is what put our injected rows flush against the
+  // window while every ABS shelf beside them was indented.
+  function nhShelfIndent(row) {
+    const strip = row && (row.classList && row.classList.contains('bookshelf-row') ? row : row.querySelector('.bookshelf-row'));
+    if (!strip) return null;
+    const cs = getComputedStyle(strip);
+    return { left: cs.paddingLeft, right: cs.paddingRight };
+  }
+
+  // STANDARD view only: the shelf title is a placard drawn on a wooden shelf edge,
+  // a sibling of the strip. core.js promotes it above the strip and strips its
+  // chrome; the one thing CSS cannot do is match the strip's em-based indent, so it
+  // is copied here. Runs from the tick — ABS re-renders these rows freely.
+  function nhStdShelfTitles() {
+    document.querySelectorAll('#bookshelf .bookshelf-row.categorizedBookshelfRow').forEach(function (strip) {
+      const shelf = strip.parentElement;
+      if (!shelf) return;
+      const placard = shelf.querySelector('.categoryPlacard');
+      if (!placard) return;
+      const pad = getComputedStyle(strip).paddingLeft;
+      if (placard.style.paddingLeft !== pad) placard.style.paddingLeft = pad;
+    });
+  }
+
   async function injectHeroBanner() {
     // Toggle off: remove the hero and restore the stock Continue Listening shelf.
     if (nhSettings.showHeroCarousel === false) {
@@ -3372,7 +3443,8 @@
         }
         try {
           const sib = nativeRow || nhShelfRows().find(r => r.id !== 'nh-recent-series-row');
-          if (sib) { const cs = getComputedStyle(sib); existing.style.paddingLeft = cs.paddingLeft; existing.style.paddingRight = cs.paddingRight; }
+          const pad = nhShelfIndent(sib);
+          if (pad) { existing.style.paddingLeft = pad.left; existing.style.paddingRight = pad.right; }
         } catch (e) {}
         return;
       }
@@ -3390,7 +3462,8 @@
 
       try {
         const sib = nativeRow || nhShelfRows().find(r => r.id !== 'nh-recent-series-row');
-        if (sib) { const cs = getComputedStyle(sib); row.style.paddingLeft = cs.paddingLeft; row.style.paddingRight = cs.paddingRight; }
+        const pad = nhShelfIndent(sib);
+        if (pad) { row.style.paddingLeft = pad.left; row.style.paddingRight = pad.right; }
       } catch (e) {}
 
       // Navigation is handled by a single delegated listener (nhBindRecentSeriesNav),
@@ -10431,7 +10504,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.0.4';
+  const NH_THEME_VERSION = 'v2.0.5';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
@@ -10845,7 +10918,8 @@
     }
     try {
       const sib = nhShelfRows().find((r) => r.id !== 'nh-rate-finished-row' && r.id !== 'nh-recent-series-row');
-      if (sib) { const cs = getComputedStyle(sib); row.style.paddingLeft = cs.paddingLeft; row.style.paddingRight = cs.paddingRight; }
+      const pad = nhShelfIndent(sib);
+      if (pad) { row.style.paddingLeft = pad.left; row.style.paddingRight = pad.right; }
     } catch (e) {}
     nhRfSize();
     nhRf.key = key;
@@ -11042,6 +11116,16 @@
   function nhSectionHidden(el) {
     if (!el) return true;
     if (getComputedStyle(el).display === 'none') return true;
+    // A shelf HOSTING our hero carousel is not a hidden shelf. The carousel replaces
+    // that shelf's strip, so the strip is display:none while the section itself is the
+    // biggest thing on the page. In STANDARD view the strip is a CHILD of the section,
+    // so the inner-row test below condemned the whole section: it dropped out of the
+    // reorder list, never received an order value, and an item with no `order` in a flex
+    // container sorts to the very top -- Continue Listening stayed pinned first no
+    // matter what order the user chose. In DETAIL view the section IS the strip, which
+    // is why it only ever misbehaved in one of the two views.
+    if (el.dataset && el.dataset.heroInjected === 'true') return false;
+    if (el.querySelector('#nh-hero-container')) return false;
     const inner = el.querySelector('.bookshelf-row');
     return !!(inner && getComputedStyle(inner).display === 'none');
   }
@@ -11079,8 +11163,18 @@
     // "no order set yet" -- otherwise the panel can never show a list until an
     // order exists, and an order can never be set without a list.
     try { localStorage.setItem('nh-home-sections', JSON.stringify(secs.map((s) => ({ key: s.key, label: s.label })))); } catch (e) {}
+    const host = nhHomeRowHost();
+    if (!host) return;
     const order = Array.isArray(nhSettings.homeOrder) ? nhSettings.homeOrder : [];
-    if (!order.length) return;
+    if (!order.length) {
+      // Reset ("use ABS order") has to undo both halves, or the page keeps the last
+      // arrangement until a reload.
+      if (host.classList.contains('nh-home-flexed')) {
+        host.classList.remove('nh-home-flexed');
+        secs.forEach((s) => { if (s.el.style.order) s.el.style.order = ''; });
+      }
+      return;
+    }
     const rank = {};
     order.forEach((k, i) => { rank[k] = i; });
     const want = secs.slice().sort((a, b) => {
@@ -11095,9 +11189,16 @@
     // back, and the shelves re-mounted on every pass -- which is what made every
     // book tile on the home page flicker continuously. Setting `order` never
     // touches the tree, so Vue has nothing to react to.
-    const host = nhHomeRowHost();
-    if (!host) return;
-    document.body.classList.add('nh-home-ordered');
+    //
+    // The flex context is marked on the HOST -- the element whose children carry
+    // those order values -- and marked HERE rather than guessed at in CSS. The old
+    // rule (`body.nh-home-ordered #bookshelf div:has(> .bookshelf-row)`) styled
+    // whichever div directly contains a shelf strip, which is the host only in
+    // ABS's DETAIL home view. In its STANDARD (skeuomorphic) view that is each
+    // shelf's OWN wrapper, so the host stayed display:block, `order` does nothing
+    // outside a flex/grid parent, and reordering saved but never moved anything
+    // (reported from the field). Marking the resolved element cannot drift.
+    host.classList.add('nh-home-flexed');
     want.forEach((s, i) => {
       const v = String(i + 1);
       if (s.el.style.order !== v) s.el.style.order = v;
@@ -11591,6 +11692,7 @@
     safe(function nhLayout() { if (window.__nhManageLayout) window.__nhManageLayout(); });
     safe(nhAuthorCardInitials);
     safe(nhRateFinished);
+    safe(nhStdShelfTitles);
     safe(nhHomeOrderApply);
     safe(nhHomeOrderSync);
     safe(nhSelectionClass);

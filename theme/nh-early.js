@@ -1,4 +1,4 @@
-/* NanoHive ABS — Early Boot Shim  v1.6.0
+/* NanoHive ABS — Early Boot Shim  v1.7.0
    Runs inline in <head>, right after core.js. Applies the resolved theme
    (baked defaults merged with the user's saved overrides) before first paint,
    and paints the cached home cinematic background as soon as <body> exists,
@@ -35,17 +35,13 @@
 
   var saved = {};
   try { saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {}; } catch (e) {}
-  // One-time migration: pre-diff-era saves dumped EVERY setting (~25+ keys) into the
-  // browser, pinning the then-current server defaults forever — admins could change
-  // server defaults and pinned browsers (including their login pages) never followed.
-  // A legacy dump is unmistakable: dozens of keys and no _v marker. Drop it; genuine
-  // per-user tweaks are the rare few-key saves and survive.
-  try {
-    if (saved && !saved._v && Object.keys(saved).length >= 20) {
-      localStorage.removeItem('nh-settings');
-      saved = {};
-    }
-  } catch (e) {}
+  // A pre-diff-era save (<= v1.9.1) dumped EVERY setting into the browser. This shim
+  // used to DELETE it here, which is what made an update to 2.0 land on a stock-looking
+  // page for anyone coming from 1.9.x. It is converted instead — keeping whatever still
+  // differs from the defaults — by enhancements.js on this very load, so nothing needs
+  // deleting and nothing is lost. This file only READS settings, so using the legacy
+  // values as they stand is right: the paint matches what the user had, and the next
+  // load reads the converted form.
 
   // `||` would discard legitimate falsy values (fontScale 0, colorizeLogo false).
   var pick = function (key) {
