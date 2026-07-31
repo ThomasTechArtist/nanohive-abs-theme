@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.181.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.182.0  (injected build) */
 
 (function () {
   'use strict';
@@ -2274,9 +2274,7 @@
 
           const descRaw = itemData.media?.metadata?.description;
           if (descRaw) {
-            const tmp = document.createElement('div');
-            tmp.innerHTML = descRaw;
-            description = tmp.textContent || tmp.innerText;
+            description = nhHtmlToText(descRaw);
             if (description.length > 450) description = description.substring(0, 445) + '...';
           }
 
@@ -2345,7 +2343,10 @@
           if (genres.length > 0) tags.push(genres[0]);
 
           if (tags.length > 0) {
-            tagsHtml = tags.map(tag => `<span style="background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.16); padding: 4px 14px; border-radius: 20px; font-size: 0.90rem; color: #ffffff; backdrop-filter: blur(4px);">${tag}</span>`).join('');
+            // Narrator and genre are item metadata, so they are ESCAPED here. They used
+            // to be interpolated raw, which made a genre or a narrator name a script
+            // injection into everyone's home page (see slideInner).
+            tagsHtml = tags.map(tag => `<span style="background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.16); padding: 4px 14px; border-radius: 20px; font-size: 0.90rem; color: #ffffff; backdrop-filter: blur(4px);">${escapeHtmlNH(tag)}</span>`).join('');
           }
         }
       } catch (e) {}
@@ -2359,7 +2360,10 @@
   // per-library localStorage snapshot of the last visit's slides keyed by item id,
   // paint from it the instant the Continue Listening cards are in the DOM, then
   // refresh every slide in the background and patch the fields in place.
-  const NH_HERO_CACHE_V = 2;
+  // 3: tagsHtml is escaped as of the metadata-escaping fix. A snapshot written by an
+  // earlier build holds UNESCAPED markup and is re-injected verbatim on the next
+  // visit, so those records have to be thrown away rather than trusted.
+  const NH_HERO_CACHE_V = 3;
   const NH_HERO_CACHE_TTL = 14 * 24 * 3600 * 1000;
 
   // The card's library-item id, synchronously. The card's own element id is only
@@ -2456,22 +2460,38 @@
     }
   }
 
+  // EVERY item-derived value below is escaped. This template is assigned to innerHTML
+  // by four callers, so anything interpolated raw is script injection with the reach
+  // of the home page: title, author, narrator and genre went in verbatim, and the
+  // description survived its tag-stripping step whenever the payload was written as
+  // HTML entities (that step DECODES them and hands live markup back). Reported by a
+  // user and reproduced on the sandbox — five fields, five executing handlers, and it
+  // fired on a phone too, where the description is display:none: hiding an element
+  // does not stop the browser building it.
+  // `tagsHtml` is the one exception and is escaped where it is BUILT (buildSlideData),
+  // because it is markup by the time it arrives here.
   function slideInner(d, t) {
+    const eTitle = escapeHtmlNH(d.title);
+    const eAuthor = escapeHtmlNH(d.author);
+    const eDesc = escapeHtmlNH(d.description);
+    const eCover = escapeHtmlNH(d.coverUrl);
+    const eLeft = escapeHtmlNH(d.leftSideText);
+    const eRight = escapeHtmlNH(d.rightSideText);
     return `
         <div class="nh-hero-banner" style="width: 100%; position: relative; overflow: hidden; background-color: var(--nh-raised); border-radius: 24px; padding: 48px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); cursor: pointer; transition: transform 0.2s ease;">
 
-          <div class="nh-hero-bg" style="position: absolute; inset: -12%; background-image: url('${d.coverUrl}'); background-size: cover; background-position: center; filter: blur(60px) brightness(0.5) saturate(1.4); z-index: 0; pointer-events: none;"></div>
+          <div class="nh-hero-bg" style="position: absolute; inset: -12%; background-image: url('${eCover}'); background-size: cover; background-position: center; filter: blur(60px) brightness(0.5) saturate(1.4); z-index: 0; pointer-events: none;"></div>
           <div style="position: absolute; inset: 0; background: linear-gradient(110deg, rgba(var(--nh-bg-rgb), 0.92) 0%, rgba(var(--nh-bg-rgb), 0.62) 50%, rgba(var(--nh-bg-rgb), 0.22) 100%); z-index: 1; pointer-events: none;"></div>
 
           <div style="position: relative; z-index: 2; flex: 1; min-width: 0; padding-right: 64px; display: flex; flex-direction: column;">
             <div style="color: var(--nh-amber); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 16px; font-family: system-ui, sans-serif;">${t.pickup}</div>
-            <div class="nh-hero-title" style="font-family: var(--nh-serif); font-size: 3.4rem; font-weight: 600; line-height: 1.2; color: #ffffff; margin-bottom: 8px; padding-bottom: 4px; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0,0,0,0.5); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%;">${d.title}</div>
-            <div class="nh-hero-author" style="font-size: 1.25rem; color: #d8cfc2; margin-bottom: 20px; font-family: system-ui, sans-serif;">${t.by ? t.by + ' ' : ''}${d.author}</div>
+            <div class="nh-hero-title" style="font-family: var(--nh-serif); font-size: 3.4rem; font-weight: 600; line-height: 1.2; color: #ffffff; margin-bottom: 8px; padding-bottom: 4px; letter-spacing: -0.01em; text-shadow: 0 2px 10px rgba(0,0,0,0.5); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%;">${eTitle}</div>
+            <div class="nh-hero-author" style="font-size: 1.25rem; color: #d8cfc2; margin-bottom: 20px; font-family: system-ui, sans-serif;">${t.by ? t.by + ' ' : ''}${eAuthor}</div>
 
             <div class="nh-hero-tags" style="display: ${d.tagsHtml ? 'flex' : 'none'}; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; font-family: system-ui, sans-serif;">${d.tagsHtml || ''}</div>
 
             <div class="nh-hero-desc" style="color: #c9bfb1; font-size: 1.15rem; line-height: 1.6; margin-bottom: 32px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; font-family: system-ui, sans-serif; max-width: 90%; text-shadow: 0 1px 8px rgba(0,0,0,0.5);">
-              ${d.description}
+              ${eDesc}
             </div>
 
             <div style="display: flex; align-items: center; gap: 32px; font-family: system-ui, sans-serif;">
@@ -2487,15 +2507,15 @@
                   <div class="nh-hero-prog" style="height: 100%; width: ${d.progressPercent}%; background: var(--nh-amber); border-radius: 3px; transition: width 0.4s ease;"></div>
                 </div>
                 <div style="display: flex; justify-content: space-between; font-size: 0.95rem; color: #c9bfb1;">
-                  <span class="nh-hero-prog-left" style="font-weight: 500;">${d.leftSideText}</span>
-                  <span class="nh-hero-prog-right">${d.rightSideText}</span>
+                  <span class="nh-hero-prog-left" style="font-weight: 500;">${eLeft}</span>
+                  <span class="nh-hero-prog-right">${eRight}</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div style="position: relative; z-index: 2; flex-shrink: 0; display: flex; align-items: center;">
-            <img class="nh-hero-cover" src="${d.coverUrl}" style="height: 380px; width: auto; max-width: 420px; object-fit: contain; border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.6);" />
+            <img class="nh-hero-cover" src="${eCover}" style="height: 380px; width: auto; max-width: 420px; object-fit: contain; border-radius: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.6);" />
           </div>
         </div>
     `;
@@ -3340,6 +3360,28 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
+  // HTML -> plain text for descriptions, which ABS stores as markup. Parsed with
+  // DOMParser into an INERT document: it has no browsing context, so nothing in the
+  // string can load a resource or run a handler on the way past. The old way was to
+  // assign it to a detached <div>'s innerHTML and read textContent back — that div
+  // still belongs to the live document, and whether an <img src=x onerror> in it
+  // fires is left to the engine. Chrome did not; nothing says the next one will not.
+  // NOTE this returns TEXT, and text is not safe to interpolate into HTML — an
+  // `&lt;img …&gt;` in the source decodes to real markup here. Escape at the sink.
+  function nhHtmlToText(html, keepBreaks) {
+    const src = keepBreaks
+      ? String(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n')
+      : String(html);
+    try {
+      const doc = new DOMParser().parseFromString(src, 'text/html');
+      return (doc.body && doc.body.textContent) || '';
+    } catch (e) {
+      // No DOMParser (should not happen in any supported browser): strip tags crudely
+      // rather than fall back to a live-document parse.
+      return src.replace(/<[^>]*>/g, '');
+    }
+  }
+
   async function fetchRecentSeries(libId, count) {
     const base = getBaseNH();
     const token = getTokenNH();
@@ -3803,12 +3845,10 @@
     try {
       const raw = best && best.media && best.media.metadata && best.media.metadata.description;
       if (raw) {
-        const t = document.createElement('div');
         // Keep paragraph structure: <br>/<p> become newlines, then strip the rest.
         // .nh-sh-desc renders white-space:pre-line, so these breaks survive —
-        // same treatment the admin's pasted formatting gets.
-        t.innerHTML = String(raw).replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n\n');
-        desc = (t.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+        // same treatment the admin's pasted formatting gets. Parsed inertly.
+        desc = nhHtmlToText(raw, true).replace(/\n{3,}/g, '\n\n').trim();
       }
     } catch (e) {}
     // Admin-written override wins over book #1's blurb (null while still loading).
@@ -10599,7 +10639,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.0.7';
+  const NH_THEME_VERSION = 'v2.0.8';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
