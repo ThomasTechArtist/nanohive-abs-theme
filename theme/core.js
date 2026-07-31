@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.120.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.121.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1588,6 +1588,10 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 .nh-sel-menu.nh-sel-fixed { display: block; position: fixed; z-index: 1200; }
 .nh-sel-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 11px; border-radius: 8px; color: var(--nh-text-2, #d8cfc2); font-family: var(--nh-sans, system-ui); font-size: 0.9rem; cursor: pointer; white-space: nowrap; }
 .nh-sel-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
+/* Keyboard focus inside the menu. Same weight as :hover so arrowing through the list
+   reads exactly like pointing at it; there is no focus ring because the rows are not
+   focusable elements — the menu keeps focus and moves this class. */
+.nh-sel-item.nh-active { background: rgba(255,255,255,0.10); color: #fff; outline: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.16)); outline-offset: -1px; }
 .nh-sel-item.nh-on { color: var(--nh-text-1, #f4eee2); }
 .nh-sel-item.nh-on::after { content: '✓'; color: var(--nh-amber, #e0c27a); font-size: 0.85em; }
 .nh-sel-group { padding: 8px 11px 3px; font-family: var(--nh-sans, system-ui); font-size: 0.66rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); cursor: default; }

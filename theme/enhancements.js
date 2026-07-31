@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.180.1  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.181.0  (injected build) */
 
 (function () {
   'use strict';
@@ -931,6 +931,12 @@
       const r = btn.getBoundingClientRect();
       if (!r.width && !r.height) { close(); return; }
       const GAP = 6, EDGE = 10, MIN = 120;
+      // Measuring costs the reader their place in a long list: lifting the max-height
+      // below makes the menu its full height for an instant, which clamps scrollTop to
+      // 0, and re-applying it does not put it back. Saved and restored around the
+      // measurement — a resize or an outer scroll must not dump you back to the top
+      // half way down a list of candidates.
+      const keepTop = menu.scrollTop;
       // scrollHeight is the unclamped content height; read it with no max-height on
       menu.style.maxHeight = 'none';
       const want = Math.min(menu.scrollHeight + 2, Math.min(innerHeight * 0.42, 380));
@@ -961,6 +967,7 @@
       // The button can be scrolled out of its own scroller while the menu floats
       // free of it; hide rather than leave a menu pointing at nothing.
       menu.style.visibility = nhSelBtnClipped(btn) ? 'hidden' : '';
+      if (menu.scrollTop !== keepTop) menu.scrollTop = keepTop;
     };
     const reflow = () => {
       if (placeQueued) return;
@@ -975,13 +982,55 @@
       if (nhSelOpen === close) nhSelOpen = null;
       document.removeEventListener('pointerdown', outside, true);
       document.removeEventListener('keydown', onKey, true);
-      removeEventListener('scroll', reflow, true);
+      removeEventListener('scroll', onScroll, true);
       removeEventListener('resize', reflow, true);
     };
+    // A scroll INSIDE the menu is the reader using the menu — not the page moving
+    // under it — and re-placing on it made a scrollable menu impossible to scroll:
+    // every wheel tick re-measured and put the list back at the top. Reported from
+    // the field on the ratings import, where a row that needs a second look offers
+    // up to seven candidates and the picker sits low enough in the dialog to be
+    // squeezed to its 96px floor. It affected every dropdown long enough to scroll.
+    const onScroll = (e) => { if (e.target !== menu && !(e.target && e.target.nodeType === 1 && menu.contains(e.target))) reflow(); };
     // The menu is no longer inside `wrap`, so it has to be tested separately or
     // pointerdown on an option closes the menu before its click can fire.
     const outside = (e) => { if (!wrap.contains(e.target) && !menu.contains(e.target)) close(); };
-    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); } };
+
+    // Keyboard support. The native <select> is hidden, so until now an open menu
+    // answered to nothing but Escape — the reader who could not reach an option with
+    // the wheel could not reach it with the arrows either, which is how the import
+    // picker became a dead end. Arrow keys move an active row (and scroll it into
+    // view), Enter/Space takes it, Home/End jump the ends.
+    const items = () => Array.prototype.slice.call(menu.querySelectorAll('.nh-sel-item'));
+    const setActive = (list, i) => {
+      list.forEach((el, n) => el.classList.toggle('nh-active', n === i));
+      if (list[i]) list[i].scrollIntoView({ block: 'nearest' });
+    };
+    const activeIndex = (list) => {
+      const i = list.findIndex((el) => el.classList.contains('nh-active'));
+      return i >= 0 ? i : list.findIndex((el) => el.classList.contains('nh-on'));
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); btn.focus(); return; }
+      const list = items();
+      if (!list.length) return;
+      const cur = activeIndex(list);
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); e.stopPropagation();   // or the page scrolls behind the menu
+        const next = e.key === 'ArrowDown'
+          ? Math.min(list.length - 1, (cur < 0 ? -1 : cur) + 1)
+          : Math.max(0, (cur < 0 ? list.length : cur) - 1);
+        setActive(list, next);
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault(); e.stopPropagation();
+        setActive(list, e.key === 'Home' ? 0 : list.length - 1);
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        if (cur < 0) return;
+        e.preventDefault(); e.stopPropagation();
+        list[cur].click();                          // one selection path, not two
+        btn.focus();
+      }
+    };
     const rebuild = () => {
       const opt = sel.options[sel.selectedIndex];
       // Only write the label when it actually changed. Assigning the SAME string
@@ -1026,8 +1075,20 @@
       document.addEventListener('pointerdown', outside, true);
       document.addEventListener('keydown', onKey, true);
       // capture:true so a scroll inside ANY ancestor scroller is seen, not just window
-      addEventListener('scroll', reflow, true);
+      addEventListener('scroll', onScroll, true);
       addEventListener('resize', reflow, true);
+      // Open with the current value in view and armed for the arrow keys.
+      const list = items();
+      const on = list.findIndex((el) => el.classList.contains('nh-on'));
+      if (on >= 0) { list[on].classList.add('nh-active'); list[on].scrollIntoView({ block: 'nearest' }); }
+    });
+    // The button is a real <button>, so Enter and Space already open the menu; the
+    // arrow keys should too, the way a native select does.
+    btn.addEventListener('keydown', (e) => {
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !wrap.classList.contains('nh-open')) {
+        e.preventDefault();
+        btn.click();
+      }
     });
     sel.addEventListener('change', rebuild);
     // options that arrive async (start-page libraries) refresh the label
@@ -10538,7 +10599,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.0.6';
+  const NH_THEME_VERSION = 'v2.0.7';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
