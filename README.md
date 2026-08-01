@@ -1,4 +1,4 @@
-# NanoHive ABS Theme
+# NanoHive Audiobookshelf Theme
 
 A drop-in reverse proxy that themes **Audiobookshelf Web** for every user — no Tampermonkey, no
 per-browser setup. Put it in front of your ABS server and it injects the theme's CSS and JS
