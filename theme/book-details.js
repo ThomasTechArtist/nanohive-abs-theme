@@ -1,4 +1,4 @@
-/* NanoHive ABS — Book Details Redesign  v1.42.0  (injected build) */
+/* NanoHive ABS — Book Details Redesign  v1.43.0  (injected build) */
 
 (function () {
   'use strict';
@@ -263,7 +263,12 @@
     /* Description Formatting */
     #item-description {
         font-size: 1.15rem !important;
-        line-height: 1.7 !important;
+        /* 1.7 was set for flowing prose. Publisher blurbs are usually a couple of
+           paragraphs followed by a cast list, one short line per paragraph, and at
+           1.7 plus a paragraph margin every one of those names sat 50px from the
+           next. 1.55 is still comfortable for prose and lands the same 40px rhythm
+           stock ABS has, with our larger type. */
+        line-height: 1.55 !important;
         color: #d8cfc2 !important;
         max-width: 95% !important;
         display: block !important;
@@ -279,6 +284,18 @@
     #item-description.nh-desc-para { white-space: normal !important; }
     #item-description.nh-desc-para .nh-desc-p { margin: 0 0 0.62em !important; }
     #item-description.nh-desc-para .nh-desc-p:last-child { margin-bottom: 0 !important; }
+    /* An HTML description gets the SAME gap. ABS's description editor writes one <p>
+       per line, so a publisher's cast list ("Narrator - X", "Asha - Y", …) is a dozen
+       paragraphs, each carrying a full 1em margin on top of our 1.7 line-height:
+       measured 50px per line against 24px for the same text in the editor, which is
+       what "the gaps are huge" was. Until now only the rebuilt plain-text path got a
+       controlled gap, so the two kinds of description did not even match each other.
+       white-space is normalised too: ABS renders the field pre-line, so newlines
+       BETWEEN the <p> tags in the stored markup add another blank line on top of the
+       margin. Real <br> elements still break, as they should. */
+    #item-description:has(> p), #item-description:has(> div) { white-space: normal !important; }
+    #item-description > p, #item-description > div { margin: 0 0 0.62em !important; }
+    #item-description > p:last-child, #item-description > div:last-child { margin-bottom: 0 !important; }
 
     /* Tables & Accordions */
     #item-page-wrapper .w-full.my-2.mt-6 > div.bg-primary {
@@ -1434,7 +1451,6 @@
           }
           if (origImg && origImg.src && origImg.src.includes('/api/items/')) {
               detailsCoverContainer.dataset.hdFixed = 'true';
-              origImg.style.opacity = '0';
 
               const clone = document.createElement('img');
               clone.className = origImg.className;
@@ -1448,8 +1464,26 @@
                 highResSrc = urlObj.toString();
               } catch(e) {}
 
+              // The original is NEVER hidden. The clone copies its class list, so it
+              // is positioned identically and simply sits on top once it decodes;
+              // until then, and if it never does, ABS's own cover is what shows.
+              //
+              // This used to set origImg.style.opacity = '0' the moment the swap
+              // started, which is how a book could open with no cover at all: Vue owns
+              // that <img> and re-renders the subtree freely, so the ordering
+              //   we hide the original -> we append the clone -> Vue patches, keeps the
+              //   hidden original and drops our clone
+              // leaves an empty box until something re-renders it. It reproduced as
+              // "sometimes", because whether Vue patches in that window depends on
+              // timing and on whether the 800px derivative was already cached (ABS
+              // generates those on demand, so a first view can take seconds).
+              // Not hiding it removes the failure mode outright rather than narrowing
+              // the window: there is no state in which the cover box is empty.
+              clone.addEventListener('error', () => { if (clone.parentNode) clone.remove(); });
+
               clone.src = highResSrc;
               detailsCoverContainer.appendChild(clone);
+              if (clone.complete && !clone.naturalWidth) clone.remove(); // already failed
 
               const wrapperLink = detailsCoverContainer.closest('.relative.rounded-xs');
               if (wrapperLink) {
