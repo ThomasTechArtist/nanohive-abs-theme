@@ -1,4 +1,4 @@
-/* NanoHive ABS — Server-wide Ratings API  v1.13.0  (nginx njs module)
+/* NanoHive ABS — Server-wide Ratings API  v1.14.0  (nginx njs module)
 
    A tiny JSON API that lets every user of this server rate books (stars +
    short review, Plex-style) and see everyone else's ratings. Runs entirely
@@ -63,6 +63,10 @@ function writeStore(store) {
 function send(r, status, obj) {
   r.headersOut['Content-Type'] = 'application/json';
   r.headersOut['Cache-Control'] = 'no-store';
+  // Every response here echoes text somebody typed (review bodies, report notes,
+  // usernames). It is JSON and it is never rendered as a document, but saying so
+  // costs one header and takes content-type guessing off the table entirely.
+  r.headersOut['X-Content-Type-Options'] = 'nosniff';
   r.return(status, JSON.stringify(obj));
 }
 

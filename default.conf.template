@@ -47,6 +47,7 @@ server {
     location /_nh/ {
         alias /usr/share/nginx/nh-theme/;
         add_header Cache-Control "public, max-age=60";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 
@@ -56,6 +57,7 @@ server {
         alias /data/nh/server-config.json;
         default_type application/json;
         add_header Cache-Control "no-store";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 
@@ -70,6 +72,7 @@ server {
         alias /data/nh/collection-art.json;
         default_type application/json;
         add_header Cache-Control "no-store";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
         # Before the first icon is ever chosen the file does not exist. Serve an
         # empty store rather than a 404, so a fresh install does not log a console
@@ -91,6 +94,7 @@ server {
     location ~ ^/_nh/(logo\.(?:png|svg|jpe?g|webp|gif|avif|ico))$ {
         alias /data/nh/$1;
         add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 
@@ -101,6 +105,7 @@ server {
     location ~ "^/_nh/series-covers/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif|avif))$" {
         alias /data/nh/series-covers/$1;
         add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 
@@ -110,6 +115,7 @@ server {
         alias /data/nh/series-desc/$1;
         default_type "text/plain; charset=utf-8";
         add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 
@@ -119,6 +125,7 @@ server {
     location ~ "^/_nh/user-avatars/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif))$" {
         alias /data/nh/user-avatars/$1;
         add_header Cache-Control "public, max-age=300";
+        add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
 

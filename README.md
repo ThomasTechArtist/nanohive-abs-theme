@@ -256,6 +256,13 @@ Mount it or you lose all of this when the container is recreated:
 | `user-avatars/` | user profile photos |
 | `logo.*` | uploaded custom logo |
 
+**What is readable without logging in.** Images and text that the browser has to draw before
+anyone has signed in are served unauthenticated, same-origin: the logo, series covers, series
+descriptions, profile photos, the collection art map, and the saved server defaults. Ratings,
+reviews, listening summaries, problem reports and started/finished dates are **not** — those
+go through the API and require the caller's own Audiobookshelf login. Worth knowing before you
+upload a profile photo you would not want a stranger with the URL to see.
+
 ### Where settings live
 
 Three layers, none of which touch your Audiobookshelf database:
