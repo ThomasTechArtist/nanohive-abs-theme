@@ -4,3 +4,9 @@
 # Local dev/test scaffolding (see docker-compose.local.yml)
 /docker-compose.local.yml
 /.local/
+
+# mex code graph (mex-agent). A local SQLite index of the theme's symbols, rebuilt
+# from source with `npx mex-agent graph`. ~9MB of binary that is derived data, so it
+# is not committed. Nothing else from mex is used here: the wiki scaffold is
+# deliberately not set up, docs/V2_PLAN.md is the single source of truth.
+/.mex/
