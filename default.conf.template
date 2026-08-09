@@ -202,6 +202,18 @@ server {
         js_content nh_ratings.dates;
     }
 
+    # Per-user theme preferences (#12), so a shared browser stops handing one
+    # person's look to the next and settings follow a user between browsers.
+    # Body cap is deliberately larger than the 16k the handler stores: nginx has
+    # to accept the request before njs can measure and reject it, and njs cannot
+    # read a body nginx spooled to a temp file.
+    location = /_nh/api/prefs {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 32k;
+        client_body_buffer_size 32k;
+        js_content nh_ratings.prefs;
+    }
+
     location = /_nh/api/reports-admin {
         auth_request /_nh/admincheck;
         set $nh_reports_admin 1;

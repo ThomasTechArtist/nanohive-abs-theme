@@ -1,4 +1,4 @@
-/* NanoHive ABS — Server-wide Ratings API  v1.14.0  (nginx njs module)
+/* NanoHive ABS — Server-wide Ratings API  v1.15.0  (nginx njs module)
 
    A tiny JSON API that lets every user of this server rate books (stars +
    short review, Plex-style) and see everyone else's ratings. Runs entirely
@@ -619,4 +619,76 @@ function dates(r) {
   send(r, 200, { ok: true });
 }
 
-export default { handle, meta, avatar, stats, reports, dates };
+/* ---------------- Per-user theme preferences (GitHub #12) ----------------
+   A shared browser used to hold ONE settings blob, so a family device handed
+   whoever signed in next the previous person's theme. The client now namespaces
+   its localStorage per ABS user id, and this endpoint is the other half: the
+   same preferences follow a user to any browser they sign in on.
+
+   Storage: /data/nh/prefs.json
+     { "v": 1, "users": { "<userId>": { "ts": 1754_000_000_000, "settings": {…} } } }
+
+   The value is the client's own settings DIFF — only keys that differ from the
+   server/env defaults — so it stays small and an admin changing the defaults
+   still reaches everyone. It is stored opaquely: this endpoint deliberately does
+   not know the theme's setting names, so shipping a new setting needs no njs
+   change. Size is capped instead of validated key by key.
+
+     GET  /_nh/api/prefs -> { v, ts, settings }   your own, never anyone else's
+     POST /_nh/api/prefs <- { settings, ts }      replaces your own copy
+
+   Last write wins, which is what the client's timestamp compare expects. Two
+   browsers open at once means the most recent save is the one that survives. */
+const PREFS = '/data/nh/prefs.json';
+const PREFS_MAX_BYTES = 16384;
+
+function readPrefs() {
+  try {
+    const p = JSON.parse(fs.readFileSync(PREFS));
+    if (p && typeof p === 'object' && p.users && typeof p.users === 'object') return p;
+  } catch (e) {}
+  return { v: 1, users: {} };
+}
+
+function writePrefs(store) {
+  const tmp = PREFS + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(store));
+  fs.renameSync(tmp, PREFS);
+}
+
+function prefs(r) {
+  const user = whoami(r);
+  if (!user) return send(r, 401, { error: 'not authenticated' });
+
+  if (r.method === 'GET') {
+    const mine = readPrefs().users[user.id] || null;
+    return send(r, 200, { v: 1, ts: (mine && mine.ts) || 0, settings: (mine && mine.settings) || null });
+  }
+
+  if (r.method !== 'POST') {
+    r.headersOut['Allow'] = 'GET, POST';
+    return send(r, 405, { error: 'method not allowed' });
+  }
+
+  let body;
+  try { body = JSON.parse(r.requestText || '{}'); } catch (e) { return send(r, 400, { error: 'bad json' }); }
+  const settings = body && body.settings;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return send(r, 400, { error: 'settings must be an object' });
+  }
+  // Re-serialise before measuring: the cap has to bound what we STORE, and the
+  // request body could be padded with whitespace to slip a large object past it.
+  const encoded = JSON.stringify(settings);
+  if (encoded.length > PREFS_MAX_BYTES) return send(r, 400, { error: 'settings too large' });
+
+  const ts = Number(body.ts);
+  const store = readPrefs();
+  store.users[user.id] = {
+    ts: (isFinite(ts) && ts > 0) ? Math.round(ts) : Date.now(),
+    settings: JSON.parse(encoded),
+  };
+  try { writePrefs(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
+  send(r, 200, { ok: true, ts: store.users[user.id].ts });
+}
+
+export default { handle, meta, avatar, stats, reports, dates, prefs };

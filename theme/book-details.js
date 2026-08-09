@@ -1,4 +1,4 @@
-/* NanoHive ABS — Book Details Redesign  v1.43.0  (injected build) */
+/* NanoHive ABS — Book Details Redesign  v1.44.0  (injected build) */
 
 (function () {
   'use strict';
@@ -577,7 +577,12 @@
     // Same precedence as the rest of the theme: user setting > UI server
     // defaults > operator env config > default ON.
     let saved = {};
-    try { saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {}; } catch (e) {}
+    // Settings are namespaced per ABS user (#12). enhancements.js owns the key
+    // and loads before this file; the plain key is the pre-2.1 fallback.
+    try {
+      const key = (window.__nhSettingsKey && window.__nhSettingsKey()) || 'nh-settings';
+      saved = JSON.parse(localStorage.getItem(key) || '{}') || {};
+    } catch (e) {}
     const layers = [saved, window.NH_SERVER_CONFIG || {}, window.NH_CONFIG || {}];
     for (const l of layers) {
       if (l && l.showRatings !== undefined && l.showRatings !== null && l.showRatings !== '') return l.showRatings !== false;

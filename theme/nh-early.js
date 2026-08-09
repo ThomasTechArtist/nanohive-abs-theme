@@ -1,4 +1,4 @@
-/* NanoHive ABS — Early Boot Shim  v1.7.0
+/* NanoHive ABS — Early Boot Shim  v1.8.0
    Runs inline in <head>, right after core.js. Applies the resolved theme
    (baked defaults merged with the user's saved overrides) before first paint,
    and paints the cached home cinematic background as soon as <body> exists,
@@ -33,8 +33,30 @@
     wine:    { canvas: '#1a1014', rail: '#140c0f', raised: '#281820', rgb: '26, 16, 20',  appbar: 'rgba(26, 16, 20, 0.70)' }
   };
 
+  // Settings are namespaced per ABS user (#12) so a shared browser stops handing
+  // one person's look to the next. This file runs before anything else, so it
+  // resolves the id the same way enhancements.js does: straight out of the vuex
+  // blob in localStorage. No id yet (logged out, first ever load) = the plain key.
+  // (Kept byte-identical in intent to nhSettingsUid() in enhancements.js — if one
+  // changes, change both, or the pre-paint and the app disagree about who you are.)
+  var settingsKey = 'nh-settings';
+  try {
+    var tok = localStorage.getItem('token') || '';
+    var part = tok.split('.')[1];
+    var uid = '';
+    if (part) {
+      var raw = atob(part.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((part.length + 3) % 4));
+      var m = /"(?:userId|sub)"\s*:\s*"([^"]+)"/.exec(raw);
+      if (m) uid = m[1];
+    }
+    if (!uid) {
+      var vx = JSON.parse(localStorage.getItem('vuex') || '{}');
+      uid = (vx && vx.user && vx.user.user && vx.user.user.id) || '';
+    }
+    if (uid) settingsKey = 'nh-settings:' + uid;
+  } catch (e) {}
   var saved = {};
-  try { saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {}; } catch (e) {}
+  try { saved = JSON.parse(localStorage.getItem(settingsKey) || '{}') || {}; } catch (e) {}
   // A pre-diff-era save (<= v1.9.1) dumped EVERY setting into the browser. This shim
   // used to DELETE it here, which is what made an update to 2.0 land on a stock-looking
   // page for anyone coming from 1.9.x. It is converted instead — keeping whatever still

@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.121.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.124.0  (injected build) */
 
 (function () {
   'use strict';
@@ -574,6 +574,14 @@ div.flex.items-center.py-2:has(> div > p > #settings-library-uses-bookshelf) { d
    display:flex / display:block override these. */
 #nh-mobile-drawer, #nh-menu-backdrop { display: none; }
 
+/* Version footer: the NanoHive line links to this build's own release notes.
+   The desktop footer sits over the rail with pointer-events:none so it never
+   eats a click meant for the nav, which means the anchor has to re-enable them
+   for itself. Everything else about the line is unchanged. */
+.nh-vf-link { display: inline-block; margin-top: 2px; color: var(--nh-amber, #e0c27a); opacity: 0.8; text-decoration: none; pointer-events: auto; }
+.nh-vf-link:hover, .nh-vf-link:focus-visible { opacity: 1; text-decoration: underline; }
+.nh-vf-link:focus-visible { outline: 1px solid var(--nh-amber, #e0c27a); outline-offset: 2px; border-radius: 3px; }
+
 /* ============ SERIES & COLLECTION CARDS ============ */
 /* Baseline geometry (196/196/168/12/24) proven on this ABS build; this build does NOT
    put inline heights on covers-area (that's why the fixed height exists). Scaling comes
@@ -583,8 +591,11 @@ html:not(.nh-stock-series) [cy-id="card"][id^="series-card-"] { width: var(--nh-
 html:not(.nh-stock-series) [cy-id="covers-area"] { height: var(--nh-series-w, 196px) !important; overflow: visible !important; }
 html:not(.nh-stock-series) [cy-id="item"] { overflow: visible !important; }
 /* :not(.nh-sc-tile) — the shorthand's !important would wipe the custom series
-   cover's inline background-image (A1) */
-html:not(.nh-stock-series) [cy-id="covers-area"] > div:not([cy-id]):not(.nh-sc-tile):not(.nh-cr) { background: transparent !important; box-shadow: none !important; overflow: visible !important; }
+   cover's inline background-image (A1). EVERY themed child injected into
+   covers-area needs its own :not() here or this rule silently erases it: it has
+   already eaten the custom cover tile (A1), the rating strip's gradient (.nh-cr)
+   and, without the third exclusion, the completion badge (.nh-sp, #13). */
+html:not(.nh-stock-series) [cy-id="covers-area"] > div:not([cy-id]):not(.nh-sc-tile):not(.nh-cr):not(.nh-sp) { background: transparent !important; box-shadow: none !important; overflow: visible !important; }
 html:not(.nh-stock-series) [cy-id="covers-area"] .bg-primary { background: transparent !important; }
 html:not(.nh-stock-series) [cy-id="covers-area"] .bg-primary > .relative { width: 100% !important; }
 html:not(.nh-stock-series) [cy-id="covers-area"] [id^="group-cover-"] { overflow: visible !important; box-shadow: none !important; }
@@ -618,6 +629,34 @@ html.nh-stock-series .nh-sc-tile { display: none !important; }
 html.nh-stock-series [id^="series-card-"] [cy-id="hoveringDisplayTitle"] { display: flex !important; background: rgba(0,0,0,0.3) !important; }
 html.nh-stock-series [id^="series-card-"] [cy-id="hoveringDisplayTitle"] > * { visibility: hidden !important; }
 [cy-id="seriesProgressBar"] { display: none !important; }
+/* Series completion badge (#13) — the replacement for the native bar hidden just
+   above. Anchored to the top-right corner of the FRONT cover of the stack, which
+   sits at left 0 / top 0 and is --nh-series-cover wide, so the corner is that
+   width minus a small inset. z-index clears the deck (1-4) and ABS's own cover
+   wrapper, which is Tailwind z-10 — a lower value only shows during the cover's
+   fade-in, which is exactly how the rating badge first shipped broken.
+   Green = every book finished, amber = started but not finished. A series nobody
+   has touched gets no badge at all. */
+/* FIXED colours, deliberately NOT var(--nh-amber). The "started" state used the
+   accent, which is whatever colour the user picked — on a warm or greenish accent
+   the two states became the same badge at two brightnesses (Pawel). Finished and
+   started mean different things, so they get their own hues and keep them whatever
+   the theme is. Green and orange are ~120 degrees apart in hue and differ in
+   lightness too, so they stay distinguishable for red-green colour blindness. */
+.nh-sp { position: absolute; top: 6px; left: calc(var(--nh-series-cover, 168px) - 6px); transform: translateX(-100%); z-index: 20; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; line-height: 0; color: #04240f; background: #3fbf6a; border: 1px solid rgba(0,0,0,0.35); box-shadow: 0 2px 8px rgba(0,0,0,0.45); pointer-events: none; }
+/* The tick is a stroked SVG path, so its weight is ours to set rather than
+   whatever the UI font gives (Pawel: it read too thin as a text glyph). */
+.nh-sp svg { display: block; width: 14px; height: 14px; }
+/* Started-but-not-finished: orange, and a HALF-FILLED disc rather than a tick, so
+   the two states differ in shape as well as colour and neither depends on the
+   viewer seeing hue correctly. */
+.nh-sp-some { color: #2a1400; background: #f3922b; }
+html.nh-stock-series .nh-sp { display: none !important; }
+/* In the home Recent Series row the front cover is the full --nh-rs-cw tile. */
+#nh-recent-series-row .nh-sp { left: calc(var(--nh-rs-cw, 140px) - 6px); }
+/* Collapsed-series cards on the library page are book cards, so the badge hangs
+   off the cover area's own right edge rather than the series-deck width. */
+[id^="cover-area-"] > .nh-sp { top: 6px; left: auto; right: 6px; transform: none; }
 [id^="series-card-"] p:not([role="status"]), [id^="series-card-"] .truncate, [cy-id="detailBottomDisplayTitle"], [id^="collection-card-"] p, [id^="collection-card-"] .truncate { font-family: var(--nh-serif) !important; font-weight: 500 !important; color: var(--nh-text-2) !important; }
 
 [id^="collection-card-"] .bg-primary.rounded-sm { border-radius: 14px !important; overflow: hidden !important; box-shadow: 0 10px 26px rgba(0,0,0,0.40) !important; }
@@ -900,6 +939,25 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
 .modal [style*="max-height: 80vh"] .overflow-y-auto,
 .modal [style*="max-height: 80vh"] .overflow-y-scroll,
 .modal .max-h-80.overflow-y-auto { max-height: 60vh !important; }
+/* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
+   ABS's Modal component sizes its panel with INLINE styles computed when the modal
+   opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the
+   panel keeps a height the viewport no longer has. Nothing scrolls back to the footer:
+   the panel is inside a position:fixed overlay, and the only scroller (#formWrapper)
+   sits ABOVE the button row. Reproduced identically on unthemed ABS, so this is an
+   upstream flaw we bound rather than a regression of ours.
+   Fixing it in CSS costs one rule and covers every trigger — browser or OS zoom, a
+   resized window, a bookmarks bar appearing, a rotated tablet. max-height beats the
+   inline height, #formWrapper's own max-height is a PERCENTAGE of the panel so the
+   form area shrinks with it, and the footer stays on screen.
+   Panel bottom = (viewport + height + margin-top) / 2 (the overlay centres it), so the
+   panel fits exactly while height + margin-top <= viewport. Leaving 20px of slack keeps
+   a visible gap rather than a flush edge. */
+.modal > div[style*="min-height"][style*="margin-top"] { max-height: calc(95vh - 75px) !important; max-height: calc(100dvh - 95px) !important; }
+/* Below this, 75px of top margin is a big slice of the screen. Trade it for content. */
+@media (max-height: 560px) {
+  .modal > div[style*="min-height"][style*="margin-top"] { margin-top: 12px !important; max-height: calc(95vh - 12px) !important; max-height: calc(100dvh - 32px) !important; }
+}
 /* Description rich-text editor (Trix). ABS ships it neutral-gray (rgb(35,35,35)) which
    clashes with the warm theme — recolour the editor surface and its toolbar. Use
    background-COLOR (not the shorthand) on buttons so their icon background-image survives.
@@ -1242,6 +1300,85 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #toolbar .nh-lf-count { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; margin-right: 4px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); font-size: 0.75rem; color: var(--nh-text-2, #cfc6b8); font-family: var(--nh-sans, system-ui); white-space: nowrap; }
 #toolbar .nh-lf-clearx { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: 4px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); font-size: 0.8rem; color: var(--nh-text-2, #cfc6b8); font-family: var(--nh-sans, system-ui); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 #toolbar .nh-lf-clearx:hover { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.3); }
+
+/* ============ FILTER & SORT PANEL (v2.1) ============ */
+/* Replaces ABS's two dropdowns with one pill, a chip row of what is active, and a
+   panel holding the whole state at once. The native wrappers are only HIDDEN, never
+   removed: Vue still owns that DOM, so modernFilters:false brings them straight
+   back with nothing to rebuild. (No backticks in this file - see the header.) */
+body.nh-ff-active #toolbar .nh-ff-nat { display: none !important; }
+#toolbar #nh-ff-btn { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 12px; margin-right: 6px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); font-family: var(--nh-sans, system-ui); font-size: 0.78rem; color: var(--nh-text-2, #cfc6b8); cursor: pointer; white-space: nowrap; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+#toolbar #nh-ff-btn:hover { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.3); }
+#toolbar #nh-ff-btn.nh-ff-live { border-color: var(--nh-amber, #e0c27a); color: var(--nh-text-1, #f4eee2); }
+#toolbar #nh-ff-btn svg { flex: none; opacity: 0.85; }
+#toolbar #nh-ff-btn .nh-ff-pip { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--nh-amber, #e0c27a); color: #241c0c; font-size: 0.66rem; font-weight: 700; }
+/* Chips live INSIDE the toolbar. A row of their own under a position:fixed toolbar
+   would have to be accounted for in #bookshelf's padding, and every element that
+   measures that padding would need to learn about it. */
+#toolbar #nh-ff-chips { display: inline-flex; align-items: center; gap: 6px; max-width: min(52vw, 760px); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; margin-right: 6px; vertical-align: middle; }
+#toolbar #nh-ff-chips::-webkit-scrollbar { display: none; height: 0; }
+#toolbar .nh-ff-chip { display: inline-flex; align-items: center; gap: 6px; flex: none; height: 26px; padding: 0 9px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: rgba(255,255,255,0.07); font-family: var(--nh-sans, system-ui); font-size: 0.72rem; color: var(--nh-text-2, #cfc6b8); cursor: pointer; white-space: nowrap; }
+#toolbar .nh-ff-chip:hover { background: rgba(255,255,255,0.14); color: #fff; }
+#toolbar .nh-ff-chip i { font-style: normal; opacity: 0.6; font-size: 0.68rem; }
+#toolbar .nh-ff-chip:hover i { opacity: 1; }
+#toolbar .nh-ff-chip-sort { border-color: rgba(224,194,122,0.4); color: var(--nh-amber, #e0c27a); }
+#toolbar .nh-ff-chip-clear { border-style: dashed; opacity: 0.8; }
+
+#nh-ff-pop { position: fixed; z-index: 400; display: none; width: min(94vw, 660px); overflow-y: auto; overscroll-behavior: contain; background: var(--nh-canvas, #181512); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.13)); border-radius: 16px; box-shadow: 0 22px 60px rgba(0,0,0,0.66); font-family: var(--nh-sans, system-ui); scrollbar-width: thin; }
+#nh-ff-pop .nh-ff-cols { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: 0; align-items: start; }
+#nh-ff-pop .nh-ff-col { padding: 16px 18px; min-width: 0; }
+#nh-ff-pop .nh-ff-sortcol { border-right: 1px solid var(--nh-hairline, rgba(255,255,255,0.07)); }
+#nh-ff-pop h3 { margin: 0 0 10px; font-size: 0.68rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); font-weight: 600; }
+#nh-ff-pop .nh-ff-empty { margin: 0; padding: 6px 0; font-size: 0.8rem; color: var(--nh-muted-2, #9a9085); font-style: italic; }
+/* Two rows per level: name (with its precedence number and controls) above, the
+   spelled-out direction below. On one row the direction pill squeezed the name
+   down to "Ra...", and the name is the part you actually read. */
+#nh-ff-pop .nh-ff-level { display: grid; grid-template-columns: 19px minmax(0, 1fr) auto auto; grid-template-areas: "num lbl up rm" "dir dir dir dir"; gap: 4px 7px; align-items: center; padding: 7px 0; }
+#nh-ff-pop .nh-ff-num { grid-area: num; display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 19px; border-radius: 6px; background: rgba(224,194,122,0.16); color: var(--nh-amber, #e0c27a); font-size: 0.68rem; font-weight: 700; }
+#nh-ff-pop .nh-ff-lvl-lbl { grid-area: lbl; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: var(--nh-text-1, #f4eee2); }
+#nh-ff-pop .nh-ff-move { grid-area: up; }
+#nh-ff-pop .nh-ff-rm { grid-area: rm; }
+#nh-ff-pop .nh-ff-lvl-ctl { grid-area: dir; display: flex; flex-wrap: wrap; gap: 6px; }
+#nh-ff-pop .nh-ff-dir { padding: 3px 9px; border: 1px solid rgba(255,255,255,0.14); border-radius: 7px; background: rgba(255,255,255,0.05); color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.7rem; cursor: pointer; white-space: nowrap; }
+#nh-ff-pop .nh-ff-opt { border-style: dashed; }
+#nh-ff-pop .nh-ff-dir:hover { background: rgba(255,255,255,0.12); color: #fff; }
+#nh-ff-pop .nh-ff-move, #nh-ff-pop .nh-ff-rm { width: 22px; height: 22px; border: none; border-radius: 6px; background: none; color: var(--nh-muted-2, #9a9085); font-size: 0.78rem; cursor: pointer; }
+#nh-ff-pop .nh-ff-move:hover, #nh-ff-pop .nh-ff-rm:hover { background: rgba(255,255,255,0.1); color: #fff; }
+#nh-ff-pop .nh-ff-move:disabled { opacity: 0.25; cursor: default; }
+#nh-ff-pop .nh-ff-add { margin-top: 8px; width: 100%; padding: 7px 10px; border: 1px dashed rgba(255,255,255,0.2); border-radius: 9px; background: none; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.78rem; text-align: left; cursor: pointer; }
+#nh-ff-pop .nh-ff-add:hover { border-color: var(--nh-amber, #e0c27a); color: #fff; }
+#nh-ff-pop .nh-ff-addmenu { margin-top: 6px; display: flex; flex-direction: column; border: 1px solid var(--nh-hairline, rgba(255,255,255,0.08)); border-radius: 9px; overflow: hidden; }
+#nh-ff-pop .nh-ff-addmenu button { padding: 7px 11px; border: none; background: none; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.8rem; text-align: left; cursor: pointer; }
+#nh-ff-pop .nh-ff-addmenu button:hover { background: rgba(255,255,255,0.08); color: #fff; }
+#nh-ff-pop .nh-ff-fhead { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+#nh-ff-pop .nh-ff-fhead h3 { margin: 0; flex: none; }
+#nh-ff-pop .nh-ff-search { flex: 1 1 auto; min-width: 0; padding: 6px 10px; border: 1px solid rgba(255,255,255,0.14); border-radius: 999px; background: rgba(0,0,0,0.25); color: var(--nh-text-1, #f4eee2); font-family: inherit; font-size: 0.78rem; }
+#nh-ff-pop .nh-ff-search:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
+#nh-ff-pop .nh-ff-search::-webkit-search-cancel-button { display: none; }
+#nh-ff-pop .nh-ff-sec { border-top: 1px solid var(--nh-hairline, rgba(255,255,255,0.06)); }
+#nh-ff-pop .nh-ff-sec:first-child { border-top: none; }
+#nh-ff-pop .nh-ff-sec-h { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 2px; border: none; background: none; color: var(--nh-text-1, #f4eee2); font-family: inherit; font-size: 0.82rem; text-align: left; cursor: pointer; }
+#nh-ff-pop .nh-ff-sec-h:hover { color: var(--nh-amber, #e0c27a); }
+#nh-ff-pop .nh-ff-caret { flex: none; width: 12px; color: var(--nh-muted-2, #9a9085); font-size: 0.7rem; }
+#nh-ff-pop .nh-ff-secn { margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--nh-amber, #e0c27a); color: #241c0c; font-size: 0.64rem; font-weight: 700; }
+#nh-ff-pop .nh-ff-vals { padding: 0 0 8px 20px; }
+#nh-ff-pop .nh-ff-val { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 0; border-radius: 7px; cursor: pointer; }
+#nh-ff-pop .nh-ff-val:hover { background: rgba(255,255,255,0.05); }
+#nh-ff-pop .nh-ff-val input { flex: none; width: 14px; height: 14px; accent-color: var(--nh-amber, #e0c27a); cursor: pointer; }
+#nh-ff-pop .nh-ff-vlbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.8rem; color: var(--nh-text-2, #cfc6b8); }
+#nh-ff-pop .nh-ff-vn { flex: none; font-size: 0.7rem; color: var(--nh-muted-2, #9a9085); font-variant-numeric: tabular-nums; }
+#nh-ff-pop .nh-ff-more { margin-top: 4px; padding: 4px 0; border: none; background: none; color: var(--nh-amber, #e0c27a); font-family: inherit; font-size: 0.75rem; cursor: pointer; }
+#nh-ff-pop .nh-ff-foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 11px 18px; border-top: 1px solid var(--nh-hairline, rgba(255,255,255,0.08)); background: var(--nh-canvas, #181512); }
+#nh-ff-pop .nh-ff-info { flex: 1 1 auto; font-size: 0.76rem; color: var(--nh-muted-2, #9a9085); font-variant-numeric: tabular-nums; }
+#nh-ff-pop .nh-ff-foot-btn { padding: 6px 14px; border: 1px solid rgba(255,255,255,0.16); border-radius: 999px; background: none; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.78rem; cursor: pointer; }
+#nh-ff-pop .nh-ff-foot-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+#nh-ff-pop .nh-ff-done { border-color: var(--nh-amber, #e0c27a); color: var(--nh-amber, #e0c27a); }
+/* Narrow screens: one column, and the chip row gives way to the pill's counter. */
+@media (max-width: 720px) {
+  #nh-ff-pop .nh-ff-cols { grid-template-columns: minmax(0, 1fr); }
+  #nh-ff-pop .nh-ff-sortcol { border-right: none; border-bottom: 1px solid var(--nh-hairline, rgba(255,255,255,0.07)); }
+  #toolbar #nh-ff-chips { display: none; }
+}
 /* Skeleton bars while the series data loads: the header column is created (and the
    two-column layout entered) BEFORE any data arrives, so the shelf never re-flows —
    these placeholders just keep the reserved column from looking empty meanwhile. */

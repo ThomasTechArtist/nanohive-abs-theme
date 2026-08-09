@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.182.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.186.0  (injected build) */
 
 (function () {
   'use strict';
@@ -74,6 +74,8 @@
     ratingLibs: {},
     globalSearch: true,
     startPage: '',
+    seriesProgressBadge: true, // green/amber tick on a series card (#13)
+    modernFilters: true,       // new filter & sort panel; off = ABS's own dropdowns
     seriesCoverMode: 'grid' // series header fallback when no cover was uploaded (Pawel: grid is the default)
   };
 
@@ -87,10 +89,80 @@
   // stamp under an r18 container). Never accept it from the stored file.
   delete uiServerSettings.themeVersion;
 
+  // ===================== PER-USER SETTINGS (GitHub #12) =====================
+  // A shared device (a tablet in the kitchen, one browser, three kids) used to
+  // have ONE settings blob, so whoever changed the theme changed it for everyone
+  // who signed in next. Settings are now namespaced by ABS user id.
+  // The id is read STRAIGHT OUT OF localStorage, not the store: this runs at
+  // parse time, before $nuxt exists, and settings have to be resolved
+  // synchronously or the page paints with the wrong theme and then jumps.
+  const NH_SET_BASE = 'nh-settings';
+  const NH_SET_CLAIMED = 'nh-settings-claimed';
+  // Declared here, next to the other storage keys, rather than beside the sync
+  // code that uses them: saveSettings can run during boot, and a const only
+  // initialised further down the file would still be in its dead zone.
+  const NH_SET_TS = 'nh-settings-ts:';
+  const nhPrefs = { dead: false, pulledFor: null, timer: 0, inflight: false };
+  // The id comes out of the stored JWT. ABS 2.36 no longer persists its vuex
+  // blob to localStorage, so the token is the only synchronous source left (and
+  // it is the same thing the njs side reads to identify a caller). The payload is
+  // matched with a regex rather than JSON.parse'd: atob returns Latin-1 bytes, so
+  // a username with an accent in it would mangle the string and throw, while the
+  // id itself is always plain ASCII.
+  function nhSettingsUid() {
+    try {
+      const t = localStorage.getItem('token') || '';
+      const p = t.split('.')[1];
+      if (p) {
+        const raw = atob(p.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((p.length + 3) % 4));
+        const m = /"(?:userId|sub)"\s*:\s*"([^"]+)"/.exec(raw);
+        if (m) return m[1];
+      }
+    } catch (e) {}
+    // Pre-2.36 ABS kept the user in a persisted vuex blob.
+    try {
+      const u = JSON.parse(localStorage.getItem('vuex') || '{}');
+      const id = u && u.user && u.user.user && u.user.user.id;
+      return id ? String(id) : '';
+    } catch (e) {}
+    return '';
+  }
+  function nhSettingsKey(uid) { return uid ? NH_SET_BASE + ':' + uid : NH_SET_BASE; }
+  // Reads one user's saved diff, migrating the pre-2.1 shared blob ONCE.
+  // Exactly one account inherits it — in practice whoever set the device up.
+  // Everyone else starts from the server/env defaults, which is the whole point
+  // of the change; inheriting it for all of them would just reproduce the bug
+  // with extra steps.
+  function nhReadSaved(uid) {
+    const key = nhSettingsKey(uid);
+    let raw = null;
+    try { raw = localStorage.getItem(key); } catch (e) {}
+    if (raw === null && uid) {
+      try {
+        if (!localStorage.getItem(NH_SET_CLAIMED)) {
+          const legacy = localStorage.getItem(NH_SET_BASE);
+          if (legacy) {
+            localStorage.setItem(key, legacy);
+            localStorage.setItem(NH_SET_CLAIMED, uid);
+            // Stamp it NOW, not epoch. These are the settings the person is
+            // using at this moment, so if an older copy of theirs is sitting on
+            // the server from another browser, the one in front of them wins.
+            localStorage.setItem(NH_SET_TS + uid, String(Date.now()));
+            raw = legacy;
+          }
+        }
+      } catch (e) {}
+    }
+    try { return JSON.parse(raw || '{}') || {}; } catch (e) { return {}; }
+  }
+  let nhSetUid = nhSettingsUid();
+  // book-details.js loads after this file and reads the same store.
+  try { window.__nhSettingsKey = function () { return nhSettingsKey(nhSetUid); }; } catch (e) {}
+
   let nhLastCrMode;
   let nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings };
   try {
-    let saved = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {};
+    let saved = nhReadSaved(nhSetUid);
     // Legacy full-dump migration. Pre-diff-era saves (<= v1.9.1) dumped EVERY setting
     // into the browser, which pinned the then-current defaults forever — an admin could
     // change the server defaults and a pinned browser would never follow.
@@ -112,7 +184,7 @@
         if (!(k in legacyBase)) return; // a setting this build no longer has
         if (JSON.stringify(saved[k]) !== JSON.stringify(legacyBase[k])) kept[k] = saved[k];
       });
-      try { localStorage.setItem('nh-settings', JSON.stringify(kept)); } catch (e2) {}
+      try { localStorage.setItem(nhSettingsKey(nhSetUid), JSON.stringify(kept)); } catch (e2) {}
       saved = kept;
     }
     delete saved._v;
@@ -313,7 +385,138 @@
     Object.keys(nhSettings).forEach((k) => {
       if (JSON.stringify(nhSettings[k]) !== JSON.stringify(base[k])) diff[k] = nhSettings[k];
     });
-    localStorage.setItem('nh-settings', JSON.stringify(diff));
+    localStorage.setItem(nhSettingsKey(nhSetUid), JSON.stringify(diff));
+    try { localStorage.setItem(NH_SET_TS + nhSetUid, String(Date.now())); } catch (e) {}
+    nhPrefsPush(diff);
+  }
+
+  // ---------- settings that follow a user between browsers (GitHub #12) ----------
+  // localStorage stays the source of truth AT BOOT: it is synchronous, so the page
+  // paints the right theme immediately with no fetch to wait on and no flash. The
+  // server copy is a sync channel on top — pulled once shortly after load, pushed
+  // (debounced) on every save. Whichever side was written last wins.
+  // A dead or absent endpoint just disables the feature; nothing here can break
+  // local settings, which is why the pull is allowed to be late and lossy.
+  function nhPrefsLocalTs(uid) {
+    try { return parseInt(localStorage.getItem(NH_SET_TS + uid), 10) || 0; } catch (e) { return 0; }
+  }
+  function nhPrefsPush(diff) {
+    if (nhPrefs.dead || !nhSetUid) return;
+    const tok = nhSrToken();
+    if (!tok) return;
+    // Debounced: dragging the font-scale slider fires saveSettings on every step.
+    clearTimeout(nhPrefs.timer);
+    nhPrefs.timer = setTimeout(() => {
+      const ts = Date.now();
+      fetch('/_nh/api/prefs', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: diff, ts: ts }),
+      }).then((r) => {
+        if (r.status === 404) nhPrefs.dead = true; // older proxy without the endpoint
+        else if (r.ok) { try { localStorage.setItem(NH_SET_TS + nhSetUid, String(ts)); } catch (e) {} }
+      }).catch(() => {});
+    }, 800);
+  }
+  function nhPrefsPull() {
+    if (nhPrefs.dead || nhPrefs.inflight || !nhSetUid || nhPrefs.pulledFor === nhSetUid) return;
+    const tok = nhSrToken();
+    if (!tok) return;
+    nhPrefs.inflight = true;
+    nhPrefs.pulledFor = nhSetUid;
+    const uid = nhSetUid;
+    fetch('/_nh/api/prefs', { headers: { Authorization: 'Bearer ' + tok } })
+      .then((r) => {
+        if (r.status === 404) { nhPrefs.dead = true; return null; }
+        return r.ok ? r.json() : null;
+      })
+      .then((j) => {
+        nhPrefs.inflight = false;
+        if (!j || uid !== nhSetUid) return; // user switched while in flight
+        const srvTs = Number(j.ts) || 0;
+        const localTs = nhPrefsLocalTs(uid);
+        let localRaw = null;
+        try { localRaw = localStorage.getItem(nhSettingsKey(uid)); } catch (e) {}
+        // Nothing on the server yet, but something here worth keeping: seed it.
+        if (!srvTs || !j.settings) { if (localRaw) nhPrefsPush(JSON.parse(localRaw)); return; }
+        if (srvTs <= localTs) return; // ours is the same or newer
+        nhAdoptSettings(j.settings, uid, srvTs);
+      })
+      .catch(() => { nhPrefs.inflight = false; nhPrefs.pulledFor = null; });
+  }
+  // Swap in a settings diff that came from somewhere else (the server copy, or a
+  // user change in this same tab) and repaint. The panel is REMOVED rather than
+  // patched: every control read nhSettings when it was built, so rebuilding it is
+  // the only way to be sure nothing still shows the old value. The tick puts it
+  // straight back.
+  function nhAdoptSettings(diff, uid, ts) {
+    const clean = { ...(diff || {}) };
+    delete clean._v;
+    delete clean.themeVersion;
+    nhSettings = { ...defaultSettings, ...serverSettings, ...uiServerSettings, ...clean };
+    Object.keys(nhSettings).forEach((k) => {
+      const v = nhSettings[k];
+      if (v && typeof v === 'object') nhSettings[k] = Array.isArray(v) ? v.slice() : { ...v };
+    });
+    try {
+      localStorage.setItem(nhSettingsKey(uid), JSON.stringify({ _v: 2, ...clean }));
+      if (ts) localStorage.setItem(NH_SET_TS + uid, String(ts));
+    } catch (e) {}
+    try { applySettings(); } catch (e) {}
+    const p = document.getElementById('nh-settings-panel');
+    if (p && !p.closest('#nh-settings-modal')) p.remove();
+  }
+  // ---------- ABS's OWN preferences, per user (#12 follow-up) ----------
+  // hobesman asked whether playback speed follows a user too. Measured: ABS keeps
+  // its user settings in a single device-wide `userSettings` localStorage entry,
+  // and no account has a server-side copy — so on a shared browser one person's
+  // playback rate, jump amounts, sort order and cover size really do become
+  // everyone's. Same disease as the theme's own settings, so the same cure:
+  // snapshot the entry per user while they are signed in, and put theirs back
+  // when they return. ABS's own action does the writing, so the running app and
+  // the stored value can never disagree.
+  // First time we see an account there is no snapshot yet, so it keeps whatever
+  // the device currently has; from that point on its changes stay its own.
+  const NH_ABS_SET = 'userSettings';
+  let nhAbsSetLast = '';
+  function nhAbsSettingsSnapshot(uid) {
+    if (!uid) return;
+    try {
+      const cur = localStorage.getItem(NH_ABS_SET);
+      if (!cur || cur === nhAbsSetLast) return; // only on a real change
+      nhAbsSetLast = cur;
+      localStorage.setItem(NH_ABS_SET + ':' + uid, cur);
+    } catch (e) {}
+  }
+  function nhAbsSettingsRestore(uid) {
+    if (!uid) return;
+    try {
+      const mine = localStorage.getItem(NH_ABS_SET + ':' + uid);
+      if (!mine) { nhAbsSetLast = ''; nhAbsSettingsSnapshot(uid); return; }
+      nhAbsSetLast = mine;
+      if (mine === localStorage.getItem(NH_ABS_SET)) return;
+      const parsed = JSON.parse(mine);
+      localStorage.setItem(NH_ABS_SET, mine);
+      const st = window.$nuxt && window.$nuxt.$store;
+      if (st) st.dispatch('user/updateUserSettings', parsed);
+    } catch (e) {}
+  }
+
+  // Signing in does not reload the page in ABS, so the id we resolved at parse
+  // time can go stale mid-session — on a shared device that is the exact moment
+  // the wrong person's theme would otherwise stick.
+  function nhSettingsUserWatch() {
+    const uid = nhSettingsUid();
+    if (uid === nhSetUid) {
+      nhAbsSettingsSnapshot(uid);
+      nhPrefsPull();
+      return;
+    }
+    nhSetUid = uid;
+    nhPrefs.pulledFor = null;
+    nhAdoptSettings(nhReadSaved(uid), uid, 0);
+    nhAbsSettingsRestore(uid);
+    nhPrefsPull();
   }
 
   // Accent-tinted favicon (colorizeLogo): the logo's alpha is kept, every
@@ -702,6 +905,49 @@
     gu: { sbTitle: "સર્વર રેન્કિંગ", sbWeek: "અઠવાડિયું", sbMonth: "મહિનો", sbYear: "વર્ષ", sbAll: "કુલ સમય", sbBooks: "પુસ્તકો", sbTopBooks: "સૌથી વધુ સાંભળેલી", sbTotal: "કુલ", sbListeners: "શ્રોતાઓ", sbAvg: "સરેરાશ", wkTitle: "સાંભળવાની મિનિટ — છેલ્લા 7 દિવસ", wkAvg: "દૈનિક સરેરાશ", wkRow: "સળંગ દિવસ", rpBadge: "ખુલ્લા સમસ્યા અહેવાલ", rpMenu: "સમસ્યાની જાણ કરો", rpTitle: "સમસ્યાની જાણ કરો", rpWhat: "શું ખોટું છે?", rpNote: "એડમિનને બીજું કંઈ કહેવું છે? (વૈકલ્પિક)", rpSend: "અહેવાલ મોકલો", rpSent: "મોકલાયો. આભાર.", rpFail: "મોકલી શકાયો નહીં", rpMissing: "સામગ્રી ખૂટે છે અથવા અધૂરી", rpQuality: "ખરાબ ઓડિયો ગુણવત્તા", rpPlay: "વાગતું નથી", rpWrong: "ખોટી પુસ્તક, કવર કે મેટાડેટા", rpChapters: "પ્રકરણો ખોટાં", rpOther: "બીજું કંઈક", rfRate: "રેટ કરો", rfSheet: "આ પુસ્તકને રેટ કરો", rfOpen: "પુસ્તક પાનું ખોલો", rfPickHint: "રેટિંગ પસંદ કરો", rfTitle: "પૂરું કરેલું રેટ કરો", ysFinished: "તાજેતરમાં પૂરી થયેલી", ysAlmost: "લગભગ પૂરી", ysMarkDone: "પૂર્ણ તરીકે ચિહ્નિત કરો", ysEditDate: "પૂર્ણ થવાની તારીખ બદલો", ysThisWeek: "આ અઠવાડિયે", ysBestDay: "શ્રેષ્ઠ દિવસ", ysTitle: "તમારું સાંભળવું", fsTitle: "સર્વર રેન્કિંગ", fsCard: "સર્વર રેન્કિંગ", fsToggle: "મારા સાંભળવાના આંકડા શેર કરો", fsJoin: "સર્વર રેન્કિંગમાં દેખાવા માટે કસ્ટમાઇઝેશન પેનલમાં “મારા સાંભળવાના આંકડા શેર કરો” ચાલુ કરો.", fsWaiting: "શેરિંગ ચાલુ છે — તમારો સારાંશ ટૂંક સમયમાં બધા સાથે સર્વર રેન્કિંગમાં જોડાશે.", fsHint: "તમારા સાંભળવાનો સારાંશ (કુલ અને દૈનિક મિનિટ) આ સર્વરના અન્ય લોકો સાથે શેર કરો — તે સર્વર રેન્કિંગ ચલાવે છે. ડિફૉલ્ટ રૂપે ચાલુ. બંધ કરવાથી તમે રેન્કિંગ અને તેના સરવાળામાંથી નીકળી જશો, અને શેર કરેલો ડેટા ભૂંસાઈ જશે.", yirBtn: "વર્ષની ઝલક", yirTitle: "તમારું સાંભળવાનું વર્ષ", yirYear: "છેલ્લા 12 મહિના", yirDays: "સાંભળવાના દિવસો", yirBest: "શ્રેષ્ઠ દિવસ", yirMonths: "મહિના પ્રમાણે", yirNone: "હજી કોઈ ડેટા નથી.", scmTitle: "શ્રેણી પાનું", scmHint: "પોતાનું કવર અપલોડ ન હોય ત્યારે શ્રેણીના શીર્ષક ઉપર બનતા કવરનો દેખાવ (ફક્ત આ બ્રાઉઝર).", scmDeck: "સ્તરવાળી ડેક", scmFirst: "પહેલી પુસ્તકનું કવર", scmGrid: "કવર ગ્રિડ (ડિફૉલ્ટ)", scmOff: "છુપાયેલું" , lsTitle: "સર્વર આંકડા", lsAll: "બધી લાઇબ્રેરી", lsPlayed: "વગાડેલી પુસ્તકો", lsBest: "શ્રેષ્ઠ રેટેડ", lsGenres: "ટોચની શૈલીઓ", srvPick: "શું સાચવવું:", srvGRest: "સુવિધાઓ અને વર્તન", aeBtn: "લેખકો ગોઠવો", aeTitle: "પુસ્તક વગરના લેખકો", aeNone: "અહીં દરેક લેખક પાસે ઓછામાં ઓછી એક પુસ્તક છે.", aeRemove: "દૂર કરો", aeDone: "દૂર થયું", aeWorking: "દૂર કરી રહ્યાં છીએ…", rpCard: "જાણ કરેલી સમસ્યાઓ", rpHint: "પુસ્તક પાનાં પરથી વપરાશકર્તાઓએ જણાવેલી સમસ્યાઓ. ઉકેલવાથી યાદીમાંથી નીકળી જાય છે.", rpEmpty: "કોઈ જાણ નથી.", rpResolve: "ઉકેલો", rpOpen: "પુસ્તક ખોલો", apCard: "પ્લેબેક", apToggle: "શ્રેણીની આગલી પુસ્તક આપોઆપ વગાડો", apHint: "પુસ્તક પૂરી થતાં એ જ શ્રેણીની આગલી આપોઆપ શરૂ થાય છે. ફક્ત તમારી પાસે હોય અને અધૂરી હોય તેવી પુસ્તકો.", apNext: "શ્રેણીમાં આગલી", fdToggle: "આંકડામાં પૂર્ણ પુસ્તકોના સાધનો", ysNoDate: "તારીખ નથી", hmShowing: "ચાર્ટ બતાવે છે", ysStreak: "સળંગ દિવસો", ysCurrent: "વર્તમાન", ysLongest: "સૌથી લાંબો", ysDaysTotal: "કુલ દિવસો", ysPace: "ગતિ", ysPerDay: "શ્રવણ દિવસ દીઠ", ysWhen: "તમે ક્યારે સાંભળો છો", ysTopBooks: "સૌથી વધુ સાંભળેલી પુસ્તકો", ysTopAuthors: "સૌથી વધુ સાંભળેલા લેખકો", ysTopNarrators: "સૌથી વધુ સાંભળેલા વાચકો", rfToggle: "હોમ પર “રેટ કરો” વિભાગ", hoTitle: "હોમ વિભાગોનો ક્રમ", hoEmpty: "એકવાર હોમ ખોલો, પછી અહીં પાછા આવો.", hoReset: "મૂળ ક્રમ પુનઃસ્થાપિત કરો", ctIcon: "આઇકન", ctColour: "એક્સેન્ટ", ctNeedBook: "Audiobookshelf ખાલી સંગ્રહ સાચવી શકતું નથી — ઓછામાં ઓછી એક પુસ્તક પસંદ કરો. પછી મરજી મુજબ ઉમેરી-કાઢી શકશો.", colEditIcon: "આઇકન બદલો", ciTitle: "સંગ્રહનું આઇકન", ciReset: "નામ પ્રમાણે આપોઆપ ગોઠવો", colEditDesc: "વર્ણન સંપાદિત કરો", colBookForms: ["પુસ્તક","પુસ્તકો"], colForms: ["સંગ્રહ","સંગ્રહો"], ctTitle: "સંગ્રહ બનાવો", ctBlank: "ખાલી સંગ્રહ", ctNew: "નવો સંગ્રહ", ctNewHint: "ટેમ્પલેટમાંથી", ctNamePh: "સંગ્રહનું નામ", ctSearch: "પુસ્તકો કે લેખકો શોધો…", ctCreate: "બનાવો", ctBack: "‹ પાછળ", ctAddAll: "બધી પુસ્તકો ઉમેરો", abTitle: "પુસ્તકો ઉમેરો", abAdd: "ઉમેરો", avRemove: "ફોટો દૂર કરો", avSet: "ફોટો પસંદ કરો…", ugListened: "સાંભળ્યું", ugPhoto: "પ્રોફાઇલ ફોટો", ugNever: "ક્યારેય નહીં", ugSeen: "છેલ્લે સક્રિય", ugEdit: "વપરાશકર્તા સંપાદિત કરો", ugDelete: "વપરાશકર્તા કાઢી નાખો", ugAdd: "ફોટો ઉમેરો", ugChange: "ફોટો બદલો", ugSortName: "અ–જ્ઞ", ugSortTime: "સૌથી વધુ સાંભળેલું", ugSortSeen: "તાજેતરમાં સક્રિય", bsCard: "પુસ્તક લિંક", bsHint: "પુસ્તક પાનાં પર શીર્ષક બીજે શોધવાનાં બટન. Goodreads અને તમારી ભાષાની સૌથી મોટી સાઇટ પહેલેથી ચાલુ છે.", bsFind: "અહીં શોધો", bsGlobal: "બધે", bsLocal: "તમારી ભાષા માટે", bsOther: "અન્ય દેશો", pgCard: "નવી ડિઝાઇનનાં પાનાં", pgHint: "દરેક વિકલ્પ Audiobookshelf પાનું NanoHive સંસ્કરણથી બદલે છે. બંધ કરો એટલે મૂળ પાછું આવે.", pgNarrators: "વાચક કાર્ડ", pgCollections: "સંગ્રહ પાનાં", pgUsers: "વપરાશકર્તા કાર્ડ (સેટિંગ્સ)", pgStats: "શ્રવણ રેન્કિંગ", pgPhoto: "ટોચની પટ્ટીમાં પ્રોફાઇલ ફોટો", pgCinematic: "સિનેમેટિક પૃષ્ઠભૂમિ", pgTransitions: "પાનાં સંક્રમણ", pSearch: "સેટિંગ્સ શોધો…", pSearchNone: "કોઈ મેળ નથી.", erTypeface: "ટાઇપફેસ", erPage: "પાનાની થીમ", erText: "લખાણનો રંગ", erBg: "પૃષ્ઠભૂમિ", erDefault: "મૂળભૂત (ABS)", erAuto: "આપોઆપ", nrForms: ["વાચક","વાચકો"], nrBooksForms: ["પુસ્તક","પુસ્તકો"], nrSearch: "વાચકો ફિલ્ટર કરો…", nrSortName: "નામ", nrSortBooks: "સૌથી વધુ પુસ્તકો", auForms: ["લેખક","લેખકો"], auSearch: "લેખકો ફિલ્ટર કરો…" , lfByAuthor: "લેખક › શ્રેણી ક્રમ", lfBySeries: "શ્રેણી › ક્રમ" , lfSecFilters: "વધુ ફિલ્ટર", lfSecSort: "બહુ-સ્તરીય ક્રમ", lfAuthor: "લેખક", lfSeries: "શ્રેણી", lfTitle: "શીર્ષક", lfYear: "વર્ષ", lfAdded: "ઉમેરાયું", lfDuration: "અવધિ", lfNarrator: "વાચક", lfGenre: "શૈલી", lfLanguage: "ભાષા", lfProgress: "પ્રગતિ", lfPgFinished: "પૂર્ણ", lfPgInProgress: "ચાલુ", lfPgNot: "શરૂ નથી" },
     vi: { sbTitle: "Xếp hạng máy chủ", sbWeek: "Tuần", sbMonth: "Tháng", sbYear: "Năm", sbAll: "Mọi lúc", sbBooks: "Sách", sbTopBooks: "Nghe nhiều nhất", sbTotal: "Tổng", sbListeners: "Người nghe", sbAvg: "Trung bình", wkTitle: "Phút nghe — 7 ngày qua", wkAvg: "Trung bình mỗi ngày", wkRow: "Ngày liên tiếp", rpBadge: "Báo cáo sự cố đang mở", rpMenu: "Báo cáo sự cố", rpTitle: "Báo cáo sự cố", rpWhat: "Có vấn đề gì?", rpNote: "Còn gì cần cho quản trị viên biết? (không bắt buộc)", rpSend: "Gửi báo cáo", rpSent: "Đã gửi. Cảm ơn.", rpFail: "Không gửi được", rpMissing: "Nội dung thiếu hoặc chưa đầy đủ", rpQuality: "Chất lượng âm thanh kém", rpPlay: "Không phát được", rpWrong: "Sai sách, bìa hoặc siêu dữ liệu", rpChapters: "Chương sai", rpOther: "Khác", rfRate: "Đánh giá", rfSheet: "Đánh giá cuốn sách này", rfOpen: "Mở trang sách", rfPickHint: "Chọn mức đánh giá", rfTitle: "Đánh giá những gì bạn đã nghe xong", ysFinished: "Vừa hoàn thành", ysAlmost: "Sắp xong", ysMarkDone: "Đánh dấu đã xong", ysEditDate: "Đổi ngày hoàn thành", ysThisWeek: "Tuần này", ysBestDay: "Ngày tốt nhất", ysTitle: "Việc nghe của bạn", fsTitle: "Xếp hạng máy chủ", fsCard: "Xếp hạng máy chủ", fsToggle: "Chia sẻ thống kê nghe của tôi", fsJoin: "Bật “Chia sẻ thống kê nghe của tôi” trong bảng tùy chỉnh để xuất hiện trong xếp hạng máy chủ.", fsWaiting: "Đang bật chia sẻ — bản tóm tắt của bạn sẽ sớm tham gia xếp hạng máy chủ cùng mọi người.", fsHint: "Chia sẻ tóm tắt việc nghe của bạn (tổng và số phút mỗi ngày) với những người khác trên máy chủ này — nó nuôi xếp hạng máy chủ. Bật mặc định. Tắt đi thì bạn rời khỏi xếp hạng và các tổng của nó, dữ liệu đã chia sẻ bị xóa.", yirBtn: "Nhìn lại năm qua", yirTitle: "Năm nghe của bạn", yirYear: "12 tháng qua", yirDays: "Ngày có nghe", yirBest: "Ngày tốt nhất", yirMonths: "Theo tháng", yirNone: "Chưa có dữ liệu nghe.", scmTitle: "Trang bộ sách", scmHint: "Bìa được tạo phía trên tên bộ sách trông thế nào khi chưa tải lên bìa riêng (chỉ trình duyệt này).", scmDeck: "Chồng bìa xếp lớp", scmFirst: "Bìa cuốn đầu tiên", scmGrid: "Lưới bìa (mặc định)", scmOff: "Ẩn" , lsTitle: "Thống kê máy chủ", lsAll: "Tất cả thư viện", lsPlayed: "Sách đã phát", lsBest: "Được đánh giá cao nhất", lsGenres: "Thể loại hàng đầu", srvPick: "Lưu những gì:", srvGRest: "Tính năng và hành vi", aeBtn: "Dọn dẹp tác giả", aeTitle: "Tác giả không có sách", aeNone: "Mọi tác giả ở đây đều có ít nhất một cuốn sách.", aeRemove: "Xóa", aeDone: "Đã xóa", aeWorking: "Đang xóa…", rpCard: "Sự cố đã báo cáo", rpHint: "Sự cố người dùng báo từ trang sách. Giải quyết xong sẽ biến mất khỏi danh sách.", rpEmpty: "Chưa có báo cáo.", rpResolve: "Giải quyết", rpOpen: "Mở sách", apCard: "Phát", apToggle: "Tự động phát cuốn tiếp theo trong bộ", apHint: "Khi một cuốn kết thúc, cuốn tiếp theo cùng bộ tự động bắt đầu. Chỉ những sách bạn đã có và chưa nghe xong.", apNext: "Cuốn tiếp theo trong bộ", fdToggle: "Công cụ sách đã xong trong thống kê", ysNoDate: "không có ngày", hmShowing: "biểu đồ hiển thị", ysStreak: "Chuỗi ngày", ysCurrent: "Hiện tại", ysLongest: "Dài nhất", ysDaysTotal: "Tổng số ngày", ysPace: "Nhịp độ", ysPerDay: "Mỗi ngày nghe", ysWhen: "Bạn nghe khi nào", ysTopBooks: "Sách nghe nhiều nhất", ysTopAuthors: "Tác giả nghe nhiều nhất", ysTopNarrators: "Người đọc nghe nhiều nhất", rfToggle: "Mục “Đánh giá” trên trang chủ", hoTitle: "Thứ tự các mục trang chủ", hoEmpty: "Mở trang chủ một lần rồi quay lại đây.", hoReset: "Khôi phục thứ tự mặc định", ctIcon: "Biểu tượng", ctColour: "Màu nhấn", ctNeedBook: "Audiobookshelf không thể lưu bộ sưu tập trống — chọn ít nhất một cuốn. Sau này bạn có thể thêm bớt thoải mái.", colEditIcon: "Đổi biểu tượng", ciTitle: "Biểu tượng bộ sưu tập", ciReset: "Tự khớp theo tên", colEditDesc: "Sửa mô tả", colBookForms: ["cuốn","cuốn"], colForms: ["Bộ sưu tập","Bộ sưu tập"], ctTitle: "Tạo bộ sưu tập", ctBlank: "Bộ sưu tập trống", ctNew: "Bộ sưu tập mới", ctNewHint: "từ mẫu", ctNamePh: "Tên bộ sưu tập", ctSearch: "Tìm sách hoặc tác giả…", ctCreate: "Tạo", ctBack: "‹ Quay lại", ctAddAll: "Thêm tất cả sách", abTitle: "Thêm sách", abAdd: "Thêm", avRemove: "Xóa ảnh", avSet: "Chọn ảnh…", ugListened: "Đã nghe", ugPhoto: "Ảnh hồ sơ", ugNever: "Chưa bao giờ", ugSeen: "Hoạt động gần nhất", ugEdit: "Sửa người dùng", ugDelete: "Xóa người dùng", ugAdd: "Thêm ảnh", ugChange: "Đổi ảnh", ugSortName: "A–Z", ugSortTime: "Nghe nhiều nhất", ugSortSeen: "Hoạt động gần đây", bsCard: "Liên kết sách", bsHint: "Các nút trên trang sách để tra tựa đề ở nơi khác. Goodreads và trang lớn nhất của ngôn ngữ bạn được bật sẵn.", bsFind: "Tìm trên", bsGlobal: "Mọi nơi", bsLocal: "Cho ngôn ngữ của bạn", bsOther: "Nước khác", pgCard: "Trang được thiết kế lại", pgHint: "Mỗi tùy chọn thay một trang Audiobookshelf bằng bản NanoHive. Tắt để trở về bản gốc.", pgNarrators: "Thẻ người đọc", pgCollections: "Trang bộ sưu tập", pgUsers: "Thẻ người dùng (cài đặt)", pgStats: "Xếp hạng nghe", pgPhoto: "Ảnh hồ sơ trên thanh trên", pgCinematic: "Nền điện ảnh", pgTransitions: "Chuyển trang", pSearch: "Tìm cài đặt…", pSearchNone: "Không có kết quả.", erTypeface: "Kiểu chữ", erPage: "Chủ đề trang", erText: "Màu chữ", erBg: "Nền", erDefault: "Mặc định (ABS)", erAuto: "Tự động", nrForms: ["Người đọc","Người đọc"], nrBooksForms: ["cuốn","cuốn"], nrSearch: "Lọc người đọc…", nrSortName: "Tên", nrSortBooks: "Nhiều sách nhất", auForms: ["Tác giả","Tác giả"], auSearch: "Lọc tác giả…" , lfByAuthor: "Tác giả › thứ tự bộ", lfBySeries: "Bộ sách › thứ tự" , lfSecFilters: "Thêm bộ lọc", lfSecSort: "Sắp xếp nhiều cấp", lfAuthor: "Tác giả", lfSeries: "Bộ sách", lfTitle: "Tựa đề", lfYear: "Năm", lfAdded: "Ngày thêm", lfDuration: "Thời lượng", lfNarrator: "Người đọc", lfGenre: "Thể loại", lfLanguage: "Ngôn ngữ", lfProgress: "Tiến độ", lfPgFinished: "Đã xong", lfPgInProgress: "Đang nghe", lfPgNot: "Chưa bắt đầu" },
   };
+  // v2.1 strings. Kept as their OWN object rather than appended to the giant
+  // one-line dicts above: those lines are ~8KB each and a bad edit to one of
+  // them is unreviewable. Merged into PANEL_T by the same loop below, so
+  // lookups and the `T.x || PANEL_T.en.x` fallback work identically.
+  const NH_T_V21 = {
+    en: {
+      vfRelease: 'Release notes for this version on GitHub',
+      spAll: 'Series finished', spAllN: 'All {n} finished', spSome: '{d} of {n} finished', spNone: 'Not started',
+      sprLabel: 'Series completion badge',
+      sprHint: 'A tick on a series cover: green when every book is finished, amber once you have started it.',
+      mfTitle: 'Filtering & Sorting', mfLabel: 'New filter & sort panel',
+      mfHint: 'One panel for filters and sorting, with several sort levels at once. Turn this off to go back to Audiobookshelf’s own dropdown menus.',
+      mfButton: 'Filter & sort', mfSort: 'Sort', mfFilter: 'Filter', mfClear: 'Clear all', mfDone: 'Done',
+      mfAddSort: 'Add a sort level…', mfNoSort: 'Default order', mfSearch: 'Search…',
+      mfNoValues: 'Nothing to filter on here', mfMore: 'Show all {n}', mfAsc: 'A to Z', mfDesc: 'Z to A',
+      mfAscNum: 'Lowest first', mfDescNum: 'Highest first', mfActive: 'Active', mfLoading: 'Loading…',
+      mfShowing: '{n} of {t}', mfRemove: 'Remove', mfBySurname: 'By surname', mfByFirstName: 'By first name',
+      lfTag: 'Tag', lfPublisher: 'Publisher', lfFormat: 'Format', lfBooks: 'Number of books',
+      lfFmtAudio: 'Audiobook', lfFmtEbook: 'Ebook', lfFmtAbridged: 'Abridged',
+      lfFmtExplicit: 'Explicit', lfFmtMissing: 'Missing files', lfFmtInvalid: 'Has a problem',
+    },
+    pl: {
+      vfRelease: 'Informacje o tej wersji na GitHubie',
+      spAll: 'Seria ukończona', spAllN: 'Ukończone wszystkie ({n})', spSome: 'Ukończone {d} z {n}', spNone: 'Nierozpoczęta',
+      sprLabel: 'Znacznik ukończenia serii',
+      sprHint: 'Znacznik na okładce serii: zielony, gdy wszystkie książki są ukończone, bursztynowy po rozpoczęciu.',
+      mfTitle: 'Filtrowanie i sortowanie', mfLabel: 'Nowy panel filtrów i sortowania',
+      mfHint: 'Jeden panel na filtry i sortowanie, z kilkoma poziomami sortowania naraz. Wyłącz, aby wrócić do menu Audiobookshelf.',
+      mfButton: 'Filtruj i sortuj', mfSort: 'Sortowanie', mfFilter: 'Filtry', mfClear: 'Wyczyść', mfDone: 'Gotowe',
+      mfAddSort: 'Dodaj poziom sortowania…', mfNoSort: 'Kolejność domyślna', mfSearch: 'Szukaj…',
+      mfNoValues: 'Brak wartości do filtrowania', mfMore: 'Pokaż wszystkie ({n})', mfAsc: 'Od A do Z', mfDesc: 'Od Z do A',
+      mfAscNum: 'Od najniższych', mfDescNum: 'Od najwyższych', mfActive: 'Aktywne', mfLoading: 'Wczytywanie…',
+      mfShowing: '{n} z {t}', mfRemove: 'Usuń', mfBySurname: 'Wg nazwiska', mfByFirstName: 'Wg imienia',
+      lfTag: 'Etykieta', lfPublisher: 'Wydawca', lfFormat: 'Format', lfBooks: 'Liczba książek',
+      lfFmtAudio: 'Audiobook', lfFmtEbook: 'E-book', lfFmtAbridged: 'Skrócona',
+      lfFmtExplicit: 'Dla dorosłych', lfFmtMissing: 'Brakujące pliki', lfFmtInvalid: 'Problem z plikami',
+    },
+    de: { vfRelease: 'Versionshinweise zu dieser Version auf GitHub', spAll: 'Serie abgeschlossen', spSome: '{d} von {n} abgeschlossen', spNone: 'Nicht begonnen' },
+    fr: { vfRelease: 'Notes de version sur GitHub', spAll: 'Série terminée', spSome: '{d} sur {n} terminés', spNone: 'Non commencée' },
+    es: { vfRelease: 'Notas de esta versión en GitHub', spAll: 'Serie terminada', spSome: '{d} de {n} terminados', spNone: 'Sin empezar' },
+    nl: { vfRelease: 'Release-opmerkingen voor deze versie op GitHub', spAll: 'Serie voltooid', spSome: '{d} van {n} voltooid', spNone: 'Niet begonnen' },
+    it: { vfRelease: 'Note di rilascio di questa versione su GitHub', spAll: 'Serie completata', spSome: '{d} di {n} completati', spNone: 'Non iniziata' },
+  };
 
   function navLabel() {
     const lang = getUserLanguage().split('-')[0].toLowerCase();
@@ -751,9 +997,12 @@
     gu: {"title": "થીમ કસ્ટમાઇઝેશન", "subtitle": "તમારી લાઇબ્રેરીનો દેખાવ વ્યક્તિગત બનાવો. ફેરફારો આપમેળે સાચવાય છે.", "branding": "બ્રાન્ડિંગ અને શૈલી", "colour": "રંગ અને થીમ", "homeCar": "હોમ અને કેરોસેલ", "sidebar": "સાઇડ મેનૂ", "appName": "એપ્લિકેશનનું નામ", "appNameHint": "ડિફૉલ્ટ નામ માટે ખાલી છોડો.", "logoUrl": "કસ્ટમ લોગો URL", "logoHint": "ડિફૉલ્ટ લોગો માટે ખાલી છોડો.", "accent": "એક્સેન્ટ રંગ", "baseTheme": "મૂળ થીમ", "mainFont": "મુખ્ય ફૉન્ટ", "carousel": "કેરોસેલ સ્વયં આગળ વધવું", "carouselHint": "સ્લાઇડ્સ વચ્ચે સેકંડ. બંધ કરવા 0.", "customSeries": "વિસ્તૃત તાજેતરની શ્રેણીઓ", "seriesCount": "તાજેતરની શ્રેણીઓની સંખ્યા", "seriesCountHint": "વિસ્તૃત શેલ્ફમાં કેટલી શ્રેણીઓ બતાવવી.", "hideShelves": "હોમપેજ શેલ્ફ છુપાવો", "sidebarHint": "ન વપરાતી સાઇડ મેનૂ આઇટમ છુપાવો.", "showAppName": "એપ્લિકેશનનું નામ બતાવો", "colorizeLogo": "લોગોને એક્સેન્ટ રંગથી રંગો", "hideSeries": "શ્રેણીઓ છુપાવો", "hideCollections": "સંગ્રહો છુપાવો", "hideAuthors": "લેખકો છુપાવો", "hideNarrators": "વાચકો છુપાવો", "hideStats": "આંકડા છુપાવો", "hideRecentlyAdded": "તાજેતરમાં ઉમેરાયેલ છુપાવો", "hideRecentSeries": "તાજેતરની શ્રેણીઓ છુપાવો", "hideContinueSeries": "શ્રેણી ચાલુ રાખો છુપાવો", "hideListenAgain": "ફરી સાંભળો છુપાવો", "hideDiscover": "શોધો છુપાવો", "hideNewestAuthors": "નવીનતમ લેખકો છુપાવો", "seriesCards": "સ્તરબદ્ધ શ્રેણી કવર", "heroCarousel": "હોમ કેરોસેલ", "gearLabel": "થીમ", "ssLabel": "રેટિંગનું પગલું", "ssHint": "રેટિંગ કેટલું ચોક્કસ હોઈ શકે. તમે શું પસંદ કરી શકો અને દરેક રેટિંગ કેવી રીતે દેખાય, બંનેને લાગુ પડે છે.", "ssFull": "આખા તારા", "ssHalf": "અડધા તારા", "ssQuarter": "પા તારા", "rlLabel": "લાઇબ્રેરી પ્રમાણે રેટિંગ", "rlHint": "કઈ લાઇબ્રેરીઓ રેટિંગમાં ભાગ લે છે. પોડકાસ્ટ લાઇબ્રેરીઓ તમે ચાલુ ન કરો ત્યાં સુધી બંધ રહે છે.", "rlPodcast": "પોડકાસ્ટ", "rfHide": "“તમે પૂરું કર્યું તેને રેટ કરો” છુપાવો"},
     vi: {"title": "Tùy chỉnh giao diện", "subtitle": "Cá nhân hóa giao diện thư viện của bạn. Thay đổi được lưu tự động.", "branding": "Thương hiệu & phong cách", "colour": "Màu sắc & giao diện", "homeCar": "Trang chủ & băng chuyền", "sidebar": "Menu bên", "appName": "Tên ứng dụng", "appNameHint": "Để trống để dùng tên mặc định.", "logoUrl": "URL logo tùy chỉnh", "logoHint": "Để trống để dùng logo mặc định.", "accent": "Màu nhấn", "baseTheme": "Giao diện cơ bản", "mainFont": "Phông chữ chính", "carousel": "Tự động chuyển băng chuyền", "carouselHint": "Số giây giữa các slide. 0 để tắt.", "customSeries": "Bộ truyện gần đây mở rộng", "seriesCount": "Số bộ truyện gần đây", "seriesCountHint": "Số bộ truyện hiển thị trên kệ mở rộng.", "hideShelves": "Ẩn các kệ trang chủ", "sidebarHint": "Ẩn các mục menu bên bạn không dùng.", "showAppName": "Hiện tên ứng dụng", "colorizeLogo": "Tô màu logo bằng màu nhấn", "hideSeries": "Ẩn Bộ truyện", "hideCollections": "Ẩn Bộ sưu tập", "hideAuthors": "Ẩn Tác giả", "hideNarrators": "Ẩn Người đọc", "hideStats": "Ẩn Thống kê", "hideRecentlyAdded": "Ẩn Mới thêm gần đây", "hideRecentSeries": "Ẩn Bộ truyện gần đây", "hideContinueSeries": "Ẩn Tiếp tục bộ truyện", "hideListenAgain": "Ẩn Nghe lại", "hideDiscover": "Ẩn Khám phá", "hideNewestAuthors": "Ẩn Tác giả mới nhất", "seriesCards": "Bìa bộ truyện xếp chồng", "heroCarousel": "Băng chuyền trang chủ", "gearLabel": "Giao diện", "ssLabel": "Bước đánh giá", "ssHint": "Một đánh giá có thể chính xác đến mức nào. Áp dụng cho lựa chọn của bạn và cho cách mọi đánh giá được vẽ.", "ssFull": "Sao nguyên", "ssHalf": "Nửa sao", "ssQuarter": "Một phần tư sao", "rlLabel": "Đánh giá theo thư viện", "rlHint": "Thư viện nào tham gia đánh giá. Thư viện podcast tắt cho đến khi bạn bật lên.", "rlPodcast": "podcast", "rfHide": "Ẩn Đánh giá sách bạn đã đọc xong"}
   };
-  // merge the per-language additions (see NH_T_EXTRA above)
+  // merge the per-language additions (see NH_T_EXTRA and NH_T_V21 above)
   Object.keys(NH_T_EXTRA).forEach((lang) => {
     if (PANEL_T[lang]) Object.assign(PANEL_T[lang], NH_T_EXTRA[lang]);
+  });
+  Object.keys(NH_T_V21).forEach((lang) => {
+    if (PANEL_T[lang]) Object.assign(PANEL_T[lang], NH_T_V21[lang]);
   });
 
   function panelT() {
@@ -1309,6 +1558,14 @@
           <h2 class="nh-card-title">${T.scmTitle || PANEL_T.en.scmTitle}</h2>
           <p class="nh-hint" style="margin-top:0;">${T.scmHint || PANEL_T.en.scmHint}</p>
           <div class="nh-field"><div id="nh-sel-seriescover"></div></div>
+          <div class="nh-field" id="nh-tog-seriesprogress"></div>
+          <p class="nh-hint">${T.sprHint || PANEL_T.en.sprHint}</p>
+        </section>
+
+        <section class="nh-card">
+          <h2 class="nh-card-title">${T.mfTitle || PANEL_T.en.mfTitle}</h2>
+          <p class="nh-hint" style="margin-top:0;">${T.mfHint || PANEL_T.en.mfHint}</p>
+          <div class="nh-field" id="nh-tog-modernfilters"></div>
         </section>
 
       </div>
@@ -1562,6 +1819,8 @@
     bindInput('#nh-in-series-count', 'recentSeriesCount');
     panel.querySelector('#nh-tog-customseries').appendChild(createToggle(T.customSeries, 'showCustomRecentSeries'));
     panel.querySelector('#nh-tog-seriescards').appendChild(createToggle(T.seriesCards || PANEL_T.en.seriesCards, 'customSeriesCards'));
+    panel.querySelector('#nh-tog-seriesprogress').appendChild(createToggle(T.sprLabel || PANEL_T.en.sprLabel, 'seriesProgressBadge'));
+    panel.querySelector('#nh-tog-modernfilters').appendChild(createToggle(T.mfLabel || PANEL_T.en.mfLabel, 'modernFilters'));
     panel.querySelector('#nh-tog-herocarousel').appendChild(createToggle(T.heroCarousel || PANEL_T.en.heroCarousel, 'showHeroCarousel'));
     panel.querySelector('#nh-cr-label').textContent = T.crMode || PANEL_T.en.crMode;
     (function () {
@@ -1664,7 +1923,7 @@
           'continueReadingMode', 'showRateFinished', 'homeOrder',
           'hideHomeRecentlyAdded', 'hideHomeRecentSeries', 'hideHomeContinueSeries', 'hideHomeListenAgain', 'hideHomeDiscover', 'hideHomeNewAuthors',
           'hideRailSeries', 'hideRailCollections', 'hideRailAuthors', 'hideRailNarrators', 'hideRailStats'],
-        pages: ['narratorsCards', 'collectionsPages', 'usersCards', 'statsRanking', 'accountPhoto', 'cinematicBg', 'pageTransitions', 'seriesCoverMode'],
+        pages: ['narratorsCards', 'collectionsPages', 'usersCards', 'statsRanking', 'accountPhoto', 'cinematicBg', 'pageTransitions', 'seriesCoverMode', 'seriesProgressBadge', 'modernFilters'],
         // rest = every key not claimed above, so new settings are covered
         // automatically instead of silently never becoming saveable.
       };
@@ -1726,7 +1985,8 @@
           if (!r.ok) { flashBtn(btn, T.srvErr || PANEL_T.en.srvErr); return; }
           // Also drop this browser's personal overrides so the admin lands on the
           // true stock look — server clear alone can't touch localStorage.
-          try { localStorage.removeItem('nh-settings'); } catch (err) {}
+          try { localStorage.removeItem(nhSettingsKey(nhSetUid)); } catch (err) {}
+          nhPrefsPush({ _v: 2 }); // and clear this admin's server-side copy too
           flashBtn(btn, T.srvCleared || PANEL_T.en.srvCleared);
           setTimeout(function () { window.location.reload(); }, 700);
         }).catch(function () { flashBtn(btn, T.srvErr || PANEL_T.en.srvErr); });
@@ -3348,6 +3608,12 @@
   function getLibIdNH() {
     const m = window.location.pathname.match(/\/library\/([^/]+)/);
     if (m) return m[1];
+    // ABS 2.36 stopped persisting its vuex blob to localStorage, so the old
+    // fallback here always returned '' — read the live store first.
+    try {
+      const id = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.libraries.currentLibraryId;
+      if (id) return id;
+    } catch (e) {}
     try { return JSON.parse(localStorage.getItem('vuex') || '{}')?.libraries?.currentLibraryId || ''; } catch (e) { return ''; }
   }
   function getTokenNH() {
@@ -3393,7 +3659,10 @@
     return (d.results || []).map(s => {
       const books = s.books || [];
       const covers = books.slice(0, 3).map(b => `${base}/api/items/${b.id || b.libraryItemId}/cover?width=400`);
-      return { id: s.id, name: s.name, count: books.length, covers };
+      // book ids feed the completion badge (#13); progress itself is read live at
+      // render time, so this cached list never goes stale as you listen.
+      const bookIds = books.map(b => b.id || b.libraryItemId).filter(Boolean);
+      return { id: s.id, name: s.name, count: books.length, covers, bookIds };
     });
   }
 
@@ -3427,8 +3696,14 @@
           }).join('')
         : `<div class="nh-rs-cover c1" style="background:var(--nh-raised)"></div>`;
       const route = `/library/${libId}/series/${s.id}`;
+      // Completion badge (#13). Built here rather than by the tick decorator
+      // because this row is rendered as one HTML string, not from live cards.
+      const sp = nhSettings.seriesProgressBadge === false ? null : nhSpState(s.bookIds);
+      const spHtml = sp
+        ? `<div class="nh-sp nh-sp-${sp.state}" title="${escapeHtmlNH(nhSpLabel(sp))}" aria-label="${escapeHtmlNH(nhSpLabel(sp))}">✓</div>`
+        : '';
       return `<a class="nh-rs-card" data-route="${route}" href="${base}${route}">
-        <div class="nh-rs-covers">${inner}<div class="nh-rs-count">${s.count}</div></div>
+        <div class="nh-rs-covers">${inner}<div class="nh-rs-count">${s.count}</div>${spHtml}</div>
         <p class="nh-rs-name">${escapeHtmlNH(s.name)}</p>
       </a>`;
     }).join('');
@@ -3582,6 +3857,20 @@
           const sib = nativeRow || nhShelfRows().find(r => r.id !== 'nh-recent-series-row');
           const pad = nhShelfIndent(sib);
           if (pad) { existing.style.paddingLeft = pad.left; existing.style.paddingRight = pad.right; }
+        } catch (e) {}
+        // Refresh the completion badges in place (#13). The row itself is built
+        // once per library, so without this a series you just finished would keep
+        // its amber tick until the row happened to be rebuilt.
+        try {
+          const byId = {};
+          (nhRecentSeries.data || []).forEach((s) => { byId[s.id] = s.bookIds; });
+          existing.querySelectorAll('.nh-rs-card').forEach((a) => {
+            const covers = a.querySelector('.nh-rs-covers');
+            const sid = ((a.dataset.route || '').split('/series/')[1] || '').split(/[?#]/)[0];
+            if (!covers || !sid) return;
+            const st = nhSettings.seriesProgressBadge === false ? null : nhSpState(byId[sid]);
+            nhSpPaint(covers, st, sid + ':' + (st ? st.state + st.done + '/' + st.n : 'none'));
+          });
         } catch (e) {}
         return;
       }
@@ -4514,6 +4803,219 @@
         card.classList.remove('nh-has-custom');
         if (tile) tile.remove();
       }
+    });
+  }
+
+  // ===================== SERIES COMPLETION BADGE (GitHub #13) =====================
+  // Stock ABS paints a green/yellow progress bar across the bottom of a series
+  // card. The theme rebuilds covers-area into the stacked deck, so that bar is
+  // gone — this puts the information back as a corner badge on the front cover.
+  // Green tick = every book finished, amber tick = started but not all done.
+  // An untouched series gets NOTHING on purpose: a badge on every card is noise,
+  // and "not started" is exactly what the absence of a badge already means. This
+  // matches what ABS itself signals.
+  // NOTE: books[] only ever holds the books IN THIS LIBRARY, so "complete" means
+  // complete as far as this server knows — a series missing book 5 reads as done.
+  //
+  // FIELD FIX (Pawel, v2.1.1): a card's own books[] is NOT a reliable book list.
+  // Reported: series showing green with nothing finished, and 1-of-3 showing green.
+  // Both are the same fault — if the card only knows about ONE book, one finished
+  // book IS "all of them". So the badge no longer trusts card data: it counts
+  // against a per-library map built from the series endpoint, which always returns
+  // the complete books[] per series. Card ids are a fallback for the brief window
+  // before that map lands, and while it is missing NO badge is drawn at all —
+  // showing a wrong badge and correcting it a second later is worse than waiting.
+  const NH_SP_TICK = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 12.8 9.5 17.8 19.5 6.8"/></svg>';
+  // Started-but-not-finished draws a RING FILLED TO THE FRACTION READ, not a tick.
+  // Two reasons: it cannot be mistaken for the finished badge even if the colours
+  // are hard to tell apart (Pawel saw them as one colour at two brightnesses), and
+  // it says how far in you are without hovering.
+  function nhSpRing(frac) {
+    const C = 2 * Math.PI * 8; // r=8 in the 24x24 viewBox
+    const on = Math.max(C * 0.08, C * Math.min(1, Math.max(0, frac))); // always a visible arc
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="4.2" opacity="0.32"/>' +
+      '<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="4.2" stroke-linecap="round"' +
+      ' stroke-dasharray="' + on.toFixed(2) + ' ' + (C - on).toFixed(2) + '" transform="rotate(-90 12 12)"/></svg>';
+  }
+  // (nhSpBooks, not nhSp — nhSp is already the start-page redirect state.)
+  // Cached PER LIBRARY. One shared map meant that switching libraries left the
+  // previous library's data in place, and any series missing from it fell back to
+  // card data — the exact untrustworthy source this was built to stop using.
+  const nhSpBooks = { maps: {}, fetching: {} };
+  function nhSpEnsureMap(libId) {
+    if (!libId) return null;
+    if (nhSpBooks.maps[libId]) return nhSpBooks.maps[libId];
+    if (nhSpBooks.fetching[libId]) return null;
+    nhSpBooks.fetching[libId] = true;
+    const base = getBaseNH();
+    const tok = getTokenNH();
+    // limit=0 means ZERO ROWS on the series endpoint (unlike items) — see the A8 notes.
+    fetch(base + '/api/libraries/' + libId + '/series?limit=100000&page=0', {
+      headers: tok ? { Authorization: 'Bearer ' + tok } : {},
+      credentials: 'include',
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        delete nhSpBooks.fetching[libId];
+        if (!d) return;
+        const map = {};
+        (d.results || []).forEach((s) => {
+          if (!s || !s.id) return;
+          map[s.id] = (s.books || []).map((b) => b.id || b.libraryItemId).filter(Boolean);
+        });
+        nhSpBooks.maps[libId] = map;
+      })
+      .catch(() => { delete nhSpBooks.fetching[libId]; });
+    return null;
+  }
+  // Authoritative ids only. There is deliberately NO fallback to the card's own
+  // books[]: that list can be short, and a short list makes a part-read series
+  // look finished, which is the bug this whole path exists to prevent. A series
+  // the map does not know about (another library, a stale card) gets no badge.
+  function nhSpIdsFor(libId, sid) {
+    const map = libId ? nhSpBooks.maps[libId] : null;
+    const ids = map && map[sid];
+    return ids && ids.length ? ids : null;
+  }
+  // FINISHED BOOKS ONLY (Pawel, v2.1.3). Merely being part-way through a book no
+  // longer marks the series: the badge answers "how much of this have I actually
+  // finished", so a series you have dipped into but completed nothing in stays
+  // clean, exactly like one you have never opened.
+  // (The Progress FILTER is unchanged and still has its own "In progress" value —
+  // that one is for finding what you are mid-way through, which is a different
+  // question from what this badge is for.)
+  function nhSpState(bookIds) {
+    const pg = nhLfProgressMap();
+    let done = 0;
+    (bookIds || []).forEach((id) => { if (pg[id] === 'finished') done++; });
+    const n = (bookIds || []).length;
+    if (!n || !done) return null;
+    return { state: done === n ? 'all' : 'some', done: done, n: n };
+  }
+  function nhSpLabel(st) {
+    const T = panelT();
+    // Green says the COUNT too ("All 3 finished"). It used to say a bare "Series
+    // finished", which meant a badge computed from a wrong book count looked
+    // exactly like a right one — hovering now tells you which it is.
+    if (st.state === 'all') return (T.spAllN || PANEL_T.en.spAllN).replace('{n}', st.n);
+    return (T.spSome || PANEL_T.en.spSome).replace('{d}', st.done).replace('{n}', st.n);
+  }
+  // One badge element, reused. Returns the element so callers can place it.
+  function nhSpPaint(host, st, sig) {
+    let b = host.querySelector(':scope > .nh-sp');
+    if (!st) { if (b) b.remove(); return null; }
+    if (!b) {
+      b = document.createElement('div');
+      b.className = 'nh-sp';
+      host.appendChild(b);
+    }
+    if (b.dataset.sig !== sig) {
+      b.dataset.sig = sig;
+      b.classList.toggle('nh-sp-all', st.state === 'all');
+      b.classList.toggle('nh-sp-some', st.state === 'some');
+      // Inline SVG, never the material-symbols font (injected spans do not get
+      // ligature substitution on every build) and never a text glyph either — its
+      // weight is whatever the UI font happens to give, which came out spindly
+      // (Pawel). Finished = tick, part-read = a ring filled to the fraction, so
+      // the two never read as "the same badge, one brighter".
+      b.innerHTML = st.state === 'all' ? NH_SP_TICK : nhSpRing(st.n ? st.done / st.n : 0);
+      b.title = nhSpLabel(st);
+      b.setAttribute('aria-label', b.title);
+    }
+    return b;
+  }
+  // Console aid: window.__nhSpDebug() prints, for every series on screen, the book
+  // count the badge used and the TITLES it counted as finished. A "finished green
+  // but I finished nothing" report is then one paste instead of a round trip —
+  // either the titles are wrong (our count is off) or they are books ABS really
+  // does have marked finished (and the badge is right).
+  function nhSpDebug() {
+    const libId = getLibIdNH();
+    const map = nhSpBooks.maps[libId];
+    if (!map) { console.log('[NanoHive] series map not loaded yet for library', libId); return; }
+    const pg = nhLfProgressMap();
+    const base = getBaseNH();
+    const tok = getTokenNH();
+    return fetch(base + '/api/libraries/' + libId + '/items?limit=0', { headers: tok ? { Authorization: 'Bearer ' + tok } : {}, credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const title = {};
+        ((d && d.results) || []).forEach((li) => { title[li.id] = ((li.media && li.media.metadata) || {}).title || li.id; });
+        const rows = [];
+        document.querySelectorAll('[id^="series-card-"]').forEach((c) => {
+          let s = null;
+          try { s = c.__vue__ && c.__vue__.series; } catch (e) {}
+          if (!s || !s.id) return;
+          const ids = map[s.id] || [];
+          const fin = ids.filter((i) => pg[i] === 'finished');
+          const started = ids.filter((i) => pg[i] === 'progress');
+          rows.push({
+            series: s.name,
+            booksKnown: ids.length,
+            booksOnCard: (s.books || []).length,
+            finished: fin.length,
+            started: started.length,
+            // Mirrors nhSpState: started-but-none-finished draws nothing. `started`
+            // is still reported because it is the first thing you want to know when
+            // a series you expected to be marked is not.
+            badge: !fin.length ? 'none' : (fin.length === ids.length ? 'GREEN' : 'amber'),
+            finishedTitles: fin.map((i) => title[i] || i).join(' | '),
+          });
+        });
+        console.table(rows);
+        return rows;
+      });
+  }
+  try { window.__nhSpDebug = nhSpDebug; } catch (e) {}
+
+  function nhSeriesProgress() {
+    if (nhSettings.seriesProgressBadge === false) {
+      document.querySelectorAll('.nh-sp').forEach((n) => n.remove());
+      return;
+    }
+    const libId = getLibIdNH();
+    if (libId) nhSpEnsureMap(libId);
+
+    // (a) the series grid and the home shelves: real series cards.
+    document.querySelectorAll('[id^="series-card-"]').forEach((card) => {
+      const area = card.querySelector('[cy-id="covers-area"]');
+      if (!area) return;
+      // Cards are virtual and recycled, so the ids are re-read every tick and the
+      // signature carries the series id — a stale badge on a reused card is the
+      // exact bug the rating badge had.
+      let sid = '';
+      try {
+        const s = card.__vue__ && card.__vue__.series;
+        sid = (s && s.id) || '';
+      } catch (e) {}
+      if (!sid) return;
+      const ids = nhSpIdsFor(libId, sid);
+      // No authoritative book list for this series (map still loading, or the card
+      // belongs to another library) -> clear any badge rather than guess.
+      if (!ids) { const old = area.querySelector(':scope > .nh-sp'); if (old) old.remove(); return; }
+      const st = nhSpState(ids);
+      nhSpPaint(area, st, sid + ':' + (st ? st.state + st.done + '/' + st.n : 'none'));
+    });
+
+    // (b) "Collapse series" on the library page does NOT produce series cards: it
+    // produces book-card-* whose libraryItem carries a collapsedSeries object.
+    // Those were getting no badge at all. Its libraryItemIds IS the complete list
+    // (numBooks matches it), so it needs no map lookup.
+    document.querySelectorAll('[id^="book-card-"]').forEach((card) => {
+      let cs = null;
+      try { cs = card.__vue__ && card.__vue__.libraryItem && card.__vue__.libraryItem.collapsedSeries; } catch (e) {}
+      const area = card.querySelector('[id^="cover-area-"]');
+      if (!cs || !area) {
+        // the card may have been recycled from a collapsed series to a plain book
+        const stale = area && area.querySelector(':scope > .nh-sp');
+        if (stale) stale.remove();
+        return;
+      }
+      const ids = (cs.libraryItemIds || []).filter(Boolean);
+      if (!ids.length) return;
+      const st = nhSpState(ids);
+      nhSpPaint(area, st, (cs.id || cs.name || '') + ':' + (st ? st.state + st.done + '/' + st.n : 'none'));
     });
   }
 
@@ -5993,10 +6495,32 @@
   const nhLf = { mode: 'items', sort: '', sorts: [], filter: '', filters: {}, sub: null, libId: null, items: null, itemsKey: '', fetching: false, view: null, viewSig: '', needReset: false, libTotal: null, libTotalKey: '', libTotalFetching: false };
   const NH_LF_FILTERS = ['rated', 'min4', 'min3', 'unrated'];
   const NH_LF_SORT_DIMS = ['author', 'series', 'title', 'year', 'added', 'duration', 'narrator', 'rating'];
-  const NH_LF_FILTER_DIMS = ['genre', 'author', 'narrator', 'language', 'decade', 'progress'];
+  // v2.1: tag / publisher / series / format added so the new panel is a SUPERSET
+  // of ABS's own filter menu. That matters because the panel replaces those
+  // dropdowns rather than sitting next to them — anything ABS could filter by and
+  // this could not would simply have become unreachable.
+  const NH_LF_FILTER_DIMS = ['genre', 'author', 'narrator', 'series', 'tag', 'publisher', 'language', 'decade', 'progress', 'format'];
+  // The series LIST page has different objects (no media metadata of its own), so
+  // it gets the dimensions that can be derived from its member books.
+  const NH_LF_SERIES_SORT_DIMS = ['title', 'rating', 'books', 'progress'];
+  const NH_LF_SERIES_FILTER_DIMS = ['progress'];
 
   function nhLfSyncSortSig() {
-    nhLf.sort = nhLf.sorts.map((s) => s.d + (s.dir < 0 ? '-' : '+')).join(',');
+    // `opt` is part of the signature: switching Author between surname order and
+    // first-name order changes the result, so the view has to be rebuilt for it.
+    nhLf.sort = nhLf.sorts.map((s) => s.d + (s.opt ? ':' + s.opt : '') + (s.dir < 0 ? '-' : '+')).join(',');
+  }
+  // Per-level options. Author is the only dimension with one so far: ABS gives us
+  // both "Dickens, Charles" (authorNameLF) and "Charles Dickens" (authorName), and
+  // sorting was silently always the former (Pawel asked for the choice).
+  const NH_LF_SORT_OPTS = {
+    author: [{ v: '', k: 'mfBySurname' }, { v: 'first', k: 'mfByFirstName' }],
+  };
+  function nhLfOptLabel(T, d, opt) {
+    const list = NH_LF_SORT_OPTS[d];
+    if (!list) return '';
+    const found = list.find((o) => (o.v || '') === (opt || '')) || list[0];
+    return T[found.k] || PANEL_T.en[found.k] || found.v || '';
   }
   function nhLfFxSig() {
     const ks = Object.keys(nhLf.filters).filter((k) => nhLf.filters[k] && nhLf.filters[k].length);
@@ -6010,6 +6534,7 @@
       author: 'lfAuthor', series: 'lfSeries', title: 'lfTitle', year: 'lfYear', added: 'lfAdded',
       duration: 'lfDuration', narrator: 'lfNarrator', rating: 'lfSort', genre: 'lfGenre',
       language: 'lfLanguage', decade: 'lfYear', progress: 'lfProgress',
+      tag: 'lfTag', publisher: 'lfPublisher', format: 'lfFormat', books: 'lfBooks',
     }[d];
     return T[K] || PANEL_T.en[K] || d;
   }
@@ -6035,33 +6560,78 @@
     } catch (e) {}
     return map;
   }
+  // What a series counts as, from its member books: done / started / untouched.
+  // Same three buckets a single book has, so one Progress filter covers both pages.
+  function nhLfSeriesProgress(pg, li) {
+    const ids = (li.books || []).map((b) => b.id || b.libraryItemId).filter(Boolean);
+    if (!ids.length) return 'none';
+    let done = 0, started = 0;
+    ids.forEach((id) => { const s = pg[id]; if (s === 'finished') done++; else if (s === 'progress') started++; });
+    if (done === ids.length) return 'finished';
+    return (done || started) ? 'progress' : 'none';
+  }
+  // Format/status flags, the part of ABS's native filter menu that is not a
+  // free-text field. Multi-valued: an item can be both audio and ebook.
+  function nhLfFormats(li) {
+    const md = nhLfMeta(li);
+    const media = li.media || {};
+    const out = [];
+    if (media.numTracks || media.duration || media.numAudioFiles) out.push('audio');
+    if (media.ebookFormat || media.ebookFile) out.push('ebook');
+    if (md.abridged) out.push('abridged');
+    if (md.explicit) out.push('explicit');
+    if (li.isMissing) out.push('missing');
+    if (li.isInvalid) out.push('invalid');
+    return out;
+  }
   // value catalog for a filter dimension, with counts, from the fetched items
   function nhLfValues(dim, T) {
     const cnt = new Map();
-    const add = (v) => { if (v) cnt.set(v, (cnt.get(v) || 0) + 1); };
+    const add = (v) => { if (v || v === 0) cnt.set(v, (cnt.get(v) || 0) + 1); };
     const pg = dim === 'progress' ? nhLfProgressMap() : null;
+    const series = nhLf.mode === 'series';
     (nhLf.items || []).forEach((li) => {
+      if (series) {
+        if (dim === 'progress') add(nhLfSeriesProgress(pg, li));
+        return;
+      }
       const md = nhLfMeta(li);
       if (dim === 'genre') (md.genres || []).forEach(add);
-      else if (dim === 'author') String(md.authorName || '').split(', ').forEach(add);
-      else if (dim === 'narrator') String(md.narratorName || '').split(', ').forEach(add);
+      else if (dim === 'tag') (li.media && li.media.tags ? li.media.tags : (md.tags || [])).forEach(add);
+      else if (dim === 'author') String(md.authorName || '').split(', ').forEach((s) => add(s.trim()));
+      else if (dim === 'narrator') String(md.narratorName || '').split(', ').forEach((s) => add(s.trim()));
+      else if (dim === 'publisher') add(md.publisher);
+      // "Name #3, Other #1" -> each series name without its sequence number
+      else if (dim === 'series') String(md.seriesName || '').split(', ').forEach((s) => add(s.replace(/\s+#[\d.]+$/, '').trim()));
       else if (dim === 'language') add(md.language);
       else if (dim === 'decade') { const y = parseInt(md.publishedYear, 10); if (y) add(Math.floor(y / 10) * 10 + 's'); }
       else if (dim === 'progress') add(nhLfProgressOf(pg, li.id));
+      else if (dim === 'format') nhLfFormats(li).forEach(add);
     });
     let vals = [...cnt.entries()].map(([v, n]) => ({ v: v, n: n }));
     if (dim === 'progress') {
       const order = { finished: 0, progress: 1, none: 2 };
-      vals.sort((a, b) => (order[a.v] || 0) - (order[b.v] || 0));
+      vals.sort((a, b) => (order[a.v] === undefined ? 9 : order[a.v]) - (order[b.v] === undefined ? 9 : order[b.v]));
     } else if (dim === 'decade') vals.sort((a, b) => b.v.localeCompare(a.v));
-    else vals.sort((a, b) => (b.n - a.n) || a.v.localeCompare(b.v));
-    return vals.slice(0, 60);
+    else if (dim === 'format') {
+      const order = ['audio', 'ebook', 'abridged', 'explicit', 'missing', 'invalid'];
+      vals.sort((a, b) => order.indexOf(a.v) - order.indexOf(b.v));
+    } else vals.sort((a, b) => (b.n - a.n) || String(a.v).localeCompare(String(b.v)));
+    // No cap: the panel searches and paginates these itself, and a 60-value cut
+    // silently hid most authors in a big library.
+    return vals;
   }
   function nhLfValueLabel(T, dim, v) {
-    if (dim !== 'progress') return v;
-    return v === 'finished' ? (T.lfPgFinished || PANEL_T.en.lfPgFinished)
-      : v === 'progress' ? (T.lfPgInProgress || PANEL_T.en.lfPgInProgress)
-      : (T.lfPgNot || PANEL_T.en.lfPgNot);
+    if (dim === 'progress') {
+      return v === 'finished' ? (T.lfPgFinished || PANEL_T.en.lfPgFinished)
+        : v === 'progress' ? (T.lfPgInProgress || PANEL_T.en.lfPgInProgress)
+        : (T.lfPgNot || PANEL_T.en.lfPgNot);
+    }
+    if (dim === 'format') {
+      const K = { audio: 'lfFmtAudio', ebook: 'lfFmtEbook', abridged: 'lfFmtAbridged', explicit: 'lfFmtExplicit', missing: 'lfFmtMissing', invalid: 'lfFmtInvalid' }[v];
+      return (K && (T[K] || PANEL_T.en[K])) || v;
+    }
+    return v;
   }
 
   // Restore the shelf's own fetcher and refresh it back to native data.
@@ -6077,6 +6647,7 @@
 
   function nhLfReset() {
     document.querySelectorAll('#toolbar .nh-lf-count, #toolbar .nh-lf-clearx').forEach((el) => el.remove());
+    try { nhFfTeardown(); } catch (e) {}
     nhLf.sort = '';
     nhLf.sorts = [];
     nhLf.filter = '';
@@ -6311,10 +6882,10 @@
             touch();
           }));
         });
-        // stackable dimension filters (items page only): value submenus, OR
-        // within a dimension, AND across dimensions and with the native filter
-        if (nhLf.mode !== 'series') {
-          NH_LF_FILTER_DIMS.forEach((dim) => {
+        // stackable dimension filters: value submenus, OR within a dimension,
+        // AND across dimensions and with the native filter
+        {
+          (nhLf.mode === 'series' ? NH_LF_SERIES_FILTER_DIMS : NH_LF_FILTER_DIMS).forEach((dim) => {
             const nOn = (nhLf.filters[dim] || []).length;
             ul.appendChild(nhLfMenuItem(ul, 'dim:' + dim, nhLfDimLabel(T, dim) + (nOn ? '  (' + nOn + ')' : ''), '›', () => {
               nhLf.sub = dim;
@@ -6326,7 +6897,7 @@
         // SORT: a multi-level builder. Every dimension is a row; clicking
         // cycles ↑ → ↓ → off; pick order = precedence, shown as "1↑".
         ul.appendChild(mkHead(T.lfSecSort || PANEL_T.en.lfSecSort));
-        const dims = nhLf.mode === 'series' ? ['rating'] : NH_LF_SORT_DIMS;
+        const dims = nhLf.mode === 'series' ? NH_LF_SERIES_SORT_DIMS : NH_LF_SORT_DIMS;
         dims.forEach((d) => {
           const idx = nhLf.sorts.findIndex((s) => s.d === d);
           const lvl = idx >= 0 ? nhLf.sorts[idx] : null;
@@ -6407,6 +6978,516 @@
     apply(dd.sort, sLbl, true);
   }
 
+  // ===================== FILTER & SORT PANEL (v2.1, Reddit request) =====================
+  // The old surface injected rows into ABS's two dropdowns: sorting was a stack you
+  // could only build by clicking rows in the right order and reading "1↑ 2↓" marks,
+  // filter values hid behind a drill-down that showed at most 60 of them, and the
+  // whole state was only legible by opening both menus. This replaces both dropdowns
+  // with ONE pill and one panel where the entire state is visible and editable at
+  // once, plus a chip row so the common case (drop one filter) needs no panel at all.
+  //
+  // The engine underneath is unchanged — nhLf.sorts / nhLf.filters and the shelf
+  // takeover already did multi-level sorting and stacked filters. This is a new way
+  // to drive them, which is why `modernFilters: false` can hand the old dropdowns
+  // back without losing a single feature.
+  //
+  // Rendering is EVENT-DRIVEN, never from the 500ms tick: a tick-driven rebuild
+  // would steal focus from the search box on every keystroke. The tick only asks for
+  // a redraw when the underlying data changes (items arriving, ratings refreshing).
+  const nhFf = { open: false, q: '', dataSig: '', openDims: {}, showAll: {}, addOpen: false };
+
+  function nhFfOn() { return nhSettings.modernFilters !== false; }
+  function nhFfDims() { return nhLf.mode === 'series' ? NH_LF_SERIES_FILTER_DIMS : NH_LF_FILTER_DIMS; }
+  function nhFfSortDims() { return nhLf.mode === 'series' ? NH_LF_SERIES_SORT_DIMS : NH_LF_SORT_DIMS; }
+  function nhFfT(k) { const T = nhGsT(); return T[k] || PANEL_T.en[k] || k; }
+  function nhFfCount() { return nhLfFxCount() + (nhLf.filter ? 1 : 0); }
+
+  // Numeric dimensions read better as "highest first" than "Z to A".
+  function nhFfDirLabel(d, dir) {
+    const numeric = ['year', 'added', 'duration', 'rating', 'books', 'progress'].indexOf(d) >= 0;
+    if (dir < 0) return nhFfT(numeric ? 'mfDescNum' : 'mfDesc');
+    return nhFfT(numeric ? 'mfAscNum' : 'mfAsc');
+  }
+
+  function nhFfApply() {
+    nhLf.viewSig = '';
+    try { nhLibFilter(); } catch (e) {}
+    nhFfRender();
+  }
+
+  function nhFfClearAll() {
+    nhLf.sort = '';
+    nhLf.sorts = [];
+    nhLf.filter = '';
+    nhLf.filters = {};
+    nhLf.sub = null;
+    const nat = nhLfNative();
+    if (nat.fb !== 'all') {
+      const patch = {};
+      patch[nat.fbKey] = 'all';
+      try { window.$nuxt.$store.dispatch('user/updateUserSettings', patch); } catch (e) {}
+    }
+    nhFfApply();
+  }
+
+  // ---- the toolbar pill ----
+  function nhFfEnsurePill(toolbar) {
+    // Park it where the native filter dropdown was, so the toolbar keeps its shape.
+    let host = null;
+    const fBtn = nhLfDropdowns(toolbar).filter;
+    let w = fBtn ? fBtn.parentElement : null;
+    while (w && w !== toolbar && !/(^|\s)w-36(\s|$)/.test(String(w.className))) w = w.parentElement;
+    if (w && w !== toolbar && w.parentElement) host = w;
+    let pill = toolbar.querySelector('#nh-ff-btn');
+    if (!pill) {
+      pill = document.createElement('button');
+      pill.type = 'button';
+      pill.id = 'nh-ff-btn';
+      pill.setAttribute('aria-haspopup', 'dialog');
+      pill.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        nhFf.open = !nhFf.open;
+        if (nhFf.open && nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+        nhFfRender();
+      });
+      if (host && host.parentElement) host.parentElement.insertBefore(pill, host);
+      else toolbar.appendChild(pill);
+    }
+    const n = nhFfCount();
+    const levels = nhLf.sorts.length;
+    pill.setAttribute('aria-expanded', nhFf.open ? 'true' : 'false');
+    pill.classList.toggle('nh-ff-live', !!(n || levels));
+    const sig = n + '|' + levels + '|' + nhFfT('mfButton');
+    if (pill.dataset.sig !== sig) {
+      pill.dataset.sig = sig;
+      pill.innerHTML = NH_LF_ICONS.filter +
+        '<span class="nh-ff-btn-lbl"></span>' +
+        (n || levels ? '<span class="nh-ff-pip">' + (n + levels) + '</span>' : '');
+      pill.querySelector('.nh-ff-btn-lbl').textContent = nhFfT('mfButton');
+    }
+    return pill;
+  }
+
+  // ---- chips: the active state, always visible, one click to drop ----
+  function nhFfEnsureChips(toolbar) {
+    let bar = toolbar.querySelector('#nh-ff-chips');
+    const parts = [];
+    nhLf.sorts.forEach((s, i) => parts.push({
+      kind: 'sort', key: s.d,
+      label: (i + 1) + '. ' + nhLfDimLabel(nhGsT(), s.d) + ' ' + (s.dir < 0 ? '↓' : '↑'),
+    }));
+    if (nhLf.filter) parts.push({ kind: 'rating', key: nhLf.filter, label: nhLfFilterLabel(nhGsT()) || nhLf.filter });
+    Object.keys(nhLf.filters).forEach((dim) => {
+      (nhLf.filters[dim] || []).forEach((v) => parts.push({
+        kind: 'dim', key: dim, val: v,
+        label: nhLfValueLabel(nhGsT(), dim, v),
+      }));
+    });
+    if (!parts.length) { if (bar) bar.remove(); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'nh-ff-chips';
+      const pill = toolbar.querySelector('#nh-ff-btn');
+      if (pill && pill.parentElement) pill.parentElement.insertBefore(bar, pill.nextSibling);
+      else toolbar.appendChild(bar);
+    }
+    const sig = parts.map((p) => p.kind + ':' + p.key + ':' + (p.val || '')).join('|');
+    if (bar.dataset.sig === sig) return;
+    bar.dataset.sig = sig;
+    bar.textContent = '';
+    parts.forEach((p) => {
+      const c = document.createElement('button');
+      c.type = 'button';
+      c.className = 'nh-ff-chip' + (p.kind === 'sort' ? ' nh-ff-chip-sort' : '');
+      c.title = nhFfT('mfRemove') + ': ' + p.label;
+      const t = document.createElement('span');
+      t.textContent = p.label;
+      c.appendChild(t);
+      const x = document.createElement('i');
+      x.textContent = '✕';
+      c.appendChild(x);
+      c.addEventListener('click', () => {
+        if (p.kind === 'sort') {
+          const i = nhLf.sorts.findIndex((s) => s.d === p.key);
+          if (i >= 0) nhLf.sorts.splice(i, 1);
+          nhLfSyncSortSig();
+        } else if (p.kind === 'rating') {
+          nhLf.filter = '';
+        } else {
+          const arr = nhLf.filters[p.key] || [];
+          const i = arr.indexOf(p.val);
+          if (i >= 0) arr.splice(i, 1);
+          if (!arr.length) delete nhLf.filters[p.key];
+        }
+        nhFfApply();
+      });
+      bar.appendChild(c);
+    });
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'nh-ff-chip nh-ff-chip-clear';
+    clear.textContent = nhFfT('mfClear');
+    clear.addEventListener('click', nhFfClearAll);
+    bar.appendChild(clear);
+  }
+
+  // ---- the panel ----
+  function nhFfPopEl() {
+    let pop = document.getElementById('nh-ff-pop');
+    if (pop) return pop;
+    pop = document.createElement('div');
+    pop.id = 'nh-ff-pop';
+    pop.setAttribute('role', 'dialog');
+    pop.innerHTML = '<div class="nh-ff-cols"><div class="nh-ff-col nh-ff-sortcol"></div><div class="nh-ff-col nh-ff-filtercol"></div></div><div class="nh-ff-foot"></div>';
+    document.body.appendChild(pop);
+    // Click-outside and Escape close it. Registered once, on the element's life.
+    document.addEventListener('mousedown', (e) => {
+      if (!nhFf.open) return;
+      if (pop.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('#nh-ff-btn')) return;
+      nhFf.open = false;
+      nhFfRender();
+    }, true);
+    document.addEventListener('keydown', (e) => {
+      if (nhFf.open && e.key === 'Escape') { nhFf.open = false; nhFfRender(); }
+    });
+    return pop;
+  }
+
+  function nhFfPosition(pop, pill) {
+    const r = pill.getBoundingClientRect();
+    pop.style.visibility = 'hidden';
+    pop.style.display = 'block';
+    const pw = pop.offsetWidth || 640;
+    // Hangs from the pill's RIGHT edge (the pill lives on the right of the
+    // toolbar, so left-aligning it threw the panel across the page), clamped so
+    // it can never run off either side of the window.
+    let left = Math.min(r.right - pw, window.innerWidth - pw - 12);
+    if (left < 12) left = 12;
+    pop.style.left = Math.round(left) + 'px';
+    pop.style.top = Math.round(r.bottom + 8) + 'px';
+    // The panel scrolls internally rather than growing past the viewport — the
+    // same lesson as the edit modal (#14).
+    pop.style.maxHeight = Math.max(240, window.innerHeight - r.bottom - 24) + 'px';
+    pop.style.visibility = '';
+  }
+
+  function nhFfSortRows(col) {
+    const T = nhGsT();
+    col.textContent = '';
+    const h = document.createElement('h3');
+    h.textContent = nhFfT('mfSort');
+    col.appendChild(h);
+    const list = document.createElement('div');
+    list.className = 'nh-ff-levels';
+    if (!nhLf.sorts.length) {
+      const empty = document.createElement('p');
+      empty.className = 'nh-ff-empty';
+      empty.textContent = nhFfT('mfNoSort');
+      list.appendChild(empty);
+    }
+    nhLf.sorts.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.className = 'nh-ff-level';
+      const num = document.createElement('span');
+      num.className = 'nh-ff-num';
+      num.textContent = String(i + 1);
+      row.appendChild(num);
+      const lbl = document.createElement('span');
+      lbl.className = 'nh-ff-lvl-lbl';
+      lbl.textContent = nhLfDimLabel(T, s.d);
+      row.appendChild(lbl);
+      // direction toggle, spelled out — "Z to A" beats an arrow nobody decodes
+      const ctl = document.createElement('div');
+      ctl.className = 'nh-ff-lvl-ctl';
+      const dir = document.createElement('button');
+      dir.type = 'button';
+      dir.className = 'nh-ff-dir';
+      dir.textContent = (s.dir < 0 ? '↓ ' : '↑ ') + nhFfDirLabel(s.d, s.dir);
+      dir.addEventListener('click', () => { s.dir = -s.dir; nhLfSyncSortSig(); nhFfApply(); });
+      ctl.appendChild(dir);
+      // Per-level option, currently only Author (surname order vs first-name order).
+      const opts = NH_LF_SORT_OPTS[s.d];
+      if (opts && opts.length > 1) {
+        const ob = document.createElement('button');
+        ob.type = 'button';
+        ob.className = 'nh-ff-dir nh-ff-opt';
+        ob.textContent = nhLfOptLabel(T, s.d, s.opt);
+        ob.addEventListener('click', () => {
+          const i2 = opts.findIndex((o) => (o.v || '') === (s.opt || ''));
+          s.opt = opts[(i2 + 1) % opts.length].v || undefined;
+          nhLfSyncSortSig();
+          nhFfApply();
+        });
+        ctl.appendChild(ob);
+      }
+      row.appendChild(ctl);
+      // precedence: move a level up, because pick order used to be the ONLY way
+      const up = document.createElement('button');
+      up.type = 'button';
+      up.className = 'nh-ff-move';
+      up.textContent = '↑';
+      up.title = nhFfT('mfSort');
+      up.disabled = i === 0;
+      up.addEventListener('click', () => {
+        if (i === 0) return;
+        const tmp = nhLf.sorts[i - 1];
+        nhLf.sorts[i - 1] = nhLf.sorts[i];
+        nhLf.sorts[i] = tmp;
+        nhLfSyncSortSig();
+        nhFfApply();
+      });
+      row.appendChild(up);
+      const rm = document.createElement('button');
+      rm.type = 'button';
+      rm.className = 'nh-ff-rm';
+      rm.textContent = '✕';
+      rm.title = nhFfT('mfRemove');
+      rm.addEventListener('click', () => { nhLf.sorts.splice(i, 1); nhLfSyncSortSig(); nhFfApply(); });
+      row.appendChild(rm);
+      list.appendChild(row);
+    });
+    col.appendChild(list);
+
+    const unused = nhFfSortDims().filter((d) => !nhLf.sorts.some((s) => s.d === d));
+    if (unused.length) {
+      const add = document.createElement('button');
+      add.type = 'button';
+      add.className = 'nh-ff-add';
+      add.textContent = '+ ' + nhFfT('mfAddSort');
+      add.addEventListener('click', () => { nhFf.addOpen = !nhFf.addOpen; nhFfRender(); });
+      col.appendChild(add);
+      if (nhFf.addOpen) {
+        const menu = document.createElement('div');
+        menu.className = 'nh-ff-addmenu';
+        unused.forEach((d) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = nhLfDimLabel(T, d);
+          b.addEventListener('click', () => {
+            // rating and the other numeric axes start at "highest first"
+            const def = ['rating', 'added', 'progress', 'books'].indexOf(d) >= 0 ? -1 : 1;
+            nhLf.sorts.push({ d: d, dir: def });
+            nhLfSyncSortSig();
+            nhFf.addOpen = false;
+            nhFfApply();
+          });
+          menu.appendChild(b);
+        });
+        col.appendChild(menu);
+      }
+    }
+  }
+
+  function nhFfFilterCol(col) {
+    const T = nhGsT();
+    col.textContent = '';
+    const head = document.createElement('div');
+    head.className = 'nh-ff-fhead';
+    const h = document.createElement('h3');
+    h.textContent = nhFfT('mfFilter');
+    head.appendChild(h);
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'nh-ff-search';
+    search.placeholder = nhFfT('mfSearch');
+    search.value = nhFf.q;
+    search.addEventListener('input', () => {
+      nhFf.q = search.value;
+      nhFfFilterCol(col);
+      const s2 = col.querySelector('.nh-ff-search');
+      if (s2) { s2.focus(); s2.setSelectionRange(s2.value.length, s2.value.length); }
+    });
+    head.appendChild(search);
+    col.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'nh-ff-facets';
+    col.appendChild(body);
+
+    if (!nhLf.items) {
+      const p = document.createElement('p');
+      p.className = 'nh-ff-empty';
+      p.textContent = nhFfT('mfLoading');
+      body.appendChild(p);
+      return;
+    }
+
+    const q = nhFf.q.trim().toLowerCase();
+    const section = (key, title, rows, exclusive) => {
+      if (!rows.length) return;
+      const wrap = document.createElement('div');
+      wrap.className = 'nh-ff-sec';
+      const hd = document.createElement('button');
+      hd.type = 'button';
+      hd.className = 'nh-ff-sec-h';
+      // A search collapses nothing: if you typed, you want to see the matches.
+      const open = q ? true : (nhFf.openDims[key] !== undefined ? nhFf.openDims[key] : (key === 'rating' || key === 'progress' || key === 'format'));
+      hd.innerHTML = '<span class="nh-ff-caret">' + (open ? '▾' : '▸') + '</span>';
+      const ht = document.createElement('span');
+      ht.textContent = title;
+      hd.appendChild(ht);
+      const chosen = key === 'rating' ? (nhLf.filter ? 1 : 0) : (nhLf.filters[key] || []).length;
+      if (chosen) {
+        const b = document.createElement('span');
+        b.className = 'nh-ff-secn';
+        b.textContent = String(chosen);
+        hd.appendChild(b);
+      }
+      hd.addEventListener('click', () => {
+        nhFf.openDims[key] = !open;
+        nhFfFilterCol(col);
+      });
+      wrap.appendChild(hd);
+      if (open) {
+        const ul = document.createElement('div');
+        ul.className = 'nh-ff-vals';
+        const cap = nhFf.showAll[key] ? rows.length : 10;
+        rows.slice(0, cap).forEach((r) => {
+          const lab = document.createElement('label');
+          lab.className = 'nh-ff-val';
+          const cb = document.createElement('input');
+          cb.type = exclusive ? 'radio' : 'checkbox';
+          if (exclusive) cb.name = 'nh-ff-' + key;
+          cb.checked = r.on;
+          cb.addEventListener('change', r.toggle);
+          lab.appendChild(cb);
+          const t = document.createElement('span');
+          t.className = 'nh-ff-vlbl';
+          t.textContent = r.label;
+          lab.appendChild(t);
+          if (r.n !== undefined) {
+            const n = document.createElement('span');
+            n.className = 'nh-ff-vn';
+            n.textContent = String(r.n);
+            lab.appendChild(n);
+          }
+          ul.appendChild(lab);
+        });
+        if (rows.length > cap) {
+          const more = document.createElement('button');
+          more.type = 'button';
+          more.className = 'nh-ff-more';
+          more.textContent = nhFfT('mfMore').replace('{n}', rows.length);
+          more.addEventListener('click', () => { nhFf.showAll[key] = true; nhFfFilterCol(col); });
+          ul.appendChild(more);
+        }
+        wrap.appendChild(ul);
+      }
+      body.appendChild(wrap);
+    };
+
+    // Rating is single-choice (the engine models it as one value), so it renders
+    // as radios and re-clicking the chosen one clears it.
+    const ratingRows = NH_LF_FILTERS.map((k) => ({
+      label: k === 'rated' ? (T.lfRated || PANEL_T.en.lfRated) : k === 'unrated' ? (T.lfUnrated || PANEL_T.en.lfUnrated) : k === 'min4' ? '4★+' : '3★+',
+      on: nhLf.filter === k,
+      toggle: () => { nhLf.filter = nhLf.filter === k ? '' : k; nhFfApply(); },
+    })).filter((r) => !q || r.label.toLowerCase().indexOf(q) >= 0);
+    section('rating', T.lfSort || PANEL_T.en.lfSort, ratingRows, true);
+
+    nhFfDims().forEach((dim) => {
+      const vals = nhLfValues(dim, T);
+      const rows = vals.map((o) => ({
+        label: nhLfValueLabel(T, dim, o.v),
+        n: o.n,
+        on: (nhLf.filters[dim] || []).indexOf(o.v) >= 0,
+        toggle: () => {
+          const arr = nhLf.filters[dim] = (nhLf.filters[dim] || []);
+          const i = arr.indexOf(o.v);
+          if (i >= 0) arr.splice(i, 1); else arr.push(o.v);
+          if (!arr.length) delete nhLf.filters[dim];
+          nhFfApply();
+        },
+      })).filter((r) => !q || String(r.label).toLowerCase().indexOf(q) >= 0);
+      section(dim, nhLfDimLabel(T, dim), rows, false);
+    });
+
+    if (!body.children.length) {
+      const p = document.createElement('p');
+      p.className = 'nh-ff-empty';
+      p.textContent = nhFfT('mfNoValues');
+      body.appendChild(p);
+    }
+  }
+
+  function nhFfFoot(foot) {
+    foot.textContent = '';
+    const info = document.createElement('span');
+    info.className = 'nh-ff-info';
+    if (nhLf.view && nhLf.items) info.textContent = nhFfT('mfShowing').replace('{n}', nhLf.view.length).replace('{t}', nhLf.items.length);
+    foot.appendChild(info);
+    const clear = document.createElement('button');
+    clear.type = 'button';
+    clear.className = 'nh-ff-foot-btn';
+    clear.textContent = nhFfT('mfClear');
+    clear.addEventListener('click', nhFfClearAll);
+    foot.appendChild(clear);
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'nh-ff-foot-btn nh-ff-done';
+    done.textContent = nhFfT('mfDone');
+    done.addEventListener('click', () => { nhFf.open = false; nhFfRender(); });
+    foot.appendChild(done);
+  }
+
+  // Full rebuild. Only ever from a user action or a real data change — see nhFfSync.
+  function nhFfRender() {
+    const toolbar = document.getElementById('toolbar');
+    if (!toolbar) return;
+    const pill = nhFfEnsurePill(toolbar);
+    nhFfEnsureChips(toolbar);
+    const pop = nhFfPopEl();
+    if (!nhFf.open) { pop.style.display = 'none'; return; }
+    nhFfSortRows(pop.querySelector('.nh-ff-sortcol'));
+    nhFfFilterCol(pop.querySelector('.nh-ff-filtercol'));
+    nhFfFoot(pop.querySelector('.nh-ff-foot'));
+    nhFfPosition(pop, pill);
+  }
+  // The TICK path. Keeps the pill and chips current (both no-op unless their
+  // signature changed) and re-anchors an open panel, but never touches the panel's
+  // contents — rebuilding those 500ms apart would rip focus out of the search box
+  // mid-word and reset every collapsed section under the user's hands.
+  function nhFfSync() {
+    const toolbar = document.getElementById('toolbar');
+    if (!toolbar) return;
+    const pill = nhFfEnsurePill(toolbar);
+    nhFfEnsureChips(toolbar);
+    const pop = document.getElementById('nh-ff-pop');
+    if (!pop) return;
+    if (!nhFf.open) { pop.style.display = 'none'; return; }
+    nhFfPosition(pop, pill);
+    // Only the footer's live count is cheap enough to refresh every tick, and it
+    // holds no focusable state.
+    nhFfFoot(pop.querySelector('.nh-ff-foot'));
+  }
+
+  // Tear the whole surface down — leaving the route, or switching to classic mode.
+  function nhFfTeardown() {
+    nhFf.open = false;
+    nhFf.addOpen = false;
+    const pop = document.getElementById('nh-ff-pop');
+    if (pop) pop.style.display = 'none';
+    document.querySelectorAll('#nh-ff-btn, #nh-ff-chips').forEach((n) => n.remove());
+    document.body.classList.remove('nh-ff-active');
+    document.querySelectorAll('.nh-ff-nat').forEach((n) => n.classList.remove('nh-ff-nat'));
+  }
+
+  // Mark ABS's two dropdown wrappers so CSS can hide them while our panel owns
+  // the toolbar. Marking (not removing) keeps Vue's own DOM intact, so classic
+  // mode is one class away and nothing has to be rebuilt.
+  function nhFfHideNative(toolbar) {
+    const dd = nhLfDropdowns(toolbar);
+    [dd.filter, dd.sort].forEach((btn) => {
+      if (!btn) return;
+      let w = btn.parentElement;
+      while (w && w !== toolbar && !/(^|\s)w-36(\s|$)/.test(String(w.className))) w = w.parentElement;
+      if (w && w !== toolbar) w.classList.add('nh-ff-nat');
+    });
+    document.body.classList.add('nh-ff-active');
+  }
+
   function nhLibFilter() {
     const m = location.pathname.match(/\/library\/([^/]+)\/bookshelf(\/series)?\/?$/);
     if (!m || nhSettings.showRatings === false || nhRs.dead) { nhLfReset(); return; }
@@ -6425,8 +7506,25 @@
     if (!toolbar || !bookshelf) return;
     const T = nhGsT();
 
-    nhLfInjectMenus(toolbar, T);
-    nhLfButtonLabels(toolbar, T);
+    // v2.1: one panel instead of two dropdowns, unless the user asked for the
+    // classic menus back. Only ONE of the two surfaces is ever wired up.
+    if (nhFfOn()) {
+      nhFfHideNative(toolbar);
+      // Redraw an OPEN panel only when the data behind it changes (the item list
+      // arriving, ratings refreshing). Everything else is the cheap sync path.
+      const dataSig = ((nhLf.items || []).length) + '|' + nhRs.at + '|' + nhLf.mode + '|' + (nhLf.libId || '');
+      if (nhFf.open && nhFf.dataSig !== dataSig) {
+        nhFf.dataSig = dataSig;
+        nhFfRender();
+      } else {
+        nhFf.dataSig = dataSig;
+        nhFfSync();
+      }
+    } else {
+      nhFfTeardown();
+      nhLfInjectMenus(toolbar, T);
+      nhLfButtonLabels(toolbar, T);
+    }
 
     const active = !!(nhLf.sort || nhLf.filter || nhLfFxSig());
     const vm = bookshelf.__vue__;
@@ -6478,9 +7576,11 @@
       return (host && host !== toolbar && host.parentElement) ? host : null;
     })();
 
-    // clear-all ✕: shown whenever ANY filter is active (rating or native)
+    // clear-all ✕: shown whenever ANY filter is active (rating or native).
+    // The new panel carries its own Clear, in the chip row and in the footer, so
+    // the toolbar ✕ would just be a third one.
     let clr = toolbar.querySelector('.nh-lf-clearx');
-    const showClear = !!(active || natNow.fb !== 'all');
+    const showClear = !nhFfOn() && !!(active || natNow.fb !== 'all');
     if (showClear && !clr && hostEl) {
       clr = document.createElement('button');
       clr.type = 'button';
@@ -6556,17 +7656,27 @@
       // Stacked dimension filters: OR within a dimension, AND across dimensions
       // (and with the native filter, applied server-side in the items fetch).
       const fxKeys = Object.keys(nhLf.filters).filter((k) => nhLf.filters[k] && nhLf.filters[k].length);
-      if (fxKeys.length && nhLf.mode !== 'series') {
+      if (fxKeys.length) {
         const pg = fxKeys.indexOf('progress') >= 0 ? nhLfProgressMap() : null;
+        const isSeries = nhLf.mode === 'series';
         list = list.filter((x) => fxKeys.every((k) => {
           const vals = nhLf.filters[k];
+          if (isSeries) {
+            // The series list only supports what its member books can answer.
+            if (k === 'progress') return vals.indexOf(nhLfSeriesProgress(pg, x.e)) >= 0;
+            return true;
+          }
           const md = nhLfMeta(x.e);
           if (k === 'genre') return (md.genres || []).some((g) => vals.indexOf(g) >= 0);
-          if (k === 'author') return String(md.authorName || '').split(', ').some((a) => vals.indexOf(a) >= 0);
-          if (k === 'narrator') return String(md.narratorName || '').split(', ').some((a) => vals.indexOf(a) >= 0);
+          if (k === 'tag') return ((x.e.media && x.e.media.tags) || md.tags || []).some((g) => vals.indexOf(g) >= 0);
+          if (k === 'author') return String(md.authorName || '').split(', ').some((a) => vals.indexOf(a.trim()) >= 0);
+          if (k === 'narrator') return String(md.narratorName || '').split(', ').some((a) => vals.indexOf(a.trim()) >= 0);
+          if (k === 'publisher') return vals.indexOf(md.publisher) >= 0;
+          if (k === 'series') return String(md.seriesName || '').split(', ').some((s) => vals.indexOf(s.replace(/\s+#[\d.]+$/, '').trim()) >= 0);
           if (k === 'language') return vals.indexOf(md.language) >= 0;
           if (k === 'decade') { const y = parseInt(md.publishedYear, 10); return !!y && vals.indexOf(Math.floor(y / 10) * 10 + 's') >= 0; }
           if (k === 'progress') return vals.indexOf(nhLfProgressOf(pg, x.e.id)) >= 0;
+          if (k === 'format') return nhLfFormats(x.e).some((f) => vals.indexOf(f) >= 0);
           return true;
         }));
       }
@@ -6579,11 +7689,27 @@
       // standalones interleaving by title — Plex-style); a book with no value
       // for a level sorts last within it.
       if (nhLf.sorts.length) {
+        const pgS = nhLf.mode === 'series' ? nhLfProgressMap() : null;
         list.forEach((x) => {
+          if (nhLf.mode === 'series') {
+            const ids = (x.e.books || []).map((b) => b.id || b.libraryItemId).filter(Boolean);
+            const done = ids.filter((id) => pgS[id] === 'finished').length;
+            x.k = {
+              title: String(x.t || '').toLowerCase(),
+              rating: x.avg,
+              books: ids.length,
+              // fraction finished, so a half-read series sorts between the two ends
+              progress: ids.length ? done / ids.length : 0,
+            };
+            return;
+          }
           const md = nhLfMeta(x.e);
           const sk = nhLfSeriesKey(md);
           x.k = {
             author: String(md.authorNameLF || md.authorName || '').toLowerCase(),
+            // "Charles Dickens" rather than "Dickens, Charles" — the Author level
+            // can be sorted either way.
+            authorFirst: String(md.authorName || md.authorNameLF || '').toLowerCase(),
             seriesG: sk.group, seriesQ: sk.seq,
             title: String(md.titleIgnorePrefix || md.title || x.t || '').toLowerCase(),
             year: parseInt(md.publishedYear, 10) || Infinity,
@@ -6593,14 +7719,20 @@
             rating: x.avg,
           };
         });
-        const one = (a, b, d) => {
+        // Takes the LEVEL, not just the dimension name, because a level can carry
+        // an option (Author by surname vs by first name).
+        const one = (a, b, lvl) => {
+          const d = lvl.d;
           if (d === 'series') return a.k.seriesG.localeCompare(b.k.seriesG) || (a.k.seriesQ === b.k.seriesQ ? 0 : (a.k.seriesQ < b.k.seriesQ ? -1 : 1)) || a.k.title.localeCompare(b.k.title);
-          if (d === 'author' || d === 'narrator' || d === 'title') return a.k[d].localeCompare(b.k[d]);
-          return a.k[d] === b.k[d] ? 0 : (a.k[d] < b.k[d] ? -1 : 1);
+          const key = (d === 'author' && lvl.opt === 'first') ? 'authorFirst' : d;
+          if (key === 'author' || key === 'authorFirst' || key === 'narrator' || key === 'title') {
+            return String(a.k[key] || '').localeCompare(String(b.k[key] || ''));
+          }
+          return a.k[key] === b.k[key] ? 0 : (a.k[key] < b.k[key] ? -1 : 1);
         };
         list.sort((a, b) => {
           for (const s2 of nhLf.sorts) {
-            const c = one(a, b, s2.d) * (s2.dir < 0 ? -1 : 1);
+            const c = one(a, b, s2) * (s2.dir < 0 ? -1 : 1);
             if (c) return c;
           }
           return String(a.t).localeCompare(String(b.t));
@@ -10380,11 +11512,14 @@
     paper:    { label: 'Paper',    fg: '#2e2a24', bg: function () { return '#f7f3ea'; } }
   };
 
-  function nhEreaderGet(k) { try { return (JSON.parse(localStorage.getItem('nh-settings') || '{}') || {})[k] || ''; } catch (e) { return ''; } }
+  // Reader preferences live in the same store, so they are per-user too (#12).
+  function nhEreaderGet(k) { try { return (JSON.parse(localStorage.getItem(nhSettingsKey(nhSetUid)) || '{}') || {})[k] || ''; } catch (e) { return ''; } }
   function nhEreaderSet(k, v) {
     try {
-      const s = JSON.parse(localStorage.getItem('nh-settings') || '{}') || {};
-      s[k] = v; localStorage.setItem('nh-settings', JSON.stringify(s));
+      const key = nhSettingsKey(nhSetUid);
+      const s = JSON.parse(localStorage.getItem(key) || '{}') || {};
+      s[k] = v; localStorage.setItem(key, JSON.stringify(s));
+      nhPrefsPush(s);
     } catch (e) {}
   }
 
@@ -10639,7 +11774,14 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.0.10';
+  const NH_THEME_VERSION = 'v2.1.0';
+  // The RELEASES LIST, not this version's own tag. Linking to
+  // /releases/tag/<version> looked tidier, but it 404s for any build running
+  // ahead of its release — which is every staging build, and any nightly. The
+  // list always exists, opens on the newest release with its changelog, and
+  // still lets you scroll to the version you are actually running. It is also
+  // exactly the page the original request pointed at.
+  const NH_RELEASE_URL = 'https://github.com/rodzalendo/nanohive-abs-theme/releases';
   function nhAbsVersion() {
     try {
       const v = window.$nuxt && window.$nuxt.$store && window.$nuxt.$store.state.serverSettings && window.$nuxt.$store.state.serverSettings.version;
@@ -10655,8 +11797,14 @@
     f.title = composite ? 'NanoHive theme build: ' + composite : '';
     if (f.dataset.v === abs) return;
     f.dataset.v = abs;
+    const T = panelT();
+    // The NanoHive line is a link to this exact version's release notes. The
+    // desktop footer is pointer-events:none (it overlays the rail and must not
+    // eat clicks meant for it), so the anchor re-enables them for itself only.
+    // Both strings are build constants, never user input.
     f.innerHTML = `<div style="opacity:.85;">Audiobookshelf${abs ? ' ' + abs : ''}</div>` +
-                  `<div style="margin-top:2px;color:var(--nh-amber);opacity:.8;">NanoHive ${NH_THEME_VERSION}</div>`;
+                  `<a class="nh-vf-link" href="${NH_RELEASE_URL}" target="_blank" rel="noopener noreferrer"` +
+                  ` title="${escapeHtmlNH(T.vfRelease || PANEL_T.en.vfRelease)}">NanoHive ${NH_THEME_VERSION}</a>`;
   }
   function nhVersionFooter() {
     // Desktop rail: append inside it and pin to the viewport's bottom-left. Because it
@@ -11766,11 +12914,13 @@
       }
     };
     safe(nhDetectDuplicateTheme);
+    safe(nhSettingsUserWatch);
     safe(nhVersionFooter);
     safe(nhSeriesScale);
     safe(nhCoverModeClass);
     safe(nhSeriesHeader);
     safe(nhSeriesCardCovers);
+    safe(nhSeriesProgress);
     safe(nhGlobalSearch);
     safe(nhStartPage);
     safe(nhTagFinished);

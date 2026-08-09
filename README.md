@@ -34,11 +34,15 @@ home shelves, series, collections), and whole series can be rated too, with a bo
 beside the series rating. You can also **import your ratings from StoryGraph or Goodreads** —
 [details below](#ratings-reviews-and-importing).
 
-**Finding things** — search across every library at once with a library badge on each hit;
-multi-level sort inside ABS's own Sort menu (up to 8 dimensions, each direction chosen,
-precedence numbered as you pick); stackable filters in its Filter menu (genre, author,
-narrator, language, decade, progress and rating combined, each value listed with its count);
-and a per-user start page.
+**Finding things** — search across every library at once with a library badge on each hit; a
+rebuilt **Filter & sort** panel on the library and series pages replacing ABS's two dropdowns
+with one: sort by several things at once with the precedence and direction of each level in
+front of you (and Author sorts by surname or by first name, your choice), and stack filters
+across genre, author, narrator, series, tag, publisher, language, year, progress, format and
+rating, every value listed with its count and searchable. Whatever is active shows as chips in
+the toolbar, so dropping one filter takes a single click. The series page gets it too: sort by
+name, rating, number of books or how far through you are. Prefer the old menus? One toggle
+brings them back with nothing lost. Plus a per-user start page.
 
 **Rebuilt pages** — the book detail page: HD cover, blurred cinematic background, restructured
 metadata, Started and finished dates (the finished one editable), and lookup links to Goodreads
@@ -70,8 +74,14 @@ page (missing content, bad audio, won't play, wrong metadata, bad chapters, othe
 **Tidy authors** left behind with no books.
 
 **Everyone gets their own** — an in-app settings panel (the gear icon) where each user picks their
-theme, font, accent, and which shelves and sidebar entries to show. The panel and carousel are
+theme, font, accent, and which shelves and sidebar entries to show. Settings are **per account,
+not per device**, so a shared tablet stops handing one person's look (and playback speed) to
+whoever signs in next, and they follow you to another browser. The panel and carousel are
 translated into all 40 languages ABS ships.
+
+**Series at a glance** — a mark in the corner of a series cover once you have actually **finished**
+a book in it: a green tick when every book is done, an orange ring showing how far through the
+series you are when only some are. A series you have merely started, or never opened, stays clean.
 
 ## Run it
 
@@ -251,6 +261,7 @@ Mount it or you lose all of this when the container is recreated:
 | `stats.json` | opt-in shared listening summaries |
 | `collection-art.json` | per-collection icon and accent overrides |
 | `reports.json` | problem reports users filed from a book page |
+| `prefs.json` | each user's own theme settings, so they follow them between browsers |
 | `series-covers/` | uploaded series cover images |
 | `series-desc/` | series description overrides |
 | `user-avatars/` | user profile photos |
@@ -259,8 +270,9 @@ Mount it or you lose all of this when the container is recreated:
 **What is readable without logging in.** Images and text that the browser has to draw before
 anyone has signed in are served unauthenticated, same-origin: the logo, series covers, series
 descriptions, profile photos, the collection art map, and the saved server defaults. Ratings,
-reviews, listening summaries, problem reports and started/finished dates are **not** — those
-go through the API and require the caller's own Audiobookshelf login. Worth knowing before you
+reviews, listening summaries, problem reports, saved settings and started/finished dates are
+**not** — those go through the API and require the caller's own Audiobookshelf login, and each
+only ever returns the caller's own rows. Worth knowing before you
 upload a profile photo you would not want a stranger with the URL to see.
 
 ### Where settings live
@@ -272,17 +284,27 @@ Three layers, none of which touch your Audiobookshelf database:
    that particular option sees the new value.
 2. **UI-saved server defaults** sit above the env vars, written to `/data/nh` and injected into
    every page before first paint.
-3. **Each user's overrides** go to their browser's `localStorage` under `nh-settings` the moment
-   they change something. Nothing is sent to the server, so users on shared or read-only accounts
-   can still theme their own view — but it is per-browser, so the same person gets your defaults
-   again on a new phone until they customise it there too.
+3. **Each user's overrides**, saved the moment they change something. These are stored twice: in
+   the browser under `nh-settings:<your user id>`, which is what the page reads before first
+   paint so nothing flashes, and on the server under `/data/nh/prefs.json`, which is what lets
+   the same settings follow you to another browser or phone. The browser copy is authoritative
+   at load; the server copy syncs in the background, and whichever was saved last wins.
 
-Only the specific keys a user changed are pinned to their browser; anything they never touched
-isn't stored at all, so later changes to your defaults still reach them. To reset yourself,
-clear the site's data — or run this in the browser console and reload:
+Only the specific keys a user changed are stored; anything they never touched isn't saved at all,
+so later changes to your defaults still reach them.
+
+**On a shared device** (one tablet, several family members) every account keeps its own look.
+That covers Audiobookshelf's own preferences too, not just the theme's: playback speed, jump
+amounts, sort order and cover size are stored by Audiobookshelf in one browser-wide entry, so
+before v2.1 whoever changed them changed them for whoever signed in next. NanoHive now keeps a
+per-account copy and restores it at sign-in. The first account to sign in after updating keeps
+the look the device already had; everyone else starts from your defaults.
+
+To reset yourself, clear the site's data — or run this in the browser console and reload:
 
 ```js
-localStorage.removeItem('nh-settings'); location.reload();
+Object.keys(localStorage).filter(k => k.startsWith('nh-settings')).forEach(k => localStorage.removeItem(k));
+location.reload();
 ```
 
 ## How it works
