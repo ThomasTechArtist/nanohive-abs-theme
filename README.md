@@ -34,7 +34,7 @@ home shelves, series, collections), and whole series can be rated too, with a bo
 beside the series rating. You can also **import your ratings from StoryGraph or Goodreads** —
 [details below](#ratings-reviews-and-importing).
 
-**Finding things** — search across every library at once with a library badge on each hit; a
+**Finding things**: search across every library at once with a library badge on each hit; a
 rebuilt **Filter & sort** panel on the library and series pages replacing ABS's two dropdowns
 with one: sort by several things at once with the precedence and direction of each level in
 front of you (and Author sorts by surname or by first name, your choice), and stack filters
@@ -79,7 +79,7 @@ not per device**, so a shared tablet stops handing one person's look (and playba
 whoever signs in next, and they follow you to another browser. The panel and carousel are
 translated into all 40 languages ABS ships.
 
-**Series at a glance** — a mark in the corner of a series cover once you have actually **finished**
+**Series at a glance**: a mark in the corner of a series cover once you have actually **finished**
 a book in it: a green tick when every book is done, an orange ring showing how far through the
 series you are when only some are. A series you have merely started, or never opened, stays clean.
 
@@ -271,7 +271,7 @@ Mount it or you lose all of this when the container is recreated:
 anyone has signed in are served unauthenticated, same-origin: the logo, series covers, series
 descriptions, profile photos, the collection art map, and the saved server defaults. Ratings,
 reviews, listening summaries, problem reports, saved settings and started/finished dates are
-**not** — those go through the API and require the caller's own Audiobookshelf login, and each
+**not**. Those go through the API and require the caller's own Audiobookshelf login, and each
 only ever returns the caller's own rows. Worth knowing before you
 upload a profile photo you would not want a stranger with the URL to see.
 
@@ -300,7 +300,7 @@ before v2.1 whoever changed them changed them for whoever signed in next. NanoHi
 per-account copy and restores it at sign-in. The first account to sign in after updating keeps
 the look the device already had; everyone else starts from your defaults.
 
-To reset yourself, clear the site's data — or run this in the browser console and reload:
+To reset yourself, clear the site's data, or run this in the browser console and reload:
 
 ```js
 Object.keys(localStorage).filter(k => k.startsWith('nh-settings')).forEach(k => localStorage.removeItem(k));
