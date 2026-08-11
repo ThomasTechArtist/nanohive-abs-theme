@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.186.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.187.0  (injected build) */
 
 (function () {
   'use strict';
@@ -76,6 +76,9 @@
     startPage: '',
     seriesProgressBadge: true, // green/amber tick on a series card (#13)
     modernFilters: true,       // new filter & sort panel; off = ABS's own dropdowns
+    // Saved sort/filter per library and mode (#17), e.g. "<libId>:items".
+    // Object, so it gets its own copy per user (see the deep-copy loop below).
+    libViews: {},
     seriesCoverMode: 'grid' // series header fallback when no cover was uploaded (Pawel: grid is the default)
   };
 
@@ -6667,6 +6670,50 @@
     nhLfEmptyState(false);
   }
 
+  // ---------- remember the view per library (GitHub #17) ----------
+  // ABS keeps your sort and filter in its user settings, so its choice survives a
+  // reload. Ours lived only in memory and was gone the moment you navigated away,
+  // which reads as the sort "not working" rather than "not saved".
+  // Stored in the theme's own per-user settings, so it rides the same server sync
+  // and follows you to another browser. Keyed by library AND mode, because the
+  // books view and the series view have different dimensions entirely.
+  function nhLfViewKey(libId, mode) { return libId + ':' + (mode || 'items'); }
+  function nhLfPersist() {
+    if (!nhLf.libId) return;
+    const key = nhLfViewKey(nhLf.libId, nhLf.mode);
+    const views = { ...(nhSettings.libViews || {}) };
+    const fx = {};
+    Object.keys(nhLf.filters || {}).forEach((k) => {
+      if (nhLf.filters[k] && nhLf.filters[k].length) fx[k] = nhLf.filters[k].slice();
+    });
+    const empty = !nhLf.sorts.length && !nhLf.filter && !Object.keys(fx).length;
+    if (empty) delete views[key];
+    else views[key] = { s: nhLf.sorts.map((x) => ({ d: x.d, dir: x.dir, opt: x.opt })), f: nhLf.filter || '', fx: fx };
+    // Cap it: one entry per library per mode is tiny, but a server that has had
+    // libraries deleted should not accumulate their views forever.
+    const keys = Object.keys(views);
+    if (keys.length > 40) delete views[keys[0]];
+    nhSettings.libViews = views;
+    saveSettings();
+  }
+  function nhLfRestore(libId, mode) {
+    const saved = (nhSettings.libViews || {})[nhLfViewKey(libId, mode)];
+    if (!saved) return;
+    const dims = mode === 'series' ? NH_LF_SERIES_SORT_DIMS : NH_LF_SORT_DIMS;
+    const fdims = mode === 'series' ? NH_LF_SERIES_FILTER_DIMS : NH_LF_FILTER_DIMS;
+    // Drop anything this build no longer offers, so a removed dimension cannot
+    // wedge a library into a sort nobody can see or clear.
+    nhLf.sorts = (saved.s || []).filter((x) => x && dims.indexOf(x.d) >= 0)
+      .map((x) => ({ d: x.d, dir: x.dir < 0 ? -1 : 1, opt: x.opt }));
+    nhLf.filter = NH_LF_FILTERS.indexOf(saved.f) >= 0 ? saved.f : '';
+    nhLf.filters = {};
+    Object.keys(saved.fx || {}).forEach((k) => {
+      if (fdims.indexOf(k) >= 0 && Array.isArray(saved.fx[k]) && saved.fx[k].length) nhLf.filters[k] = saved.fx[k].slice();
+    });
+    nhLfSyncSortSig();
+    nhLf.viewSig = '';
+  }
+
   function nhLfFilterLabel(T) {
     return nhLf.filter === 'rated' ? (T.lfRated || PANEL_T.en.lfRated) :
       nhLf.filter === 'unrated' ? (T.lfUnrated || PANEL_T.en.lfUnrated) :
@@ -6840,7 +6887,8 @@
       };
       // clicks mutate state and let the next tick redraw the rows in place —
       // the menu STAYS OPEN so several levels/values can be stacked in one go
-      const touch = () => { nhLf.viewSig = ''; };
+      // classic mode's equivalent of nhFfApply — same persistence (#17)
+      const touch = () => { nhLf.viewSig = ''; try { nhLfPersist(); } catch (e) {} };
       if (kind === 'filter') {
         // native submenu page? (content replaced, e.g. genre list) — detect by
         // the "All" row being absent; skip injecting there
@@ -7009,8 +7057,12 @@
     return nhFfT(numeric ? 'mfAscNum' : 'mfAsc');
   }
 
+  // Every control in the panel funnels through here, so this is the one place the
+  // view needs saving from (#17). Clear-all lands here too, with empty state, which
+  // is what drops the stored entry.
   function nhFfApply() {
     nhLf.viewSig = '';
+    try { nhLfPersist(); } catch (e) {}
     try { nhLibFilter(); } catch (e) {}
     nhFfRender();
   }
@@ -7412,24 +7464,37 @@
     }
   }
 
+  // IDEMPOTENT, and it has to stay that way (GitHub #17). This runs on the tick.
+  // The first version rebuilt the whole footer every call, which mutated the DOM,
+  // which retriggered the mutation-observer tick, which rebuilt it again: the Done
+  // button was being replaced ~14 times a second. A click needs mousedown AND
+  // mouseup on the SAME element, so a real press (60ms and up) never produced a
+  // click and Done looked dead. A synthetic .click() still worked, which is why the
+  // probe passed. Build the buttons ONCE, then only touch the count text.
   function nhFfFoot(foot) {
-    foot.textContent = '';
-    const info = document.createElement('span');
-    info.className = 'nh-ff-info';
-    if (nhLf.view && nhLf.items) info.textContent = nhFfT('mfShowing').replace('{n}', nhLf.view.length).replace('{t}', nhLf.items.length);
-    foot.appendChild(info);
-    const clear = document.createElement('button');
-    clear.type = 'button';
-    clear.className = 'nh-ff-foot-btn';
-    clear.textContent = nhFfT('mfClear');
-    clear.addEventListener('click', nhFfClearAll);
-    foot.appendChild(clear);
-    const done = document.createElement('button');
-    done.type = 'button';
-    done.className = 'nh-ff-foot-btn nh-ff-done';
-    done.textContent = nhFfT('mfDone');
-    done.addEventListener('click', () => { nhFf.open = false; nhFfRender(); });
-    foot.appendChild(done);
+    let info = foot.querySelector(':scope > .nh-ff-info');
+    if (!info) {
+      foot.textContent = '';
+      info = document.createElement('span');
+      info.className = 'nh-ff-info';
+      foot.appendChild(info);
+      const clear = document.createElement('button');
+      clear.type = 'button';
+      clear.className = 'nh-ff-foot-btn';
+      clear.textContent = nhFfT('mfClear');
+      clear.addEventListener('click', nhFfClearAll);
+      foot.appendChild(clear);
+      const done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'nh-ff-foot-btn nh-ff-done';
+      done.textContent = nhFfT('mfDone');
+      done.addEventListener('click', () => { nhFf.open = false; nhFfRender(); });
+      foot.appendChild(done);
+    }
+    const txt = (nhLf.view && nhLf.items)
+      ? nhFfT('mfShowing').replace('{n}', nhLf.view.length).replace('{t}', nhLf.items.length)
+      : '';
+    if (info.textContent !== txt) info.textContent = txt;
   }
 
   // Full rebuild. Only ever from a user action or a real data change — see nhFfSync.
@@ -7490,7 +7555,17 @@
 
   function nhLibFilter() {
     const m = location.pathname.match(/\/library\/([^/]+)\/bookshelf(\/series)?\/?$/);
-    if (!m || nhSettings.showRatings === false || nhRs.dead) { nhLfReset(); return; }
+    if (!m || nhSettings.showRatings === false || nhRs.dead) {
+      nhLfReset();
+      // Forget which library we were on, so coming BACK counts as a change and the
+      // saved view is restored (#17). Without this, leaving the shelf cleared the
+      // state while libId stayed put, so re-entry took the "nothing changed" path
+      // and the sort was silently gone. A reload worked, which made it look like
+      // persistence was fine.
+      nhLf.libId = null;
+      nhLf.mode = null;
+      return;
+    }
     const libId = m[1];
     const mode = m[2] ? 'series' : 'items';
     if (nhLf.libId !== libId || nhLf.mode !== mode) {
@@ -7500,6 +7575,7 @@
       nhLf.itemsKey = '';
       nhLf.fetching = false;
       nhLfReset();
+      nhLfRestore(libId, mode);
     }
     const toolbar = document.getElementById('toolbar');
     const bookshelf = document.getElementById('bookshelf');
@@ -7600,6 +7676,7 @@
           patch[nat2.fbKey] = 'all';
           try { window.$nuxt.$store.dispatch('user/updateUserSettings', patch); } catch (e) {}
         }
+        try { nhLfPersist(); } catch (e) {} // clearing is a choice worth remembering too
         nhLibFilter();
       });
       hostEl.parentElement.insertBefore(clr, hostEl);
@@ -11774,7 +11851,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.1.0';
+  const NH_THEME_VERSION = 'v2.1.1';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The

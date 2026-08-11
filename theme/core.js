@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.124.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.125.0  (injected build) */
 
 (function () {
   'use strict';
@@ -169,6 +169,13 @@ body.nh-home #bookshelf { padding-top: 82px !important; }
 .configContent { padding-top: 80px !important; }
 body.nh-pad-page #app-content .page { padding-top: 75px !important; }
 #item-page-wrapper { padding-top: 80px !important; }
+/* DEFAULT clearance for every other page (GitHub #16). The rules above hand it out
+   per page type, so any route nobody thought of slid under the overlaid appbar with
+   nothing to scroll back to: reported on /upload, and /account had it too.
+   Opting IN page by page cannot work, since the list is whatever ABS ships next.
+   So: pad .page by default, and exclude the containers that already pad an inner
+   element (#bookshelf, .configContent, #item-page-wrapper) or they double up. */
+#app-content .page:not(:has(#bookshelf)):not(:has(.configContent)):not(:has(#item-page-wrapper)) { padding-top: 75px !important; }
 
 /* ============ SCROLLBAR STYLING ============ */
 /* scrollbar-width: ABS only thins ONE scroller natively, so e.g. the book-detail
@@ -939,6 +946,16 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
 .modal [style*="max-height: 80vh"] .overflow-y-auto,
 .modal [style*="max-height: 80vh"] .overflow-y-scroll,
 .modal .max-h-80.overflow-y-auto { max-height: 60vh !important; }
+/* Those three selectors are DEAD on ABS 2.36: nothing carries an inline
+   "max-height: 80vh" any more (established while fixing #14). They are kept for
+   older builds, but the guard they provided had quietly stopped working, which is
+   how Find Chapters ended up with a 192-row list pushing its buttons off the
+   bottom of the screen (GitHub #16). Same cap, keyed off the panel shape ABS
+   actually ships now: a scroll region inside the modal may not exceed the panel
+   minus its header and footer. Percentages of a panel that is itself clamped to
+   the viewport, so this holds at any window size. */
+.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-auto,
+.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-scroll { max-height: calc(100% - 150px) !important; }
 /* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
    ABS's Modal component sizes its panel with INLINE styles computed when the modal
    opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the
@@ -954,9 +971,13 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
    panel fits exactly while height + margin-top <= viewport. Leaving 20px of slack keeps
    a visible gap rather than a flush edge. */
 .modal > div[style*="min-height"][style*="margin-top"] { max-height: calc(95vh - 75px) !important; max-height: calc(100dvh - 95px) !important; }
-/* Below this, 75px of top margin is a big slice of the screen. Trade it for content. */
+/* Below this, 75px of top margin is a big slice of the screen. Trade most of it for
+   content, but NOT all of it: the item editor's tab strip is absolutely positioned
+   ABOVE the panel (-top-10, i.e. 40px up), so a margin smaller than that pushes
+   Details/Cover/Chapters/Files off the top edge, and those are the only way to move
+   between tabs. Keep enough room for the strip and take the rest off the height. */
 @media (max-height: 560px) {
-  .modal > div[style*="min-height"][style*="margin-top"] { margin-top: 12px !important; max-height: calc(95vh - 12px) !important; max-height: calc(100dvh - 32px) !important; }
+  .modal > div[style*="min-height"][style*="margin-top"] { margin-top: 46px !important; max-height: calc(95vh - 56px) !important; max-height: calc(100dvh - 66px) !important; }
 }
 /* Description rich-text editor (Trix). ABS ships it neutral-gray (rgb(35,35,35)) which
    clashes with the warm theme — recolour the editor surface and its toolbar. Use
