@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.129.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.130.0  (injected build) */
 
 (function () {
   'use strict';
@@ -964,15 +964,20 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
 .modal [style*="max-height: 80vh"] .overflow-y-scroll,
 .modal .max-h-80.overflow-y-auto { max-height: 60vh !important; }
 /* Those three selectors are DEAD on ABS 2.36: nothing carries an inline
-   "max-height: 80vh" any more (established while fixing #14). They are kept for
-   older builds, but the guard they provided had quietly stopped working, which is
-   how Find Chapters ended up with a 192-row list pushing its buttons off the
-   bottom of the screen (GitHub #16). Same cap, keyed off the panel shape ABS
-   actually ships now: a scroll region inside the modal may not exceed the panel
-   minus its header and footer. Percentages of a panel that is itself clamped to
-   the viewport, so this holds at any window size. */
-.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-auto:not(#formWrapper),
-.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-scroll:not(#formWrapper) { max-height: calc(100% - 150px) !important; }
+   "max-height: 80vh" any more (established while fixing #14). Kept for older builds.
+   REMOVED in 2.3.1, and worth saying why so it does not come back (GitHub #22):
+   a rule was added here in 2.1.1 capping every scroller inside the modal at
+   calc(100% - 150px), to stop a long Find Chapters list pushing its buttons off
+   screen. It also hit the editor's own form area, which cost 70px (#19), and the
+   exclusion added in 2.1.2 named #formWrapper specifically. That id does not
+   exist in every ABS layout — niblem85's dialog has no #formWrapper at all — so on
+   those the cap applied to the main form scroller and stole 150px, which is the
+   band he kept reporting.
+   It was never needed anyway: the panel clamp below already keeps the buttons on
+   screen, proven by re-running the 192-row test at every height with this rule
+   removed. Adding a second guard on top of one that already worked caused two
+   separate regressions. Do not re-add it without first showing the clamp is
+   insufficient. */
 /* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
    ABS's Modal component sizes its panel with INLINE styles computed when the modal
    opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the
