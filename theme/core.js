@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.127.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.128.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1250,7 +1250,18 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #nh-series-header .nh-sh-author a { color: inherit; cursor: pointer; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
 #nh-series-header .nh-sh-author a:hover { border-bottom-color: var(--nh-amber, #e0c27a); }
 /* Series description editor modal (admin; reuses the ratings popup chrome) */
-#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-hx-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* Carousel X confirmation (#18). Small, so it gets a narrower box than the rest.
+   z-index above the shared 500: it can be raised from the home page while nothing
+   else is open, but it must never end up behind anything it was opened from. */
+#nh-hx-modal { z-index: 620; }
+#nh-hx-modal .nh-rt-modal-box { max-width: 440px; width: 92vw; padding: 24px 24px 18px; }
+#nh-hx-modal .nh-hx-msg { margin: 0 0 20px; font-size: 0.95rem; line-height: 1.55; color: var(--nh-text-1, #f4eee2); }
+#nh-hx-modal .nh-hx-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+#nh-hx-modal .nh-hx-btn { padding: 9px 18px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: none; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.86rem; cursor: pointer; min-height: 38px; }
+#nh-hx-modal .nh-hx-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+#nh-hx-modal .nh-hx-yes { border-color: var(--nh-amber, #e0c27a); color: var(--nh-amber, #e0c27a); }
+#nh-hx-modal .nh-hx-yes:hover { background: var(--nh-amber, #e0c27a); color: #241c0c; }
 .nh-sd-ta { width: 100%; min-height: 180px; background: rgba(0,0,0,0.25); color: var(--nh-text-2, #d8cfc2); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px 12px; font-size: 0.92rem; line-height: 1.5; font-family: inherit; resize: vertical; box-sizing: border-box; }
 .nh-sd-ta:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
 #nh-series-header h1 { font-family: var(--nh-serif), Georgia, serif; font-size: 1.6rem; font-weight: 600; color: var(--nh-text-1, #f2ecdf); margin: 4px 0 8px; line-height: 1.12; }

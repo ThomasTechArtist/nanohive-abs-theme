@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.188.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.189.0  (injected build) */
 
 (function () {
   'use strict';
@@ -2669,6 +2669,115 @@
   // id, not the libraryItemId. Passing the item id 404s (verified against ABS 2.36's
   // MeController.removeMediaProgress, which looks the record up by its own id).
   const nhHeroDropped = new Set();
+
+  // Confirmation, because this throws away where you had got to (Pawel). The two
+  // BUTTONS and the shelf NAME come from ABS's own string table, so they are
+  // already correct in every language it ships and always match the shelf label
+  // the user is actually looking at. Only the sentence is ours to translate.
+  const NH_HERO_CONFIRM = {
+    en: 'This will remove your progress and remove the book from "{shelf}". Are you sure you want to proceed?',
+    pl: 'Spowoduje to usunięcie Twojego postępu i usunięcie książki z „{shelf}”. Czy na pewno chcesz kontynuować?',
+    de: 'Damit wird dein Fortschritt gelöscht und das Buch aus „{shelf}“ entfernt. Möchtest du wirklich fortfahren?',
+    fr: 'Cela supprimera votre progression et retirera le livre de « {shelf} ». Voulez-vous vraiment continuer ?',
+    es: 'Esto eliminará tu progreso y quitará el libro de «{shelf}». ¿Seguro que quieres continuar?',
+    it: 'Questo rimuoverà i tuoi progressi e toglierà il libro da "{shelf}". Vuoi davvero continuare?',
+    pt: 'Isto vai remover o seu progresso e retirar o livro de "{shelf}". Tem a certeza de que quer continuar?',
+    nl: 'Hiermee wordt je voortgang gewist en het boek uit "{shelf}" verwijderd. Weet je zeker dat je door wilt gaan?',
+    cs: 'Tímto se odstraní tvůj postup a kniha zmizí z „{shelf}“. Opravdu chceš pokračovat?',
+    sk: 'Týmto sa odstráni tvoj postup a kniha zmizne z „{shelf}“. Naozaj chceš pokračovať?',
+    da: 'Dette fjerner din fremgang og fjerner bogen fra "{shelf}". Er du sikker på, at du vil fortsætte?',
+    sv: 'Detta tar bort dina framsteg och tar bort boken från "{shelf}". Är du säker på att du vill fortsätta?',
+    no: 'Dette fjerner fremgangen din og fjerner boken fra «{shelf}». Er du sikker på at du vil fortsette?',
+    fi: 'Tämä poistaa edistymisesi ja poistaa kirjan kohteesta ”{shelf}”. Haluatko varmasti jatkaa?',
+    ru: 'Это удалит ваш прогресс и уберёт книгу из «{shelf}». Вы уверены, что хотите продолжить?',
+    uk: 'Це видалить ваш прогрес і прибере книгу з «{shelf}». Ви впевнені, що хочете продовжити?',
+    be: 'Гэта выдаліць ваш прагрэс і прыбярэ кнігу з «{shelf}». Вы ўпэўнены, што хочаце працягнуць?',
+    bg: 'Това ще премахне напредъка ви и ще махне книгата от „{shelf}“. Сигурни ли сте, че искате да продължите?',
+    hr: 'Ovo će ukloniti tvoj napredak i maknuti knjigu iz „{shelf}”. Jesi li siguran da želiš nastaviti?',
+    sl: 'To bo odstranilo tvoj napredek in knjigo umaknilo iz »{shelf}«. Ali res želiš nadaljevati?',
+    hu: 'Ezzel törlöd a haladásodat, és a könyv lekerül innen: „{shelf}”. Biztosan folytatod?',
+    ro: 'Aceasta îți va șterge progresul și va scoate cartea din „{shelf}”. Sigur vrei să continui?',
+    lt: 'Tai pašalins jūsų progresą ir išims knygą iš „{shelf}“. Ar tikrai norite tęsti?',
+    lv: 'Tas noņems tavu progresu un izņems grāmatu no “{shelf}”. Vai tiešām vēlies turpināt?',
+    et: 'See eemaldab sinu edenemise ja võtab raamatu jaotisest „{shelf}“ välja. Kas soovid kindlasti jätkata?',
+    el: 'Αυτό θα διαγράψει την πρόοδό σας και θα αφαιρέσει το βιβλίο από «{shelf}». Σίγουρα θέλετε να συνεχίσετε;',
+    tr: 'Bu, ilerlemenizi siler ve kitabı "{shelf}" listesinden çıkarır. Devam etmek istediğinize emin misiniz?',
+    ca: 'Això eliminarà el teu progrés i traurà el llibre de «{shelf}». Segur que vols continuar?',
+    eu: 'Honek zure aurrerapena ezabatuko du eta liburua «{shelf}» ataletik kenduko du. Ziur zaude jarraitu nahi duzula?',
+    is: 'Þetta fjarlægir framvinduna þína og tekur bókina úr „{shelf}“. Ertu viss um að þú viljir halda áfram?',
+    ja: '進捗が削除され、本は「{shelf}」から取り除かれます。続行してもよろしいですか？',
+    ko: '진행 상황이 삭제되고 책이 "{shelf}"에서 제거됩니다. 계속하시겠습니까?',
+    zh: '这将清除你的收听进度，并将这本书从“{shelf}”中移除。确定要继续吗？',
+    ar: 'سيؤدي هذا إلى حذف تقدمك وإزالة الكتاب من "{shelf}". هل أنت متأكد من أنك تريد المتابعة؟',
+    he: 'הפעולה תמחק את ההתקדמות שלך ותסיר את הספר מ"{shelf}". להמשיך?',
+    fa: 'این کار پیشرفت شما را حذف می‌کند و کتاب را از «{shelf}» بیرون می‌برد. مطمئنید که می‌خواهید ادامه دهید؟',
+    hi: 'इससे आपकी प्रगति हट जाएगी और किताब "{shelf}" से निकल जाएगी। क्या आप वाकई जारी रखना चाहते हैं?',
+    bn: 'এতে আপনার অগ্রগতি মুছে যাবে এবং বইটি "{shelf}" থেকে সরে যাবে। আপনি কি নিশ্চিতভাবে চালিয়ে যেতে চান?',
+    gu: 'આનાથી તમારી પ્રગતિ દૂર થશે અને પુસ્તક "{shelf}" માંથી હટી જશે. શું તમે ખરેખર આગળ વધવા માંગો છો?',
+    vi: 'Thao tác này sẽ xóa tiến độ của bạn và gỡ cuốn sách khỏi "{shelf}". Bạn có chắc muốn tiếp tục không?',
+  };
+  function nhAbsString(key, fallback) {
+    try {
+      const v = window.$nuxt && window.$nuxt.$strings && window.$nuxt.$strings[key];
+      if (v) return v;
+    } catch (e) {}
+    return fallback;
+  }
+  // `ebook` picks the Continue READING shelf name, since that is the shelf an
+  // ebook-only slide actually came from.
+  function nhHeroConfirm(isEbook, onYes) {
+    const lang = getUserLanguage().split('-')[0].toLowerCase();
+    const shelf = isEbook
+      ? nhAbsString('LabelContinueReading', 'Continue Reading')
+      : nhAbsString('LabelContinueListening', 'Continue Listening');
+    const msg = (NH_HERO_CONFIRM[lang] || NH_HERO_CONFIRM.en).replace('{shelf}', shelf);
+
+    const old = document.getElementById('nh-hx-modal');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'nh-hx-modal';
+    const bg = document.createElement('div');
+    bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div');
+    box.className = 'nh-rt-modal-box';
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKey, true);
+    };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(); }
+      else if (e.key === 'Enter') { e.stopPropagation(); close(); onYes(); }
+    };
+    bg.addEventListener('click', close);
+    document.addEventListener('keydown', onKey, true);
+
+    const p = document.createElement('p');
+    p.className = 'nh-hx-msg';
+    p.textContent = msg;
+    box.appendChild(p);
+
+    const row = document.createElement('div');
+    row.className = 'nh-hx-actions';
+    const no = document.createElement('button');
+    no.type = 'button';
+    no.className = 'nh-hx-btn';
+    no.textContent = nhAbsString('ButtonCancel', 'Cancel');
+    no.addEventListener('click', close);
+    const yes = document.createElement('button');
+    yes.type = 'button';
+    yes.className = 'nh-hx-btn nh-hx-yes';
+    yes.textContent = nhAbsString('ButtonYes', 'Yes');
+    yes.addEventListener('click', () => { close(); onYes(); });
+    row.appendChild(no);
+    row.appendChild(yes);
+    box.appendChild(row);
+
+    overlay.appendChild(bg);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    try { yes.focus(); } catch (e) {}
+  }
+
   function nhHeroProgressId(itemId) {
     try {
       const mp = (window.$nuxt.$store.state.user.user.mediaProgress || []).find((p) => p && p.libraryItemId === itemId);
@@ -3244,11 +3353,14 @@
             e.stopPropagation();
             e.preventDefault();
             if (x.dataset.busy) return;
-            x.dataset.busy = '1';
-            x.textContent = '…';
-            nhHeroResetProgress(d.id, (ok) => {
-              if (!ok) { delete x.dataset.busy; x.textContent = '✕'; return; }
-              nhHeroRebuild();
+            // Confirm first: this throws away where you had got to.
+            nhHeroConfirm(!d.hasAudio && d.hasEbook, () => {
+              x.dataset.busy = '1';
+              x.textContent = '…';
+              nhHeroResetProgress(d.id, (ok) => {
+                if (!ok) { delete x.dataset.busy; x.textContent = '✕'; return; }
+                nhHeroRebuild();
+              });
             });
           });
         }
@@ -9801,7 +9913,7 @@
     if (Math.abs(want - cur) >= 4) root.style.setProperty('--nh-player-pad', want + 'px');
   }
 
-  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal, #nh-imp-modal';
+  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal, #nh-imp-modal, #nh-hx-modal';
   function nhModalLock() {
     document.body.classList.toggle('nh-modal-open', !!document.querySelector(NH_MODAL_IDS));
   }
@@ -11937,7 +12049,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.2.0';
+  const NH_THEME_VERSION = 'v2.2.1';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The
