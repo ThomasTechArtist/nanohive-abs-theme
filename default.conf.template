@@ -98,13 +98,20 @@ server {
         access_log off;
     }
 
+    # The next three locations serve files an admin can REPLACE IN PLACE at the same
+    # path, so they are sent "no-cache": the browser keeps its copy but has to ask
+    # before reusing it, and nginx answers 304 from the ETag when nothing changed.
+    # They used to be "public, max-age=300", which let a browser show a stale series
+    # cover for five minutes after it was replaced, on every account except the one
+    # that happened to upload it. Do not put max-age back on a mutable path.
+    #
     # Custom series covers (A1) — admin-uploaded images that replace the stacked-books
     # tile. Files live in the nh_theme_data volume as /data/nh/series-covers/<seriesId>.<ext>
     # (written via the admin DAV path below). Public read like the logo: a cover is not
     # secret, and cards need it without an Authorization header.
     location ~ "^/_nh/series-covers/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif|avif))$" {
         alias /data/nh/series-covers/$1;
-        add_header Cache-Control "public, max-age=300";
+        add_header Cache-Control "no-cache";
         add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
@@ -114,7 +121,7 @@ server {
     location ~ "^/_nh/series-desc/([A-Za-z0-9_-]{4,64}\.txt)$" {
         alias /data/nh/series-desc/$1;
         default_type "text/plain; charset=utf-8";
-        add_header Cache-Control "public, max-age=300";
+        add_header Cache-Control "no-cache";
         add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }
@@ -124,7 +131,7 @@ server {
     # Authorization header. Regex QUOTED (brace quantifier breaks nginx parse).
     location ~ "^/_nh/user-avatars/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif))$" {
         alias /data/nh/user-avatars/$1;
-        add_header Cache-Control "public, max-age=300";
+        add_header Cache-Control "no-cache";
         add_header X-Content-Type-Options "nosniff" always;
         access_log off;
     }

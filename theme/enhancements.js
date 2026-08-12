@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.191.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.193.0  (injected build) */
 
 (function () {
   'use strict';
@@ -4991,6 +4991,18 @@
   // row, and the series header (plus its admin pencil/remove buttons).
   const nhSc = { map: null, descs: null, avatars: null, descText: {}, fetching: false, tries: 0, ts: 0 };
 
+  // Cache-buster for the three mutable public files (series covers, series
+  // descriptions, user avatars). It MUST be wall-clock, not a counter.
+  // This started life as `ts = (ts || 1) + 1`, which restarts at 0 on every page
+  // load and therefore hands out ?v=2, ?v=3 ... again and again, for different
+  // bytes each time. nginx serves those files with a 300s cache, so the browser
+  // was perfectly entitled to answer the second ?v=2 from its cache and show the
+  // PREVIOUS image. That is why replacing a series cover looked like it did
+  // nothing, and why it started working again about five minutes later.
+  // Reproduced in Chrome: PUT red, fetch ?v=2, PUT blue, fetch ?v=2, still red.
+  // Date.now() never repeats across loads, so every write gets its own URL.
+  function nhScBump() { nhSc.ts = Date.now(); }
+
   function nhScFetch() {
     if (nhSc.fetching || nhSc.map || nhSc.tries >= 5) return;
     const tok = nhSrToken();
@@ -5033,7 +5045,7 @@
         if (!r.ok) { if (cb) cb(false); return; }
         if (!nhSc.descs) nhSc.descs = {};
         nhSc.descs[sid] = 1;
-        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhScBump();
         nhSc.descText[sid + ':' + nhSc.ts] = body;
         if (cb) cb(true);
       })
@@ -5044,7 +5056,7 @@
     fetch('/_nh/data/series-desc/' + sid + '.txt', { method: 'DELETE', headers: { Authorization: 'Bearer ' + nhSrToken() } })
       .then((r) => {
         const good = r.ok || r.status === 404;
-        if (good && nhSc.descs) { delete nhSc.descs[sid]; nhSc.ts = (nhSc.ts || 1) + 1; }
+        if (good && nhSc.descs) { delete nhSc.descs[sid]; nhScBump(); }
         if (cb) cb(good);
       })
       .catch(() => { if (cb) cb(false); });
@@ -5376,6 +5388,41 @@
     });
   }
 
+  // An image over the 4MB write cap is DOWNSCALED here, not rejected. It used to
+  // be a hard stop, and the only feedback was a tiny "✗ 4MB" glyph next to the
+  // SERIES eyebrow. Pawel hit exactly that (2026-08-13): a big cover appeared to
+  // upload and silently change nothing, on a page where the identical flow had
+  // worked before with smaller files. Nothing on screen ever uses more than the
+  // header composite's 1400px, so re-encoding at 1600px JPEG loses nothing
+  // visible and lands far under the cap, which /_nh/data/ still enforces
+  // server-side (client_max_body_size). Trade-off: an oversized animated GIF
+  // comes out as its first frame. A small file still uploads byte-identical.
+  function nhScShrink(f) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(f);
+      const im = new Image();
+      im.onload = () => {
+        URL.revokeObjectURL(url);
+        try {
+          const MAX = 1600;
+          const sc = Math.min(1, MAX / Math.max(im.width, im.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.max(1, Math.round(im.width * sc));
+          cv.height = Math.max(1, Math.round(im.height * sc));
+          cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+          // 0.88 is visually lossless for cover art; the 0.72 retry is a
+          // safety net that no real image should ever need.
+          cv.toBlob((b) => {
+            if (b && b.size <= 4 * 1024 * 1024) return resolve(b);
+            cv.toBlob((b2) => (b2 && b2.size <= 4 * 1024 * 1024 ? resolve(b2) : reject(new Error('too big'))), 'image/jpeg', 0.72);
+          }, 'image/jpeg', 0.88);
+        } catch (e) { reject(e); }
+      };
+      im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode')); };
+      im.src = url;
+    });
+  }
+
   function nhScUpload(fileInput, sid, statusEl) {
     const f = fileInput.files && fileInput.files[0];
     if (!f || !sid) return;
@@ -5383,23 +5430,23 @@
     let ext = byMime[f.type] || (f.name.split('.').pop() || '').toLowerCase();
     if (ext === 'jpeg') ext = 'jpg';
     if (!/^(png|jpg|webp|gif|avif)$/.test(ext)) { if (statusEl) statusEl.textContent = '✗'; fileInput.value = ''; return; }
-    if (f.size > 4 * 1024 * 1024) { if (statusEl) statusEl.textContent = '✗ 4MB'; fileInput.value = ''; return; }
     if (statusEl) statusEl.textContent = '…';
     const tok = nhSrToken();
-    fetch('/_nh/data/series-covers/' + sid + '.' + ext, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok }, body: f })
+    const doPut = (body, ex) => fetch('/_nh/data/series-covers/' + sid + '.' + ex, { method: 'PUT', headers: { Authorization: 'Bearer ' + tok }, body: body })
       .then((r) => {
         if (!r.ok) throw new Error(r.status);
         const old = nhSc.map && nhSc.map[sid];
-        if (old && old !== ext) {
+        if (old && old !== ex) {
           fetch('/_nh/data/series-covers/' + sid + '.' + old, { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } }).catch(() => {});
         }
         if (!nhSc.map) nhSc.map = {};
-        nhSc.map[sid] = ext;
-        nhSc.ts = (nhSc.ts || 1) + 1; // cache-bust every consumer
+        nhSc.map[sid] = ex;
+        nhScBump(); // cache-bust every consumer
         if (statusEl) statusEl.textContent = '';
         fileInput.value = '';
-      })
-      .catch(() => { if (statusEl) statusEl.textContent = '✗'; fileInput.value = ''; });
+      });
+    const up = f.size > 4 * 1024 * 1024 ? nhScShrink(f).then((b) => doPut(b, 'jpg')) : doPut(f, ext);
+    up.catch(() => { if (statusEl) statusEl.textContent = '✗'; fileInput.value = ''; });
   }
 
   function nhScDelete(sid, statusEl) {
@@ -5407,7 +5454,7 @@
     if (!ext) return;
     fetch('/_nh/data/series-covers/' + sid + '.' + ext, { method: 'DELETE', headers: { Authorization: 'Bearer ' + nhSrToken() } })
       .then((r) => {
-        if (r.ok || r.status === 404) { delete nhSc.map[sid]; nhSc.ts = (nhSc.ts || 1) + 1; }
+        if (r.ok || r.status === 404) { delete nhSc.map[sid]; nhScBump(); }
         else if (statusEl) statusEl.textContent = '✗';
       })
       .catch(() => { if (statusEl) statusEl.textContent = '✗'; });
@@ -9838,7 +9885,7 @@
         if (!j || !j.ext) { cb(false); return; }
         if (!nhSc.avatars) nhSc.avatars = {};
         nhSc.avatars[uid] = j.ext;
-        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhScBump();
         nhSb.renderedSig = '';
         cb(true);
       })
@@ -9850,7 +9897,7 @@
       .then((r) => {
         if (!r.ok) { cb(false); return; }
         if (nhSc.avatars) delete nhSc.avatars[uid];
-        nhSc.ts = (nhSc.ts || 1) + 1;
+        nhScBump();
         nhSb.renderedSig = '';
         cb(true);
       })
@@ -12205,7 +12252,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.3.2';
+  const NH_THEME_VERSION = 'v2.3.4';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The
