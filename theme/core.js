@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.130.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.131.0  (injected build) */
 
 (function () {
   'use strict';
@@ -978,6 +978,34 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
    removed. Adding a second guard on top of one that already worked caused two
    separate regressions. Do not re-add it without first showing the clamp is
    insufficient. */
+/* #22 follow-up. Cover and Match still stopped short of the panel's bottom edge
+   while Details filled it. Same symptom, two unrelated stock-ABS causes.
+   COVER: the results grid is "sm:max-h-80 sm:overflow-y-scroll", a hard 320px box
+   inside a 648px tab. Past about four rows of covers the grid stops 95px above the
+   panel edge and that band stays empty however far you scroll. Drop the cap and the
+   nested scrollbar with it. The tab already owns a scroller (the same single-scroll
+   shape Details uses), so letting that one do the work fills the panel. BOTH classes
+   are required in the selector: max-h-80 on its own is every ui-dropdown menu in the
+   app, and those must keep their cap. The negative bottom margin cancels the mb-5 each
+   cover tile carries for the row gutter, which is needed between rows but is dead
+   weight under the last one. That leaves the container's own py-6 as the only gap at
+   the edge, which is what the Details form leaves too.
+   MATCH: a smaller band, 31px, and a different reason. ABS sizes the results list with
+   its own rule, height: calc(100% - 80px), a hardcoded guess at what the search form
+   above it takes (124px below the sm breakpoint, where that form wraps to two rows).
+   The form and its mt-4 measure 74px, so the list hands back 6px it could have used,
+   and #match-wrapper's py-6 accounts for the other 24. The Loading / No Results
+   placeholders miss by much more: they are h-full, 100% of the wrapper, sitting below
+   a 58px form, so they hang 33px past the bottom edge, get clipped, and their centred
+   text sits visibly low. One flex column gives all three exactly the height that is
+   left, at any window size and either breakpoint, with no number to guess. The
+   selected-match panel is position:absolute, so flex layout skips it and its own
+   h-full still resolves against the padding box, unchanged. */
+.modal [class*="max-h-80"][class*="overflow-y-scroll"] { max-height: none !important; overflow-y: visible !important; margin-bottom: -1.25rem !important; }
+.modal #match-wrapper { display: flex !important; flex-direction: column !important; }
+.modal #match-wrapper > form { flex: 0 0 auto !important; }
+.modal #match-wrapper > .matchListWrapper,
+.modal #match-wrapper > .h-full:not(.absolute) { flex: 1 1 auto !important; min-height: 0 !important; max-height: none !important; height: auto !important; }
 /* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
    ABS's Modal component sizes its panel with INLINE styles computed when the modal
    opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the
