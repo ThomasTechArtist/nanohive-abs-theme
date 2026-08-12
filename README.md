@@ -25,10 +25,11 @@ overflow); covers that follow your library's aspect setting everywhere, includin
 page.
 
 **Home page** — a hero carousel of your in-progress books, with a pause button that remembers
-your choice. An expanded Recent Series shelf (ABS caps its own at 5, and you can keep the stock
-look if you prefer it), a *Rate what you finished* row, and reorderable sections so you decide
-what sits at the top. Ebooks in progress can join the carousel, stay a separate shelf, or be
-hidden.
+your choice, and an X in its corner to drop a book you started by accident (the same reset the
+book page offers). An expanded Recent Series shelf (ABS caps its own at 5, and you can keep the
+stock look if you prefer it), a *Rate what you finished* row, and reorderable sections so you
+decide what sits at the top. Ebooks in progress can join the carousel, stay a separate shelf, or
+be hidden.
 
 **Ratings and reviews** — server-wide, Goodreads-style: stars, a community score and short
 reviews on every book page, shared between all users. Stars appear on every card (library grid,

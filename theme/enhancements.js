@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.187.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.188.0  (injected build) */
 
 (function () {
   'use strict';
@@ -2339,7 +2339,19 @@
       gu: {"morning": "સુપ્રભાત", "afternoon": "શુભ બપોર", "evening": "શુભ સાંજ", "welcome": "પાછા આવવા બદલ સ્વાગત છે", "pickup": "તમારાં પુસ્તકો રાહ જુએ છે", "by": "દ્વારા", "continue": "ચાલુ રાખો", "left": "બાકી", "narratedBy": "વાચન", "unknown": "અજાણ્યું શીર્ષક", "fallbackDesc": "જ્યાં છોડ્યું હતું ત્યાંથી ચાલુ રાખો.", "heroPause": "થોભો", "heroPlay": "ચલાવો"},
       vi: {"morning": "CHÀO BUỔI SÁNG", "afternoon": "CHÀO BUỔI CHIỀU", "evening": "CHÀO BUỔI TỐI", "welcome": "Chào mừng trở lại", "pickup": "Sách của bạn đang chờ", "by": "của", "continue": "Tiếp tục", "left": "còn lại", "narratedBy": "Người đọc", "unknown": "Tiêu đề không xác định", "fallbackDesc": "Tiếp tục từ chỗ bạn đã dừng.", "heroPause": "Tạm dừng", "heroPlay": "Phát"}
     };
-    return dictionary[baseLang] || dictionary.en;
+    // The carousel X (#18). Added here rather than into all ~40 one-line dicts
+    // above; anything without its own wording falls back to English.
+    const heroReset = {
+      en: 'Reset progress and remove from here',
+      pl: 'Zresetuj postęp i usuń stąd',
+      de: 'Fortschritt zurücksetzen und entfernen',
+      fr: 'Réinitialiser la progression et retirer',
+      es: 'Restablecer el progreso y quitar de aquí',
+      nl: 'Voortgang wissen en hier verwijderen',
+      it: 'Azzera i progressi e rimuovi da qui',
+    };
+    const base = dictionary[baseLang] || dictionary.en;
+    return { ...base, heroReset: heroReset[baseLang] || heroReset.en };
   };
 
   // ==========================================
@@ -2648,6 +2660,51 @@
 
   function nhHeroCacheKey() { return 'nh-hero-cache:' + (getLibIdNH() || 'default'); }
 
+  // ---------- carousel: reset progress on a slide (GitHub #18) ----------
+  // The carousel replaced the Continue Listening shelf, and ABS's per-card menu went
+  // with it, so there was no way to drop a book you started by accident short of
+  // switching the shelf back on in settings. This is the same action as the X beside
+  // the progress bar on the book page: DELETE the media-progress RECORD.
+  // NOTE the id: the route is /api/me/progress/:id where :id is the PROGRESS RECORD
+  // id, not the libraryItemId. Passing the item id 404s (verified against ABS 2.36's
+  // MeController.removeMediaProgress, which looks the record up by its own id).
+  const nhHeroDropped = new Set();
+  function nhHeroProgressId(itemId) {
+    try {
+      const mp = (window.$nuxt.$store.state.user.user.mediaProgress || []).find((p) => p && p.libraryItemId === itemId);
+      return mp ? mp.id : null;
+    } catch (e) { return null; }
+  }
+  function nhHeroResetProgress(itemId, done) {
+    const pid = nhHeroProgressId(itemId);
+    const tok = nhSrToken();
+    if (!pid || !tok) { if (done) done(false); return; }
+    fetch('/api/me/progress/' + encodeURIComponent(pid), {
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer ' + tok },
+    }).then((r) => {
+      if (!r.ok) { if (done) done(false); return; }
+      nhHeroDropped.add(itemId);
+      // Keep the local store in step so anything else reading progress this tick
+      // (the series badge, the filters) agrees with the server.
+      try {
+        const u = window.$nuxt.$store.state.user.user;
+        u.mediaProgress = (u.mediaProgress || []).filter((p) => p.libraryItemId !== itemId);
+      } catch (e) {}
+      // The hero cache is a snapshot of these very slides.
+      try { localStorage.removeItem(nhHeroCacheKey()); } catch (e) {}
+      if (done) done(true);
+    }).catch(() => { if (done) done(false); });
+  }
+  // Tear the carousel down so the next tick rebuilds it without the dropped slide.
+  function nhHeroRebuild() {
+    const c = document.getElementById('nh-hero-container');
+    const row = c && c.parentElement;
+    if (c) c.remove();
+    if (row && row.dataset) delete row.dataset.heroInjected;
+    document.querySelectorAll('[data-hero-injected]').forEach((r) => { delete r.dataset.heroInjected; });
+  }
+
   // Progress is per user, so a snapshot is only valid for whoever wrote it — on a
   // shared browser the next user must not see the previous one's position flash by.
   function nhHeroUser() {
@@ -2744,6 +2801,7 @@
         <div class="nh-hero-banner" style="width: 100%; position: relative; overflow: hidden; background-color: var(--nh-raised); border-radius: 24px; padding: 48px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5); cursor: pointer; transition: transform 0.2s ease;">
 
           <div class="nh-hero-bg" style="position: absolute; inset: -12%; background-image: url('${eCover}'); background-size: cover; background-position: center; filter: blur(60px) brightness(0.5) saturate(1.4); z-index: 0; pointer-events: none;"></div>
+          <button class="nh-hero-x" type="button" title="${escapeHtmlNH(t.heroReset || '')}" aria-label="${escapeHtmlNH(t.heroReset || '')}">✕</button>
           <div style="position: absolute; inset: 0; background: linear-gradient(110deg, rgba(var(--nh-bg-rgb), 0.92) 0%, rgba(var(--nh-bg-rgb), 0.62) 50%, rgba(var(--nh-bg-rgb), 0.22) 100%); z-index: 1; pointer-events: none;"></div>
 
           <div style="position: relative; z-index: 2; flex: 1; min-width: 0; padding-right: 64px; display: flex; flex-direction: column;">
@@ -2978,6 +3036,17 @@
         crCombined = crRow;
       }
     }
+    // Items whose progress was just reset from the carousel's own X (#18). ABS's
+    // shelf keeps serving them until it refetches, so without this the slide comes
+    // straight back on the next rebuild and the button looks broken.
+    if (nhHeroDropped.size) {
+      cards = cards.filter((c) => {
+        let id = null;
+        try { id = c.__vue__ && c.__vue__.libraryItem && c.__vue__.libraryItem.id; } catch (e) {}
+        return !(id && nhHeroDropped.has(id));
+      });
+      if (!cards.length) return;
+    }
     cards = cards.slice(0, 10);
 
     isInjectingHero = true;
@@ -3166,6 +3235,23 @@
         };
         wireBtn(el.querySelector('.nh-hero-play'), '[cy-id="playButton"]');
         wireBtn(el.querySelector('.nh-hero-read'), '[cy-id="readButton"]');
+
+        // Reset progress and drop this slide (#18). stopPropagation matters: the
+        // whole banner is a click target that opens the book.
+        const x = el.querySelector('.nh-hero-x');
+        if (x) {
+          x.addEventListener('click', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (x.dataset.busy) return;
+            x.dataset.busy = '1';
+            x.textContent = '…';
+            nhHeroResetProgress(d.id, (ok) => {
+              if (!ok) { delete x.dataset.busy; x.textContent = '✕'; return; }
+              nhHeroRebuild();
+            });
+          });
+        }
 
         banner.addEventListener('click', () => card.click());
       };
@@ -11851,7 +11937,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.1.2';
+  const NH_THEME_VERSION = 'v2.2.0';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The

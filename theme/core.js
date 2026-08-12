@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.126.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.127.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1321,6 +1321,27 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #toolbar .nh-lf-count { display: inline-flex; align-items: center; height: 28px; padding: 0 12px; margin-right: 4px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); font-size: 0.75rem; color: var(--nh-text-2, #cfc6b8); font-family: var(--nh-sans, system-ui); white-space: nowrap; }
 #toolbar .nh-lf-clearx { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; margin-right: 4px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); font-size: 0.8rem; color: var(--nh-text-2, #cfc6b8); font-family: var(--nh-sans, system-ui); cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 #toolbar .nh-lf-clearx:hover { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.3); }
+
+/* Carousel X (GitHub #18): reset progress on the book showing, same action as the X
+   beside the progress bar on the book page. It sits in the carousel's own top-right
+   corner rather than on the cover, because the whole banner (cover included) is one
+   big click target that opens the book, and a control inside it invites mis-clicks.
+   Hidden until the carousel is hovered, and it keeps a generous hit area. */
+.nh-hero-banner .nh-hero-x {
+  position: absolute; top: 14px; right: 14px; z-index: 5;
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,0.18); border-radius: 50%;
+  background: rgba(0,0,0,0.42); color: #e8e0d2;
+  font-family: var(--nh-sans, system-ui), sans-serif; font-size: 0.95rem; line-height: 1;
+  cursor: pointer; opacity: 0; transition: opacity .18s ease, background .18s ease, color .18s ease, border-color .18s ease;
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.nh-hero-banner:hover .nh-hero-x, .nh-hero-x:focus-visible { opacity: 1; }
+.nh-hero-banner .nh-hero-x:hover { background: rgba(0,0,0,0.7); color: #fff; border-color: rgba(255,255,255,0.4); }
+/* Touch has no hover, so leave it visible but quiet. */
+@media (hover: none) {
+  .nh-hero-banner .nh-hero-x { opacity: 0.75; }
+}
 
 /* ============ FILTER & SORT PANEL (v2.1) ============ */
 /* Replaces ABS's two dropdowns with one pill, a chip row of what is active, and a
