@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.125.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.126.0  (injected build) */
 
 (function () {
   'use strict';
@@ -954,8 +954,8 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
    actually ships now: a scroll region inside the modal may not exceed the panel
    minus its header and footer. Percentages of a panel that is itself clamped to
    the viewport, so this holds at any window size. */
-.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-auto,
-.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-scroll { max-height: calc(100% - 150px) !important; }
+.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-auto:not(#formWrapper),
+.modal > div[style*="min-height"][style*="margin-top"] .overflow-y-scroll:not(#formWrapper) { max-height: calc(100% - 150px) !important; }
 /* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
    ABS's Modal component sizes its panel with INLINE styles computed when the modal
    opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the

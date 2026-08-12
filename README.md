@@ -1,3 +1,5 @@
+<img src="docs/nanohive-logo.png" width="88" align="right" alt="NanoHive">
+
 # NanoHive Audiobookshelf Theme
 
 A drop-in reverse proxy that themes **Audiobookshelf Web** for every user — no Tampermonkey, no
@@ -95,6 +97,12 @@ docker run -d \
 
 Point your browser (or reverse proxy / Cloudflare tunnel) at port 8080 instead of ABS directly.
 See `docker-compose.example.yml` for a compose setup.
+
+**Dashboard icon.** Unraid, Portainer and similar let you point a container at an icon URL. Use:
+
+```
+https://raw.githubusercontent.com/rodzalendo/nanohive-abs-theme/main/docs/nanohive-logo.png
+```
 
 - **Already serving ABS on the port your users know?** Move ABS to another port and publish the
   theme container on the old one, so existing bookmarks keep working.
