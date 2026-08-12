@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.189.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.190.0  (injected build) */
 
 (function () {
   'use strict';
@@ -2660,6 +2660,83 @@
 
   function nhHeroCacheKey() { return 'nh-hero-cache:' + (getLibIdNH() || 'default'); }
 
+  // ---------- scroll arrows for OUR shelves (GitHub #21) ----------
+  // ABS puts a pair of round arrow buttons in each shelf's header, beside the
+  // title. Our own rows (Recent Series, Rate what you finished) are built from
+  // scratch and so never got them, which left their last items unreachable
+  // without a trackpad swipe.
+  // Same placement and size as ABS's, but shown only when the strip actually
+  // overflows, and the one that cannot move is dimmed. Inline SVG chevrons rather
+  // than material-symbols ligatures, which do not substitute in injected markup on
+  // every build (learned on staging, where they rendered as the literal word).
+  const NH_SA_CHEV = {
+    left: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>',
+    right: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>',
+  };
+  function nhShelfArrows(row, headingSel, scrollerSel) {
+    if (!row) return;
+    const heading = row.querySelector(headingSel);
+    const scroller = row.querySelector(scrollerSel);
+    if (!heading || !scroller) return;
+
+    let bar = row.querySelector(':scope > .nh-sa-head');
+    if (!bar) {
+      // Wrap the existing heading so the buttons can sit on the same line without
+      // the heading's own margins being disturbed.
+      bar = document.createElement('div');
+      bar.className = 'nh-sa-head';
+      heading.parentNode.insertBefore(bar, heading);
+      bar.appendChild(heading);
+      const mk = (dir) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'nh-sa-btn nh-sa-' + dir;
+        b.innerHTML = NH_SA_CHEV[dir];
+        b.setAttribute('aria-label', nhAbsString(dir === 'left' ? 'ButtonPrevious' : 'ButtonNext', dir === 'left' ? 'Scroll left' : 'Scroll right'));
+        b.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const step = Math.max(160, Math.round(scroller.clientWidth * 0.9));
+          scroller.scrollBy({ left: dir === 'left' ? -step : step, behavior: 'smooth' });
+        });
+        return b;
+      };
+      const group = document.createElement('div');
+      group.className = 'nh-sa-btns';
+      group.appendChild(mk('left'));
+      group.appendChild(mk('right'));
+      bar.appendChild(group);
+      const sync = () => nhShelfArrowsSync(row, scroller);
+      scroller.addEventListener('scroll', sync, { passive: true });
+      window.addEventListener('resize', sync);
+    }
+    nhShelfArrowsSync(row, scroller);
+  }
+  // Re-measure from the tick. The first sync runs the moment the row is built,
+  // when the strip has not laid out yet and reads as no-overflow, so the arrows
+  // never appeared. Idempotent: classList.toggle to the state it is already in
+  // mutates nothing, so this cannot feed the mutation-observer loop.
+  function nhShelfArrowsTick() {
+    [['nh-recent-series-row', '.nh-rs-scroll'], ['nh-rate-finished-row', '.nh-rf-scroll']].forEach((pair) => {
+      const row = document.getElementById(pair[0]);
+      if (!row) return;
+      const scroller = row.querySelector(pair[1]);
+      if (scroller) nhShelfArrowsSync(row, scroller);
+    });
+  }
+  function nhShelfArrowsSync(row, scroller) {
+    const bar = row.querySelector(':scope > .nh-sa-head');
+    if (!bar) return;
+    const max = scroller.scrollWidth - scroller.clientWidth;
+    // 4px of slack: sub-pixel widths leave a permanent 1-2px "overflow" that would
+    // otherwise show arrows on a shelf that has nothing to scroll.
+    bar.classList.toggle('nh-sa-on', max > 4);
+    const l = bar.querySelector('.nh-sa-left');
+    const r = bar.querySelector('.nh-sa-right');
+    if (l) l.classList.toggle('nh-sa-off', scroller.scrollLeft <= 2);
+    if (r) r.classList.toggle('nh-sa-off', scroller.scrollLeft >= max - 2);
+  }
+
   // ---------- carousel: reset progress on a slide (GitHub #18) ----------
   // The carousel replaced the Continue Listening shelf, and ABS's per-card menu went
   // with it, so there was no way to drop a book you started by accident short of
@@ -2670,52 +2747,95 @@
   // MeController.removeMediaProgress, which looks the record up by its own id).
   const nhHeroDropped = new Set();
 
-  // Confirmation, because this throws away where you had got to (Pawel). The two
-  // BUTTONS and the shelf NAME come from ABS's own string table, so they are
-  // already correct in every language it ships and always match the shelf label
-  // the user is actually looking at. Only the sentence is ours to translate.
-  const NH_HERO_CONFIRM = {
-    en: 'This will remove your progress and remove the book from "{shelf}". Are you sure you want to proceed?',
-    pl: 'Spowoduje to usunięcie Twojego postępu i usunięcie książki z „{shelf}”. Czy na pewno chcesz kontynuować?',
-    de: 'Damit wird dein Fortschritt gelöscht und das Buch aus „{shelf}“ entfernt. Möchtest du wirklich fortfahren?',
-    fr: 'Cela supprimera votre progression et retirera le livre de « {shelf} ». Voulez-vous vraiment continuer ?',
-    es: 'Esto eliminará tu progreso y quitará el libro de «{shelf}». ¿Seguro que quieres continuar?',
-    it: 'Questo rimuoverà i tuoi progressi e toglierà il libro da "{shelf}". Vuoi davvero continuare?',
-    pt: 'Isto vai remover o seu progresso e retirar o livro de "{shelf}". Tem a certeza de que quer continuar?',
-    nl: 'Hiermee wordt je voortgang gewist en het boek uit "{shelf}" verwijderd. Weet je zeker dat je door wilt gaan?',
-    cs: 'Tímto se odstraní tvůj postup a kniha zmizí z „{shelf}“. Opravdu chceš pokračovat?',
-    sk: 'Týmto sa odstráni tvoj postup a kniha zmizne z „{shelf}“. Naozaj chceš pokračovať?',
-    da: 'Dette fjerner din fremgang og fjerner bogen fra "{shelf}". Er du sikker på, at du vil fortsætte?',
-    sv: 'Detta tar bort dina framsteg och tar bort boken från "{shelf}". Är du säker på att du vill fortsätta?',
-    no: 'Dette fjerner fremgangen din og fjerner boken fra «{shelf}». Er du sikker på at du vil fortsette?',
-    fi: 'Tämä poistaa edistymisesi ja poistaa kirjan kohteesta ”{shelf}”. Haluatko varmasti jatkaa?',
-    ru: 'Это удалит ваш прогресс и уберёт книгу из «{shelf}». Вы уверены, что хотите продолжить?',
-    uk: 'Це видалить ваш прогрес і прибере книгу з «{shelf}». Ви впевнені, що хочете продовжити?',
-    be: 'Гэта выдаліць ваш прагрэс і прыбярэ кнігу з «{shelf}». Вы ўпэўнены, што хочаце працягнуць?',
-    bg: 'Това ще премахне напредъка ви и ще махне книгата от „{shelf}“. Сигурни ли сте, че искате да продължите?',
-    hr: 'Ovo će ukloniti tvoj napredak i maknuti knjigu iz „{shelf}”. Jesi li siguran da želiš nastaviti?',
-    sl: 'To bo odstranilo tvoj napredek in knjigo umaknilo iz »{shelf}«. Ali res želiš nadaljevati?',
-    hu: 'Ezzel törlöd a haladásodat, és a könyv lekerül innen: „{shelf}”. Biztosan folytatod?',
-    ro: 'Aceasta îți va șterge progresul și va scoate cartea din „{shelf}”. Sigur vrei să continui?',
-    lt: 'Tai pašalins jūsų progresą ir išims knygą iš „{shelf}“. Ar tikrai norite tęsti?',
-    lv: 'Tas noņems tavu progresu un izņems grāmatu no “{shelf}”. Vai tiešām vēlies turpināt?',
-    et: 'See eemaldab sinu edenemise ja võtab raamatu jaotisest „{shelf}“ välja. Kas soovid kindlasti jätkata?',
-    el: 'Αυτό θα διαγράψει την πρόοδό σας και θα αφαιρέσει το βιβλίο από «{shelf}». Σίγουρα θέλετε να συνεχίσετε;',
-    tr: 'Bu, ilerlemenizi siler ve kitabı "{shelf}" listesinden çıkarır. Devam etmek istediğinize emin misiniz?',
-    ca: 'Això eliminarà el teu progrés i traurà el llibre de «{shelf}». Segur que vols continuar?',
-    eu: 'Honek zure aurrerapena ezabatuko du eta liburua «{shelf}» ataletik kenduko du. Ziur zaude jarraitu nahi duzula?',
-    is: 'Þetta fjarlægir framvinduna þína og tekur bókina úr „{shelf}“. Ertu viss um að þú viljir halda áfram?',
-    ja: '進捗が削除され、本は「{shelf}」から取り除かれます。続行してもよろしいですか？',
-    ko: '진행 상황이 삭제되고 책이 "{shelf}"에서 제거됩니다. 계속하시겠습니까?',
-    zh: '这将清除你的收听进度，并将这本书从“{shelf}”中移除。确定要继续吗？',
-    ar: 'سيؤدي هذا إلى حذف تقدمك وإزالة الكتاب من "{shelf}". هل أنت متأكد من أنك تريد المتابعة؟',
-    he: 'הפעולה תמחק את ההתקדמות שלך ותסיר את הספר מ"{shelf}". להמשיך?',
-    fa: 'این کار پیشرفت شما را حذف می‌کند و کتاب را از «{shelf}» بیرون می‌برد. مطمئنید که می‌خواهید ادامه دهید؟',
-    hi: 'इससे आपकी प्रगति हट जाएगी और किताब "{shelf}" से निकल जाएगी। क्या आप वाकई जारी रखना चाहते हैं?',
-    bn: 'এতে আপনার অগ্রগতি মুছে যাবে এবং বইটি "{shelf}" থেকে সরে যাবে। আপনি কি নিশ্চিতভাবে চালিয়ে যেতে চান?',
-    gu: 'આનાથી તમારી પ્રગતિ દૂર થશે અને પુસ્તક "{shelf}" માંથી હટી જશે. શું તમે ખરેખર આગળ વધવા માંગો છો?',
-    vi: 'Thao tác này sẽ xóa tiến độ của bạn và gỡ cuốn sách khỏi "{shelf}". Bạn có chắc muốn tiếp tục không?',
+  // Two choices now (GitHub #20): take the book off the shelf and keep your place,
+  // which is what stock ABS does, or that plus reset your progress. Only these two
+  // strings are ours. "Remove from Continue Listening" and Cancel come from ABS's
+  // own table, already correct everywhere and always matching the shelf label.
+  const NH_HERO_ASK = {
+    en: 'What would you like to do with this book?',
+    pl: 'Co chcesz zrobić z tą książką?',
+    de: 'Was möchtest du mit diesem Buch machen?',
+    fr: 'Que voulez-vous faire de ce livre ?',
+    es: '¿Qué quieres hacer con este libro?',
+    it: 'Cosa vuoi fare con questo libro?',
+    pt: 'O que quer fazer com este livro?',
+    nl: 'Wat wil je met dit boek doen?',
+    cs: 'Co chceš s touto knihou udělat?',
+    sk: 'Čo chceš s touto knihou urobiť?',
+    da: 'Hvad vil du gøre med denne bog?',
+    sv: 'Vad vill du göra med den här boken?',
+    no: 'Hva vil du gjøre med denne boken?',
+    fi: 'Mitä haluat tehdä tälle kirjalle?',
+    ru: 'Что сделать с этой книгой?',
+    uk: 'Що зробити з цією книгою?',
+    be: 'Што зрабіць з гэтай кнігай?',
+    bg: 'Какво искате да направите с тази книга?',
+    hr: 'Što želiš učiniti s ovom knjigom?',
+    sl: 'Kaj želiš narediti s to knjigo?',
+    hu: 'Mit szeretnél tenni ezzel a könyvvel?',
+    ro: 'Ce vrei să faci cu această carte?',
+    lt: 'Ką norite padaryti su šia knyga?',
+    lv: 'Ko vēlies darīt ar šo grāmatu?',
+    et: 'Mida soovid selle raamatuga teha?',
+    el: 'Τι θέλετε να κάνετε με αυτό το βιβλίο;',
+    tr: 'Bu kitapla ne yapmak istersiniz?',
+    ca: 'Què vols fer amb aquest llibre?',
+    eu: 'Zer egin nahi duzu liburu honekin?',
+    is: 'Hvað viltu gera við þessa bók?',
+    ja: 'この本をどうしますか？',
+    ko: '이 책을 어떻게 할까요?',
+    zh: '想对这本书做什么？',
+    ar: 'ماذا تريد أن تفعل بهذا الكتاب؟',
+    he: 'מה לעשות עם הספר הזה?',
+    fa: 'می‌خواهید با این کتاب چه کار کنید؟',
+    hi: 'इस किताब का क्या करना चाहेंगे?',
+    bn: 'এই বইটি নিয়ে কী করতে চান?',
+    gu: 'આ પુસ્તકનું શું કરવા માંગો છો?',
+    vi: 'Bạn muốn làm gì với cuốn sách này?',
   };
+  const NH_HERO_RESET_BTN = {
+    en: 'Remove and reset progress',
+    pl: 'Usuń i zresetuj postęp',
+    de: 'Entfernen und Fortschritt zurücksetzen',
+    fr: 'Retirer et réinitialiser la progression',
+    es: 'Quitar y restablecer el progreso',
+    it: 'Rimuovi e azzera i progressi',
+    pt: 'Remover e repor o progresso',
+    nl: 'Verwijderen en voortgang wissen',
+    cs: 'Odebrat a resetovat postup',
+    sk: 'Odstrániť a resetovať postup',
+    da: 'Fjern og nulstil fremgang',
+    sv: 'Ta bort och nollställ framsteg',
+    no: 'Fjern og nullstill fremgang',
+    fi: 'Poista ja nollaa edistyminen',
+    ru: 'Убрать и сбросить прогресс',
+    uk: 'Прибрати і скинути прогрес',
+    be: 'Прыбраць і скінуць прагрэс',
+    bg: 'Премахни и нулирай напредъка',
+    hr: 'Ukloni i poništi napredak',
+    sl: 'Odstrani in ponastavi napredek',
+    hu: 'Eltávolítás és haladás törlése',
+    ro: 'Elimină și resetează progresul',
+    lt: 'Pašalinti ir atstatyti progresą',
+    lv: 'Noņemt un atiestatīt progresu',
+    et: 'Eemalda ja lähtesta edenemine',
+    el: 'Αφαίρεση και μηδενισμός προόδου',
+    tr: 'Kaldır ve ilerlemeyi sıfırla',
+    ca: 'Treu i restableix el progrés',
+    eu: 'Kendu eta aurrerapena berrezarri',
+    is: 'Fjarlægja og núllstilla framvindu',
+    ja: '削除して進捗をリセット',
+    ko: '제거하고 진행 상황 초기화',
+    zh: '移除并重置进度',
+    ar: 'إزالة وإعادة تعيين التقدم',
+    he: 'הסרה ואיפוס ההתקדמות',
+    fa: 'حذف و بازنشانی پیشرفت',
+    hi: 'हटाएँ और प्रगति रीसेट करें',
+    bn: 'সরান এবং অগ্রগতি রিসেট করুন',
+    gu: 'દૂર કરો અને પ્રગતિ રીસેટ કરો',
+    vi: 'Gỡ và đặt lại tiến độ',
+  };
+
   function nhAbsString(key, fallback) {
     try {
       const v = window.$nuxt && window.$nuxt.$strings && window.$nuxt.$strings[key];
@@ -2723,14 +2843,17 @@
     } catch (e) {}
     return fallback;
   }
-  // `ebook` picks the Continue READING shelf name, since that is the shelf an
+  // `ebook` picks the Continue READING strings, since that is the shelf an
   // ebook-only slide actually came from.
-  function nhHeroConfirm(isEbook, onYes) {
+  // Calls back with 'hide' (take it off the shelf, keep your place, which is what
+  // stock ABS does) or 'reset' (that plus discard your progress).
+  function nhHeroConfirm(isEbook, onChoice) {
     const lang = getUserLanguage().split('-')[0].toLowerCase();
-    const shelf = isEbook
-      ? nhAbsString('LabelContinueReading', 'Continue Reading')
-      : nhAbsString('LabelContinueListening', 'Continue Listening');
-    const msg = (NH_HERO_CONFIRM[lang] || NH_HERO_CONFIRM.en).replace('{shelf}', shelf);
+    const msg = NH_HERO_ASK[lang] || NH_HERO_ASK.en;
+    const hideLabel = isEbook
+      ? nhAbsString('ButtonRemoveFromContinueReading', 'Remove from Continue Reading')
+      : nhAbsString('ButtonRemoveFromContinueListening', 'Remove from Continue Listening');
+    const resetLabel = NH_HERO_RESET_BTN[lang] || NH_HERO_RESET_BTN.en;
 
     const old = document.getElementById('nh-hx-modal');
     if (old) old.remove();
@@ -2744,9 +2867,11 @@
       overlay.remove();
       document.removeEventListener('keydown', onKey, true);
     };
+    // Enter takes the SAFE option. There are two actions now and one of them
+    // discards your place, so a stray Enter must not be the destructive one.
     const onKey = (e) => {
       if (e.key === 'Escape') { e.stopPropagation(); close(); }
-      else if (e.key === 'Enter') { e.stopPropagation(); close(); onYes(); }
+      else if (e.key === 'Enter') { e.stopPropagation(); close(); onChoice('hide'); }
     };
     bg.addEventListener('click', close);
     document.addEventListener('keydown', onKey, true);
@@ -2760,22 +2885,50 @@
     row.className = 'nh-hx-actions';
     const no = document.createElement('button');
     no.type = 'button';
-    no.className = 'nh-hx-btn';
+    no.className = 'nh-hx-btn nh-hx-cancel';
     no.textContent = nhAbsString('ButtonCancel', 'Cancel');
     no.addEventListener('click', close);
-    const yes = document.createElement('button');
-    yes.type = 'button';
-    yes.className = 'nh-hx-btn nh-hx-yes';
-    yes.textContent = nhAbsString('ButtonYes', 'Yes');
-    yes.addEventListener('click', () => { close(); onYes(); });
+    // Keeps your place. Stock ABS's own behaviour, so it is the default here too.
+    const hide = document.createElement('button');
+    hide.type = 'button';
+    hide.className = 'nh-hx-btn nh-hx-hide';
+    hide.textContent = hideLabel;
+    hide.addEventListener('click', () => { close(); onChoice('hide'); });
+    // Also throws your place away, so it is styled as the weightier of the two.
+    const reset = document.createElement('button');
+    reset.type = 'button';
+    reset.className = 'nh-hx-btn nh-hx-reset';
+    reset.textContent = resetLabel;
+    reset.addEventListener('click', () => { close(); onChoice('reset'); });
     row.appendChild(no);
-    row.appendChild(yes);
+    row.appendChild(reset);
+    row.appendChild(hide);
     box.appendChild(row);
 
     overlay.appendChild(bg);
     overlay.appendChild(box);
     document.body.appendChild(overlay);
-    try { yes.focus(); } catch (e) {}
+    try { hide.focus(); } catch (e) {}
+  }
+
+  // Take it off the shelf but keep where you got to. ABS's own action, and the same
+  // :id rule as the delete: the PROGRESS RECORD id, not the libraryItemId.
+  function nhHeroHide(itemId, done) {
+    const pid = nhHeroProgressId(itemId);
+    const tok = nhSrToken();
+    if (!pid || !tok) { if (done) done(false); return; }
+    fetch('/api/me/progress/' + encodeURIComponent(pid) + '/remove-from-continue-listening', {
+      headers: { Authorization: 'Bearer ' + tok },
+    }).then((r) => {
+      if (!r.ok) { if (done) done(false); return; }
+      nhHeroDropped.add(itemId);
+      try {
+        const mp = (window.$nuxt.$store.state.user.user.mediaProgress || []).find((p) => p && p.libraryItemId === itemId);
+        if (mp) mp.hideFromContinueListening = true;
+      } catch (e) {}
+      try { localStorage.removeItem(nhHeroCacheKey()); } catch (e) {}
+      if (done) done(true);
+    }).catch(() => { if (done) done(false); });
   }
 
   function nhHeroProgressId(itemId) {
@@ -3353,11 +3506,12 @@
             e.stopPropagation();
             e.preventDefault();
             if (x.dataset.busy) return;
-            // Confirm first: this throws away where you had got to.
-            nhHeroConfirm(!d.hasAudio && d.hasEbook, () => {
+            // Ask first, and let them choose whether their place survives (#20).
+            nhHeroConfirm(!d.hasAudio && d.hasEbook, (choice) => {
               x.dataset.busy = '1';
               x.textContent = '…';
-              nhHeroResetProgress(d.id, (ok) => {
+              const act = choice === 'reset' ? nhHeroResetProgress : nhHeroHide;
+              act(d.id, (ok) => {
                 if (!ok) { delete x.dataset.busy; x.textContent = '✕'; return; }
                 nhHeroRebuild();
               });
@@ -4098,6 +4252,8 @@
       // would strip listeners bound to individual <a> elements and let the browser
       // follow the raw href, reloading the page and killing playback.
       nhBindRecentSeriesNav();
+      // Scroll arrows, the ones ABS gives its own shelves (#21).
+      nhShelfArrows(row, '.nh-rs-heading', '.nh-rs-scroll');
     } catch (e) {}
   }
 
@@ -12049,7 +12205,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.2.1';
+  const NH_THEME_VERSION = 'v2.3.0';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The
@@ -12479,6 +12635,9 @@
       const pad = nhShelfIndent(sib);
       if (pad) { row.style.paddingLeft = pad.left; row.style.paddingRight = pad.right; }
     } catch (e) {}
+    // Scroll arrows, the ones ABS gives its own shelves (#21). After the cards are
+    // in, so the first overflow measurement is against real content.
+    try { nhShelfArrows(row, '.nh-rf-heading', '.nh-rf-scroll'); } catch (e) {}
     nhRfSize();
     nhRf.key = key;
   }
@@ -13196,6 +13355,7 @@
     safe(nhSeriesHeader);
     safe(nhSeriesCardCovers);
     safe(nhSeriesProgress);
+    safe(nhShelfArrowsTick);
     safe(nhGlobalSearch);
     safe(nhStartPage);
     safe(nhTagFinished);

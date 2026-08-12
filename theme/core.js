@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.128.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.129.0  (injected build) */
 
 (function () {
   'use strict';
@@ -574,6 +574,23 @@ div.flex.items-center.py-2:has(> div > p > #settings-home-page-uses-bookshelf),
 div.flex.items-center.py-2:has(> div > p > #settings-library-uses-bookshelf) { display: none !important; }
 
 [cy-id="leftScrollButton"]:hover, [cy-id="rightScrollButton"]:hover { color: var(--nh-amber) !important; background-color: var(--nh-amber-tint) !important; }
+
+/* Scroll arrows for the shelves WE build (GitHub #21). ABS puts a pair beside each
+   shelf title; our own rows are built from scratch and never had them, so their
+   last items could not be reached without a trackpad swipe. Same 32px round
+   buttons in the same place, but only once the strip really overflows, and the
+   one that cannot move is dimmed rather than removed so the pair does not jump. */
+.nh-sa-head { display: flex; align-items: center; gap: 6px; }
+.nh-sa-head > h2 { flex: 1 1 auto; min-width: 0; }
+.nh-sa-btns { flex: none; display: none; align-items: center; gap: 2px; }
+.nh-sa-head.nh-sa-on .nh-sa-btns { display: flex; }
+.nh-sa-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: none; border-radius: 50%; background: none; color: var(--nh-text-2, #cfc6b8); cursor: pointer; transition: color .15s ease, background-color .15s ease, opacity .15s ease; }
+.nh-sa-btn:hover { color: var(--nh-amber, #e0c27a); background-color: var(--nh-amber-tint, rgba(224,194,122,0.12)); }
+.nh-sa-btn.nh-sa-off { opacity: 0.25; pointer-events: none; }
+/* Our headings carry a bottom margin; the wrapper owns it now so the buttons sit
+   on the title's line rather than being pushed below it. */
+.nh-sa-head > h2.nh-rs-heading, .nh-sa-head > h2.nh-rf-heading { margin-bottom: 0 !important; }
+#nh-recent-series-row .nh-sa-head, #nh-rate-finished-row .nh-sa-head { margin: 0 0 1rem; }
 
 /* Drawer and backdrop are built in JS at every viewport, but all their styling lives in
    the max-width:640px block. Above that they'd otherwise be unstyled divs in normal flow,
@@ -1257,11 +1274,24 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #nh-hx-modal { z-index: 620; }
 #nh-hx-modal .nh-rt-modal-box { max-width: 440px; width: 92vw; padding: 24px 24px 18px; }
 #nh-hx-modal .nh-hx-msg { margin: 0 0 20px; font-size: 0.95rem; line-height: 1.55; color: var(--nh-text-1, #f4eee2); }
-#nh-hx-modal .nh-hx-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+/* Three actions, and the labels are full sentences in some languages, so they wrap
+   to their own lines rather than being squeezed onto one. Cancel sits apart from
+   the two that actually do something. */
+#nh-hx-modal .nh-hx-actions { display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap; }
 #nh-hx-modal .nh-hx-btn { padding: 9px 18px; border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; background: none; color: var(--nh-text-2, #cfc6b8); font-family: inherit; font-size: 0.86rem; cursor: pointer; min-height: 38px; }
 #nh-hx-modal .nh-hx-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
-#nh-hx-modal .nh-hx-yes { border-color: var(--nh-amber, #e0c27a); color: var(--nh-amber, #e0c27a); }
-#nh-hx-modal .nh-hx-yes:hover { background: var(--nh-amber, #e0c27a); color: #241c0c; }
+#nh-hx-modal .nh-hx-cancel { margin-right: auto; }
+/* Keeps your place, and matches what stock ABS does, so this is the default. */
+#nh-hx-modal .nh-hx-hide { border-color: var(--nh-amber, #e0c27a); color: var(--nh-amber, #e0c27a); }
+#nh-hx-modal .nh-hx-hide:hover { background: var(--nh-amber, #e0c27a); color: #241c0c; }
+/* Discards your place. Warm red so it reads as the heavier choice without shouting. */
+#nh-hx-modal .nh-hx-reset { border-color: rgba(224,122,106,0.55); color: #e07a6a; }
+#nh-hx-modal .nh-hx-reset:hover { background: rgba(224,122,106,0.16); color: #f0a294; border-color: #e07a6a; }
+@media (max-width: 520px) {
+  #nh-hx-modal .nh-hx-actions { flex-direction: column-reverse; align-items: stretch; }
+  #nh-hx-modal .nh-hx-cancel { margin-right: 0; }
+  #nh-hx-modal .nh-hx-btn { width: 100%; }
+}
 .nh-sd-ta { width: 100%; min-height: 180px; background: rgba(0,0,0,0.25); color: var(--nh-text-2, #d8cfc2); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px 12px; font-size: 0.92rem; line-height: 1.5; font-family: inherit; resize: vertical; box-sizing: border-box; }
 .nh-sd-ta:focus { outline: none; border-color: var(--nh-amber, #e0c27a); }
 #nh-series-header h1 { font-family: var(--nh-serif), Georgia, serif; font-size: 1.6rem; font-weight: 600; color: var(--nh-text-1, #f2ecdf); margin: 4px 0 8px; line-height: 1.12; }
