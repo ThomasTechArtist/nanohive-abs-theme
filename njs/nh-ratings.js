@@ -1,4 +1,4 @@
-/* NanoHive ABS — Server-wide Ratings API  v1.15.0  (nginx njs module)
+/* NanoHive ABS — Server-wide Ratings API  v1.16.0  (nginx njs module)
 
    A tiny JSON API that lets every user of this server rate books (stars +
    short review, Plex-style) and see everyone else's ratings. Runs entirely
@@ -691,4 +691,136 @@ function prefs(r) {
   send(r, 200, { ok: true, ts: store.users[user.id].ts });
 }
 
-export default { handle, meta, avatar, stats, reports, dates, prefs };
+/* Shared book progress (GitHub #23 — "who's reading this").
+
+   Same contract as the A5 stats above: every participant's browser posts a
+   SUMMARY of its own /api/me mediaProgress; the store is readable by any
+   authenticated user; a DELETE leaves the same opt-out TOMBSTONE (see the
+   stats note for why absence and opt-out must stay distinguishable). The
+   admin twin (/_nh/api/progress-admin?forUser=) seeds everyone so the book
+   page is complete before each person has even opened the app.
+
+   Store: /data/nh/progress.json
+     { "v": 1, "users": { "<userId>": {
+         "user": "<username>", "ts": <ms>,
+         "reading": [ { "i": "<itemId>", "p": 0.43, "ts": <ms> } ],
+         "done":    [ { "i": "<itemId>", "ts": <ms> } ]
+       } | { "out": 1, "ts": <ms> } } }
+
+   Caps keep one user's record small enough that a full post always fits the
+   location's 64k body limit (njs cannot read a body nginx spooled to disk):
+   40 in-progress rows and 600 finished rows, both newest first — the client
+   sorts, this end enforces. The book page never pulls the whole store: GET
+   ?item=<id> answers only that item's rows, a few hundred bytes. */
+const PROGRESS = '/data/nh/progress.json';
+const PG_MAX_READING = 40;
+const PG_MAX_DONE = 600;
+const PG_ITEM_RE = /^[A-Za-z0-9_-]{4,64}$/;
+
+function readProgress() {
+  try {
+    const p = JSON.parse(fs.readFileSync(PROGRESS));
+    if (p && typeof p === 'object' && p.users && typeof p.users === 'object') return p;
+  } catch (e) {}
+  return { v: 1, users: {} };
+}
+
+function writeProgress(store) {
+  const tmp = PROGRESS + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(store));
+  fs.renameSync(tmp, PROGRESS);
+}
+
+function pgRows(list, max, withP) {
+  const out = [];
+  if (!Array.isArray(list)) return out;
+  for (let i = 0; i < list.length && out.length < max; i++) {
+    const e = list[i];
+    if (!e || typeof e !== 'object') continue;
+    const id = String(e.i || '');
+    if (!PG_ITEM_RE.test(id)) continue;
+    const ts = Number(e.ts);
+    const row = { i: id, ts: (isFinite(ts) && ts > 0) ? Math.round(ts) : Date.now() };
+    if (withP) {
+      const p = Number(e.p);
+      if (!isFinite(p) || p <= 0 || p >= 1) continue;
+      row.p = Math.round(p * 1000) / 1000;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+function progress(r) {
+  const user = whoami(r);
+  if (!user) return send(r, 401, { error: 'not authenticated' });
+
+  if (r.method === 'GET') {
+    const store = readProgress();
+    const item = r.args && r.args.item;
+    if (!item) return send(r, 200, store);
+    // Per-item view: one compact row per user who has this book started or
+    // finished. p present = in progress; f: 1 = finished.
+    const out = {};
+    Object.keys(store.users).forEach(function (uid) {
+      const u = store.users[uid];
+      if (!u || u.out) return;
+      const rd = (u.reading || []).filter(function (e) { return e.i === item; })[0];
+      const dn = (u.done || []).filter(function (e) { return e.i === item; })[0];
+      if (rd) out[uid] = { user: u.user, p: rd.p, ts: rd.ts };
+      else if (dn) out[uid] = { user: u.user, f: 1, ts: dn.ts };
+    });
+    return send(r, 200, { v: 1, item: String(item), users: out });
+  }
+
+  if (r.method === 'DELETE') {
+    const store = readProgress();
+    const prev = store.users[user.id];
+    if (!prev || !prev.out) {
+      store.users[user.id] = { out: 1, ts: Date.now() };
+      try { writeProgress(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
+    }
+    return send(r, 200, { ok: true });
+  }
+
+  if (r.method !== 'POST') {
+    r.headersOut['Allow'] = 'GET, POST, DELETE';
+    return send(r, 405, { error: 'method not allowed' });
+  }
+
+  let body;
+  try { body = JSON.parse(r.requestText || '{}'); } catch (e) { return send(r, 400, { error: 'bad json' }); }
+  if (!body || typeof body !== 'object') return send(r, 400, { error: 'bad body' });
+
+  // Admin seeding twin — same rules as stats: the gate is nginx's, the target's
+  // display name comes from the body, and an opt-out tombstone is never
+  // overwritten from this path.
+  let targetId = user.id;
+  let targetName = user.name;
+  const forUser = r.args && r.args.forUser;
+  if (forUser && String(forUser) !== user.id) {
+    const isAdmin = (r.variables.nh_progress_admin === '1') || user.admin;
+    if (!isAdmin) return send(r, 403, { error: 'admin only' });
+    targetId = String(forUser);
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(targetId)) return send(r, 400, { error: 'invalid user id' });
+    targetName = String(body.user == null ? '' : body.user).slice(0, 60) || '?';
+  }
+
+  const store = readProgress();
+  const cur = store.users[targetId];
+  if (targetId !== user.id && cur && cur.out) {
+    return send(r, 200, { ok: true, skipped: 'opted-out' });
+  }
+  const reading = pgRows(body.reading, PG_MAX_READING, true);
+  const done = pgRows(body.done, PG_MAX_DONE, false);
+  store.users[targetId] = {
+    user: String(targetName).slice(0, 60),
+    reading: reading,
+    done: done,
+    ts: Date.now()
+  };
+  try { writeProgress(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
+  send(r, 200, { ok: true, reading: reading.length, done: done.length });
+}
+
+export default { handle, meta, avatar, stats, reports, dates, prefs, progress };

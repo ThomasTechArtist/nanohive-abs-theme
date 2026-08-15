@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.193.1  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.194.0  (injected build) */
 
 (function () {
   'use strict';
@@ -867,8 +867,8 @@
   // 2-or-3 form convention; Polish masculine-personal nouns take the genitive
   // for every count but 1 ("1162 Lektorów").
   const NH_T_EXTRA = {
-    en: { rpBadge: 'Open problem reports', wkTitle: 'Minutes listening — last 7 days', wkAvg: 'Daily average', wkRow: 'Days in a row', lsTitle: 'Server statistics', lsAll: 'All libraries', lsPlayed: 'Books played', lsBest: 'Best rated', lsGenres: 'Top genres', srvPick: 'What to include:', srvGRest: 'Features & behaviour', aeBtn: 'Tidy authors', aeTitle: 'Authors with no books', aeNone: 'Every author here has at least one book.', aeRemove: 'Remove', aeDone: 'Removed', aeWorking: 'Removing…', rpMenu: 'Report a problem', rpTitle: 'Report a problem', rpWhat: 'What is wrong?', rpNote: 'Anything else the admin should know? (optional)', rpSend: 'Send report', rpSent: 'Sent. Thanks.', rpFail: 'Could not send', rpMissing: 'Missing or incomplete content', rpQuality: 'Bad audio quality', rpPlay: 'Will not play', rpWrong: 'Wrong book, cover or metadata', rpChapters: 'Chapters are wrong', rpOther: 'Something else', rpCard: 'Reported problems', rpHint: 'Problems users reported from a book page. Resolving one removes it from this list.', rpEmpty: 'Nothing reported.', rpResolve: 'Resolve', rpOpen: 'Open book', apCard: 'Playback', apToggle: 'Autoplay next book in a series', apHint: 'When a book finishes, start the next one in the same series automatically. Only books already in your library, and only ones you have not finished.', apNext: 'Next in series', fdToggle: 'Finished-book tools in your stats', ysFinished: 'Recently finished', ysAlmost: 'Almost done', ysMarkDone: 'Mark as finished', ysEditDate: 'Change the finished date', ysNoDate: 'no date', hmShowing: 'chart shows', ysTitle: 'Your listening', ysStreak: 'Streak', ysCurrent: 'Current', ysLongest: 'Longest', ysDaysTotal: 'Days total', ysPace: 'Pace', ysThisWeek: 'This week', ysPerDay: 'Per listening day', ysBestDay: 'Best day', ysWhen: 'When you listen', ysTopBooks: 'Most listened books', ysTopAuthors: 'Most listened authors', ysTopNarrators: 'Most listened narrators', rfRate: 'Rate', rfSheet: 'Rate this book', rfOpen: 'Open book page', rfPickHint: 'Pick a rating', rfTitle: 'Rate what you finished', rfToggle: 'Rate finished row on home', hoTitle: 'Home section order', hoEmpty: 'Open the home page once, then come back here.', hoReset: 'Reset to default order', ctIcon: 'Icon', ctColour: 'Accent', ctNeedBook: 'Audiobookshelf cannot store an empty collection, so pick at least one book. You can add or remove books later.', colEditIcon: 'Change icon', ciTitle: 'Collection icon', ciReset: 'Match the name automatically', nrForms: ['Narrator', 'Narrators'], auForms: ['Author', 'Authors'], auSearch: 'Filter authors…', colEditDesc: 'Edit description', colBookForms: ['book', 'books'], colForms: ['Collection', 'Collections'], ctTitle: 'Start a collection', ctBlank: 'Blank collection', ctNew: 'New collection', ctNewHint: 'from a template', ctNamePh: 'Collection name', ctSearch: 'Search books or authors to add…', ctCreate: 'Create', ctBack: '‹ Back', ctAddAll: 'Add all books', abTitle: 'Add books', abAdd: 'Add', sbTitle: 'Server Ranking', sbWeek: 'Week', sbMonth: 'Month', sbYear: 'Year', sbAll: 'All time', sbBooks: 'Books', sbTopBooks: 'Most listened', sbTotal: 'Total', sbListeners: 'Listeners', sbAvg: 'Average', avRemove: 'Remove photo', avSet: 'Set photo…', ugListened: 'Listened', ugPhoto: 'Profile picture', ugNever: 'Never', ugSeen: 'Last seen', ugEdit: 'Edit user', ugDelete: 'Delete user', ugAdd: 'Add photo', ugChange: 'Change photo', ugSortName: 'A–Z', ugSortTime: 'Most listened', ugSortSeen: 'Recently active', fsTitle: 'Server ranking', fsJoin: 'Turn on “Share my listening stats” in the customization panel to appear in the server ranking.', fsWaiting: 'Sharing is on — your summary joins the server ranking shortly, along with everyone else on this server.', fsToggle: 'Share my listening stats', fsCard: 'Server ranking', fsHint: 'Share a summary of your listening (totals and per-day minutes) with the other people on this server — it powers the server ranking. On by default. Turn it off and you are removed from the ranking and its totals, and everything you shared is deleted.', yirBtn: 'Year in review', yirTitle: 'Your year in listening', yirYear: 'Last 12 months', yirDays: 'Days with listening', yirBest: 'Best day', yirMonths: 'By month', yirNone: 'No listening data yet.', bsCard: 'Book links', bsHint: 'Buttons on the book page for looking a title up elsewhere. Goodreads and your language\u2019s biggest local site are on by default.', bsFind: 'Find on', bsGlobal: 'Everywhere', bsLocal: 'For your language', bsOther: 'Other countries', pgCard: 'Redesigned pages', pgHint: 'Each of these replaces an Audiobookshelf page with the NanoHive version. Turn one off to get the stock page back.', pgNarrators: 'Narrator cards', pgCollections: 'Collection pages', pgUsers: 'User cards (settings)', pgStats: 'Listening ranking', pgPhoto: 'Profile photo in the top bar', pgCinematic: 'Cinematic background', pgTransitions: 'Page transitions', pSearch: 'Search settings…', pSearchNone: 'Nothing matches that.' , erTypeface: "Typeface", erPage: "Page theme", erText: "Text colour", erBg: "Background", erDefault: "Default (ABS)", erAuto: "Auto" , lfByAuthor: "Author › series order", lfBySeries: "Series › order" , lfSecFilters: "More filters", lfSecSort: "Multi-sort", lfAuthor: "Author", lfSeries: "Series", lfTitle: "Title", lfYear: "Year", lfAdded: "Added", lfDuration: "Duration", lfNarrator: "Narrator", lfGenre: "Genre", lfLanguage: "Language", lfProgress: "Progress", lfPgFinished: "Finished", lfPgInProgress: "In progress", lfPgNot: "Not started" },
-    pl: { rpBadge: 'Otwarte zgłoszenia problemów', wkTitle: 'Minuty słuchania — ostatnie 7 dni', wkAvg: 'Średnia dzienna', wkRow: 'Dni z rzędu', lsTitle: 'Statystyki serwera', lsAll: 'Wszystkie biblioteki', lsPlayed: 'Odtworzone książki', lsBest: 'Najlepiej oceniane', lsGenres: 'Najczęstsze gatunki', srvPick: 'Co zapisać:', srvGRest: 'Funkcje i zachowanie', aeBtn: 'Uporządkuj autorów', aeTitle: 'Autorzy bez książek', aeNone: 'Każdy autor ma tu co najmniej jedną książkę.', aeRemove: 'Usuń', aeDone: 'Usunięto', aeWorking: 'Usuwanie…', rpMenu: 'Zgłoś problem', rpTitle: 'Zgłoś problem', rpWhat: 'Co jest nie tak?', rpNote: 'Coś jeszcze, co powinien wiedzieć administrator? (opcjonalnie)', rpSend: 'Wyślij zgłoszenie', rpSent: 'Wysłano. Dzięki.', rpFail: 'Nie udało się wysłać', rpMissing: 'Brakująca lub niepełna treść', rpQuality: 'Zła jakość dźwięku', rpPlay: 'Nie odtwarza się', rpWrong: 'Zła książka, okładka lub metadane', rpChapters: 'Błędne rozdziały', rpOther: 'Coś innego', rpCard: 'Zgłoszone problemy', rpHint: 'Problemy zgłoszone przez użytkowników ze strony książki. Rozwiązanie usuwa zgłoszenie z listy.', rpEmpty: 'Brak zgłoszeń.', rpResolve: 'Rozwiąż', rpOpen: 'Otwórz książkę', apCard: 'Odtwarzanie', apToggle: 'Automatycznie odtwarzaj kolejną książkę z serii', apHint: 'Gdy książka się skończy, automatycznie zacznij następną z tej samej serii. Tylko książki już w Twojej bibliotece i tylko nieukończone.', apNext: 'Następna w serii', fdToggle: 'Narzędzia ukończonych książek w statystykach', ysFinished: 'Ostatnio ukończone', ysAlmost: 'Prawie ukończone', ysMarkDone: 'Oznacz jako ukończone', ysEditDate: 'Zmień datę ukończenia', ysNoDate: 'brak daty', hmShowing: 'wykres pokazuje', ysTitle: 'Twoje słuchanie', ysStreak: 'Passa', ysCurrent: 'Obecna', ysLongest: 'Najdłuższa', ysDaysTotal: 'Dni łącznie', ysPace: 'Tempo', ysThisWeek: 'W tym tygodniu', ysPerDay: 'Na dzień słuchania', ysBestDay: 'Najlepszy dzień', ysWhen: 'Kiedy słuchasz', ysTopBooks: 'Najczęściej słuchane książki', ysTopAuthors: 'Najczęściej słuchani autorzy', ysTopNarrators: 'Najczęściej słuchani lektorzy', rfRate: 'Oceń', rfSheet: 'Oceń tę książkę', rfOpen: 'Otwórz stronę książki', rfPickHint: 'Wybierz ocenę', rfTitle: 'Oceń przeczytane', rfToggle: 'Sekcja „Oceń przeczytane” na stronie głównej', hoTitle: 'Kolejność sekcji na stronie głównej', hoEmpty: 'Otwórz stronę główną, a potem wróć tutaj.', hoReset: 'Przywróć domyślną kolejność', ctIcon: 'Ikona', ctColour: 'Kolor', ctNeedBook: 'Audiobookshelf nie potrafi zapisać pustej kolekcji, więc wybierz co najmniej jedną książkę. Później możesz dodawać i usuwać dowolne.', colEditIcon: 'Zmień ikonę', ciTitle: 'Ikona kolekcji', ciReset: 'Dopasuj automatycznie do nazwy', nrForms: ['Lektor', 'Lektorów', 'Lektorów'], auForms: ['Autor', 'Autorów', 'Autorów'], auSearch: 'Filtruj autorów…', colEditDesc: 'Edytuj opis', colBookForms: ['książka', 'książki', 'książek'], colForms: ['Kolekcja', 'Kolekcje', 'Kolekcji'], ctTitle: 'Utwórz kolekcję', ctBlank: 'Pusta kolekcja', ctNew: 'Nowa kolekcja', ctNewHint: 'z szablonu', ctNamePh: 'Nazwa kolekcji', ctSearch: 'Szukaj książek lub autorów…', ctCreate: 'Utwórz', ctBack: '‹ Wstecz', ctAddAll: 'Dodaj wszystkie', abTitle: 'Dodaj książki', abAdd: 'Dodaj', sbTitle: 'Ranking serwera', sbWeek: 'Tydzień', sbMonth: 'Miesiąc', sbYear: 'Rok', sbAll: 'Całość', sbBooks: 'Książki', sbTopBooks: 'Najczęściej słuchane', sbTotal: 'Razem', sbListeners: 'Słuchacze', sbAvg: 'Średnia', avRemove: 'Usuń zdjęcie', avSet: 'Ustaw zdjęcie…', ugListened: 'Odsłuchano', ugPhoto: 'Zdjęcie profilowe', ugNever: 'Nigdy', ugSeen: 'Ostatnio', ugEdit: 'Edytuj użytkownika', ugDelete: 'Usuń użytkownika', ugAdd: 'Dodaj zdjęcie', ugChange: 'Zmień zdjęcie', ugSortName: 'A–Z', ugSortTime: 'Najwięcej odsłuchane', ugSortSeen: 'Ostatnio aktywni', fsTitle: 'Ranking serwera', fsJoin: 'Włącz „Udostępniaj moje statystyki” w panelu personalizacji, aby pojawić się w rankingu serwera.', fsWaiting: 'Udostępnianie włączone — Twoje podsumowanie za chwilę dołączy do rankingu serwera, razem z pozostałymi osobami.', fsToggle: 'Udostępniaj moje statystyki', fsCard: 'Ranking serwera', fsHint: 'Udostępnij podsumowanie swojego słuchania (sumy i minuty dzienne) pozostałym osobom na tym serwerze, to one zasilają ranking serwera. Domyślnie włączone. Po wyłączeniu znikasz z rankingu serwera i nie liczysz się do jego sum, a udostępnione dane zostają usunięte.', yirBtn: 'Rok w podsumowaniu', yirTitle: 'Twój rok ze słuchaniem', yirYear: 'Ostatnie 12 miesięcy', yirDays: 'Dni ze słuchaniem', yirBest: 'Najlepszy dzień', yirMonths: 'Wg miesięcy', yirNone: 'Brak danych o słuchaniu.', bsCard: 'Linki do książki', bsHint: 'Przyciski na stronie książki do wyszukania tytułu w innych serwisach. Domyślnie Goodreads i największy serwis w Twoim języku.', bsFind: 'Szukaj w', bsGlobal: 'Wszędzie', bsLocal: 'Dla Twojego języka', bsOther: 'Inne kraje', pgCard: 'Przeprojektowane strony', pgHint: 'Każda z tych opcji zastępuje stronę Audiobookshelf wersją NanoHive. Wyłącz, aby wrócić do oryginalnej.', pgNarrators: 'Karty lektorów', pgCollections: 'Strony kolekcji', pgUsers: 'Karty użytkowników (ustawienia)', pgStats: 'Ranking słuchania', pgPhoto: 'Zdjęcie profilowe na górnym pasku', pgCinematic: 'Tło kinowe', pgTransitions: 'Przejścia między stronami', pSearch: 'Szukaj ustawień…', pSearchNone: 'Brak pasujących ustawień.' , erTypeface: "Krój pisma", erPage: "Motyw strony", erText: "Kolor tekstu", erBg: "Tło", erDefault: "Domyślny (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › kolejność serii", lfBySeries: "Seria › kolejność" , lfSecFilters: "Więcej filtrów", lfSecSort: "Sortowanie wielopoziomowe", lfAuthor: "Autor", lfSeries: "Seria", lfTitle: "Tytuł", lfYear: "Rok", lfAdded: "Dodano", lfDuration: "Długość", lfNarrator: "Lektor", lfGenre: "Gatunek", lfLanguage: "Język", lfProgress: "Postęp", lfPgFinished: "Ukończone", lfPgInProgress: "W trakcie", lfPgNot: "Nierozpoczęte" },
+    en: { rpBadge: 'Open problem reports', wkTitle: 'Minutes listening — last 7 days', wkAvg: 'Daily average', wkRow: 'Days in a row', lsTitle: 'Server statistics', lsAll: 'All libraries', lsPlayed: 'Books played', lsBest: 'Best rated', lsGenres: 'Top genres', srvPick: 'What to include:', srvGRest: 'Features & behaviour', aeBtn: 'Tidy authors', aeTitle: 'Authors with no books', aeNone: 'Every author here has at least one book.', aeRemove: 'Remove', aeDone: 'Removed', aeWorking: 'Removing…', rpMenu: 'Report a problem', rpTitle: 'Report a problem', rpWhat: 'What is wrong?', rpNote: 'Anything else the admin should know? (optional)', rpSend: 'Send report', rpSent: 'Sent. Thanks.', rpFail: 'Could not send', rpMissing: 'Missing or incomplete content', rpQuality: 'Bad audio quality', rpPlay: 'Will not play', rpWrong: 'Wrong book, cover or metadata', rpChapters: 'Chapters are wrong', rpOther: 'Something else', rpCard: 'Reported problems', rpHint: 'Problems users reported from a book page. Resolving one removes it from this list.', rpEmpty: 'Nothing reported.', rpResolve: 'Resolve', rpOpen: 'Open book', apCard: 'Playback', apToggle: 'Autoplay next book in a series', apHint: 'When a book finishes, start the next one in the same series automatically. Only books already in your library, and only ones you have not finished.', apNext: 'Next in series', fdToggle: 'Finished-book tools in your stats', ysFinished: 'Recently finished', ysAlmost: 'Almost done', ysMarkDone: 'Mark as finished', ysEditDate: 'Change the finished date', ysNoDate: 'no date', hmShowing: 'chart shows', ysTitle: 'Your listening', ysStreak: 'Streak', ysCurrent: 'Current', ysLongest: 'Longest', ysDaysTotal: 'Days total', ysPace: 'Pace', ysThisWeek: 'This week', ysPerDay: 'Per listening day', ysBestDay: 'Best day', ysWhen: 'When you listen', ysTopBooks: 'Most listened books', ysTopAuthors: 'Most listened authors', ysTopNarrators: 'Most listened narrators', rfRate: 'Rate', rfSheet: 'Rate this book', rfOpen: 'Open book page', rfPickHint: 'Pick a rating', rfTitle: 'Rate what you finished', rfToggle: 'Rate finished row on home', hoTitle: 'Home section order', hoEmpty: 'Open the home page once, then come back here.', hoReset: 'Reset to default order', ctIcon: 'Icon', ctColour: 'Accent', ctNeedBook: 'Audiobookshelf cannot store an empty collection, so pick at least one book. You can add or remove books later.', colEditIcon: 'Change icon', ciTitle: 'Collection icon', ciReset: 'Match the name automatically', nrForms: ['Narrator', 'Narrators'], auForms: ['Author', 'Authors'], auSearch: 'Filter authors…', colEditDesc: 'Edit description', colBookForms: ['book', 'books'], colForms: ['Collection', 'Collections'], ctTitle: 'Start a collection', ctBlank: 'Blank collection', ctNew: 'New collection', ctNewHint: 'from a template', ctNamePh: 'Collection name', ctSearch: 'Search books or authors to add…', ctCreate: 'Create', ctBack: '‹ Back', ctAddAll: 'Add all books', abTitle: 'Add books', abAdd: 'Add', sbTitle: 'Server Ranking', sbWeek: 'Week', sbMonth: 'Month', sbYear: 'Year', sbAll: 'All time', sbBooks: 'Books', sbTopBooks: 'Most listened', sbTotal: 'Total', sbListeners: 'Listeners', sbAvg: 'Average', avRemove: 'Remove photo', avSet: 'Set photo…', ugListened: 'Listened', ugPhoto: 'Profile picture', ugNever: 'Never', ugSeen: 'Last seen', ugEdit: 'Edit user', ugDelete: 'Delete user', ugAdd: 'Add photo', ugChange: 'Change photo', ugSortName: 'A–Z', ugSortTime: 'Most listened', ugSortSeen: 'Recently active', fsTitle: 'Server ranking', fsJoin: 'Turn on “Share my listening stats” in the customization panel to appear in the server ranking.', fsWaiting: 'Sharing is on — your summary joins the server ranking shortly, along with everyone else on this server.', fsToggle: 'Share my listening stats', rdTitle: 'Who’s reading it', rdFin: 'Finished', fsCard: 'Server ranking', fsHint: 'Share a summary of your listening (totals and per-day minutes) with the other people on this server — it powers the server ranking. On by default. Turn it off and you are removed from the ranking and its totals, and everything you shared is deleted.', yirBtn: 'Year in review', yirTitle: 'Your year in listening', yirYear: 'Last 12 months', yirDays: 'Days with listening', yirBest: 'Best day', yirMonths: 'By month', yirNone: 'No listening data yet.', bsCard: 'Book links', bsHint: 'Buttons on the book page for looking a title up elsewhere. Goodreads and your language\u2019s biggest local site are on by default.', bsFind: 'Find on', bsGlobal: 'Everywhere', bsLocal: 'For your language', bsOther: 'Other countries', pgCard: 'Redesigned pages', pgHint: 'Each of these replaces an Audiobookshelf page with the NanoHive version. Turn one off to get the stock page back.', pgNarrators: 'Narrator cards', pgCollections: 'Collection pages', pgUsers: 'User cards (settings)', pgStats: 'Listening ranking', pgPhoto: 'Profile photo in the top bar', pgCinematic: 'Cinematic background', pgTransitions: 'Page transitions', pSearch: 'Search settings…', pSearchNone: 'Nothing matches that.' , erTypeface: "Typeface", erPage: "Page theme", erText: "Text colour", erBg: "Background", erDefault: "Default (ABS)", erAuto: "Auto" , lfByAuthor: "Author › series order", lfBySeries: "Series › order" , lfSecFilters: "More filters", lfSecSort: "Multi-sort", lfAuthor: "Author", lfSeries: "Series", lfTitle: "Title", lfYear: "Year", lfAdded: "Added", lfDuration: "Duration", lfNarrator: "Narrator", lfGenre: "Genre", lfLanguage: "Language", lfProgress: "Progress", lfPgFinished: "Finished", lfPgInProgress: "In progress", lfPgNot: "Not started" },
+    pl: { rpBadge: 'Otwarte zgłoszenia problemów', wkTitle: 'Minuty słuchania — ostatnie 7 dni', wkAvg: 'Średnia dzienna', wkRow: 'Dni z rzędu', lsTitle: 'Statystyki serwera', lsAll: 'Wszystkie biblioteki', lsPlayed: 'Odtworzone książki', lsBest: 'Najlepiej oceniane', lsGenres: 'Najczęstsze gatunki', srvPick: 'Co zapisać:', srvGRest: 'Funkcje i zachowanie', aeBtn: 'Uporządkuj autorów', aeTitle: 'Autorzy bez książek', aeNone: 'Każdy autor ma tu co najmniej jedną książkę.', aeRemove: 'Usuń', aeDone: 'Usunięto', aeWorking: 'Usuwanie…', rpMenu: 'Zgłoś problem', rpTitle: 'Zgłoś problem', rpWhat: 'Co jest nie tak?', rpNote: 'Coś jeszcze, co powinien wiedzieć administrator? (opcjonalnie)', rpSend: 'Wyślij zgłoszenie', rpSent: 'Wysłano. Dzięki.', rpFail: 'Nie udało się wysłać', rpMissing: 'Brakująca lub niepełna treść', rpQuality: 'Zła jakość dźwięku', rpPlay: 'Nie odtwarza się', rpWrong: 'Zła książka, okładka lub metadane', rpChapters: 'Błędne rozdziały', rpOther: 'Coś innego', rpCard: 'Zgłoszone problemy', rpHint: 'Problemy zgłoszone przez użytkowników ze strony książki. Rozwiązanie usuwa zgłoszenie z listy.', rpEmpty: 'Brak zgłoszeń.', rpResolve: 'Rozwiąż', rpOpen: 'Otwórz książkę', apCard: 'Odtwarzanie', apToggle: 'Automatycznie odtwarzaj kolejną książkę z serii', apHint: 'Gdy książka się skończy, automatycznie zacznij następną z tej samej serii. Tylko książki już w Twojej bibliotece i tylko nieukończone.', apNext: 'Następna w serii', fdToggle: 'Narzędzia ukończonych książek w statystykach', ysFinished: 'Ostatnio ukończone', ysAlmost: 'Prawie ukończone', ysMarkDone: 'Oznacz jako ukończone', ysEditDate: 'Zmień datę ukończenia', ysNoDate: 'brak daty', hmShowing: 'wykres pokazuje', ysTitle: 'Twoje słuchanie', ysStreak: 'Passa', ysCurrent: 'Obecna', ysLongest: 'Najdłuższa', ysDaysTotal: 'Dni łącznie', ysPace: 'Tempo', ysThisWeek: 'W tym tygodniu', ysPerDay: 'Na dzień słuchania', ysBestDay: 'Najlepszy dzień', ysWhen: 'Kiedy słuchasz', ysTopBooks: 'Najczęściej słuchane książki', ysTopAuthors: 'Najczęściej słuchani autorzy', ysTopNarrators: 'Najczęściej słuchani lektorzy', rfRate: 'Oceń', rfSheet: 'Oceń tę książkę', rfOpen: 'Otwórz stronę książki', rfPickHint: 'Wybierz ocenę', rfTitle: 'Oceń przeczytane', rfToggle: 'Sekcja „Oceń przeczytane” na stronie głównej', hoTitle: 'Kolejność sekcji na stronie głównej', hoEmpty: 'Otwórz stronę główną, a potem wróć tutaj.', hoReset: 'Przywróć domyślną kolejność', ctIcon: 'Ikona', ctColour: 'Kolor', ctNeedBook: 'Audiobookshelf nie potrafi zapisać pustej kolekcji, więc wybierz co najmniej jedną książkę. Później możesz dodawać i usuwać dowolne.', colEditIcon: 'Zmień ikonę', ciTitle: 'Ikona kolekcji', ciReset: 'Dopasuj automatycznie do nazwy', nrForms: ['Lektor', 'Lektorów', 'Lektorów'], auForms: ['Autor', 'Autorów', 'Autorów'], auSearch: 'Filtruj autorów…', colEditDesc: 'Edytuj opis', colBookForms: ['książka', 'książki', 'książek'], colForms: ['Kolekcja', 'Kolekcje', 'Kolekcji'], ctTitle: 'Utwórz kolekcję', ctBlank: 'Pusta kolekcja', ctNew: 'Nowa kolekcja', ctNewHint: 'z szablonu', ctNamePh: 'Nazwa kolekcji', ctSearch: 'Szukaj książek lub autorów…', ctCreate: 'Utwórz', ctBack: '‹ Wstecz', ctAddAll: 'Dodaj wszystkie', abTitle: 'Dodaj książki', abAdd: 'Dodaj', sbTitle: 'Ranking serwera', sbWeek: 'Tydzień', sbMonth: 'Miesiąc', sbYear: 'Rok', sbAll: 'Całość', sbBooks: 'Książki', sbTopBooks: 'Najczęściej słuchane', sbTotal: 'Razem', sbListeners: 'Słuchacze', sbAvg: 'Średnia', avRemove: 'Usuń zdjęcie', avSet: 'Ustaw zdjęcie…', ugListened: 'Odsłuchano', ugPhoto: 'Zdjęcie profilowe', ugNever: 'Nigdy', ugSeen: 'Ostatnio', ugEdit: 'Edytuj użytkownika', ugDelete: 'Usuń użytkownika', ugAdd: 'Dodaj zdjęcie', ugChange: 'Zmień zdjęcie', ugSortName: 'A–Z', ugSortTime: 'Najwięcej odsłuchane', ugSortSeen: 'Ostatnio aktywni', fsTitle: 'Ranking serwera', fsJoin: 'Włącz „Udostępniaj moje statystyki” w panelu personalizacji, aby pojawić się w rankingu serwera.', fsWaiting: 'Udostępnianie włączone — Twoje podsumowanie za chwilę dołączy do rankingu serwera, razem z pozostałymi osobami.', fsToggle: 'Udostępniaj moje statystyki', rdTitle: 'Kto czyta tę książkę', rdFin: 'Ukończone', fsCard: 'Ranking serwera', fsHint: 'Udostępnij podsumowanie swojego słuchania (sumy i minuty dzienne) pozostałym osobom na tym serwerze, to one zasilają ranking serwera. Domyślnie włączone. Po wyłączeniu znikasz z rankingu serwera i nie liczysz się do jego sum, a udostępnione dane zostają usunięte.', yirBtn: 'Rok w podsumowaniu', yirTitle: 'Twój rok ze słuchaniem', yirYear: 'Ostatnie 12 miesięcy', yirDays: 'Dni ze słuchaniem', yirBest: 'Najlepszy dzień', yirMonths: 'Wg miesięcy', yirNone: 'Brak danych o słuchaniu.', bsCard: 'Linki do książki', bsHint: 'Przyciski na stronie książki do wyszukania tytułu w innych serwisach. Domyślnie Goodreads i największy serwis w Twoim języku.', bsFind: 'Szukaj w', bsGlobal: 'Wszędzie', bsLocal: 'Dla Twojego języka', bsOther: 'Inne kraje', pgCard: 'Przeprojektowane strony', pgHint: 'Każda z tych opcji zastępuje stronę Audiobookshelf wersją NanoHive. Wyłącz, aby wrócić do oryginalnej.', pgNarrators: 'Karty lektorów', pgCollections: 'Strony kolekcji', pgUsers: 'Karty użytkowników (ustawienia)', pgStats: 'Ranking słuchania', pgPhoto: 'Zdjęcie profilowe na górnym pasku', pgCinematic: 'Tło kinowe', pgTransitions: 'Przejścia między stronami', pSearch: 'Szukaj ustawień…', pSearchNone: 'Brak pasujących ustawień.' , erTypeface: "Krój pisma", erPage: "Motyw strony", erText: "Kolor tekstu", erBg: "Tło", erDefault: "Domyślny (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › kolejność serii", lfBySeries: "Seria › kolejność" , lfSecFilters: "Więcej filtrów", lfSecSort: "Sortowanie wielopoziomowe", lfAuthor: "Autor", lfSeries: "Seria", lfTitle: "Tytuł", lfYear: "Rok", lfAdded: "Dodano", lfDuration: "Długość", lfNarrator: "Lektor", lfGenre: "Gatunek", lfLanguage: "Język", lfProgress: "Postęp", lfPgFinished: "Ukończone", lfPgInProgress: "W trakcie", lfPgNot: "Nierozpoczęte" },
     de: { sbTitle: 'Server-Rangliste', rpBadge: 'Offene Problemmeldungen', wkTitle: 'Hörminuten — letzte 7 Tage', wkAvg: 'Tagesdurchschnitt', wkRow: 'Tage in Folge', lsTitle: 'Server-Statistiken', lsAll: 'Alle Bibliotheken', lsPlayed: 'Gespielte Bücher', lsBest: 'Am besten bewertet', lsGenres: 'Top-Genres', srvPick: 'Was speichern:', srvGRest: 'Funktionen & Verhalten', aeBtn: 'Autoren aufräumen', aeTitle: 'Autoren ohne Bücher', aeNone: 'Jeder Autor hier hat mindestens ein Buch.', aeRemove: 'Entfernen', aeDone: 'Entfernt', aeWorking: 'Wird entfernt…', rpMenu: 'Problem melden', rpTitle: 'Problem melden', rpWhat: 'Was stimmt nicht?', rpNote: 'Sonst noch etwas für die Administration? (optional)', rpSend: 'Meldung senden', rpSent: 'Gesendet. Danke.', rpFail: 'Senden fehlgeschlagen', rpMissing: 'Fehlender oder unvollständiger Inhalt', rpQuality: 'Schlechte Tonqualität', rpPlay: 'Spielt nicht ab', rpWrong: 'Falsches Buch, Cover oder Metadaten', rpChapters: 'Kapitel stimmen nicht', rpOther: 'Etwas anderes', rpCard: 'Gemeldete Probleme', rpHint: 'Von Nutzern auf einer Buchseite gemeldete Probleme. Erledigen entfernt die Meldung.', rpEmpty: 'Nichts gemeldet.', rpResolve: 'Erledigt', rpOpen: 'Buch öffnen', apCard: 'Wiedergabe', apToggle: 'Nächstes Buch einer Reihe automatisch abspielen', apHint: 'Wenn ein Buch endet, startet automatisch das nächste derselben Reihe. Nur Bücher aus deiner Bibliothek, und nur noch nicht beendete.', apNext: 'Nächstes der Reihe', fdToggle: 'Werkzeuge für beendete Bücher in den Statistiken', ysFinished: 'Zuletzt beendet', ysAlmost: 'Fast fertig', ysMarkDone: 'Als beendet markieren', ysEditDate: 'Abschlussdatum ändern', ysNoDate: 'kein Datum', hmShowing: 'Diagramm zeigt', ysTitle: 'Dein Hören', ysStreak: 'Serie', ysCurrent: 'Aktuell', ysLongest: 'Längste', ysDaysTotal: 'Tage gesamt', ysPace: 'Tempo', ysThisWeek: 'Diese Woche', ysPerDay: 'Pro Hörtag', ysBestDay: 'Bester Tag', ysWhen: 'Wann du hörst', ysTopBooks: 'Meistgehörte Bücher', ysTopAuthors: 'Meistgehörte Autoren', ysTopNarrators: 'Meistgehörte Sprecher', rfRate: 'Bewerten', rfSheet: 'Dieses Buch bewerten', rfOpen: 'Buchseite öffnen', rfPickHint: 'Bewertung wählen', rfTitle: 'Bewerte, was du beendet hast', rfToggle: 'Bereich ‚Bewerten‘ auf der Startseite', hoTitle: 'Reihenfolge der Startseite', hoEmpty: 'Öffne einmal die Startseite und komm dann zurück.', hoReset: 'Standardreihenfolge', nrSearch: 'Sprecher filtern…', nrSortName: 'Name', nrSortBooks: 'Meiste Bücher', nrForms: ['Sprecher', 'Sprecher'], nrBooksForms: ['Buch', 'Bücher'], auForms: ['Autor', 'Autoren'], auSearch: 'Autoren filtern…' , lsTitle: "Server-Statistiken", lsAll: "Alle Bibliotheken", lsPlayed: "Gespielte Bücher", lsBest: "Am besten bewertet", lsGenres: "Top-Genres", rpCard: "Gemeldete Probleme", rpHint: "Von Nutzern auf einer Buchseite gemeldete Probleme. Erledigen entfernt die Meldung.", rpEmpty: "Nichts gemeldet.", rpResolve: "Erledigt", rpOpen: "Buch öffnen", ctIcon: "Symbol", ctColour: "Akzent", ctNeedBook: "Audiobookshelf kann keine leere Sammlung speichern — wähle mindestens ein Buch. Später kannst du beliebig hinzufügen oder entfernen.", colEditIcon: "Symbol ändern", ciTitle: "Sammlungs-Symbol", ciReset: "Automatisch am Namen ausrichten", colEditDesc: "Beschreibung bearbeiten", colBookForms: ["Buch","Bücher"], colForms: ["Sammlung","Sammlungen"], ctTitle: "Sammlung anlegen", ctBlank: "Leere Sammlung", ctNew: "Neue Sammlung", ctNewHint: "aus einer Vorlage", ctNamePh: "Name der Sammlung", ctSearch: "Bücher oder Autoren suchen…", ctCreate: "Anlegen", ctBack: "‹ Zurück", ctAddAll: "Alle Bücher hinzufügen", abTitle: "Bücher hinzufügen", abAdd: "Hinzufügen", sbWeek: "Woche", sbMonth: "Monat", sbYear: "Jahr", sbAll: "Gesamt", sbBooks: "Bücher", sbTopBooks: "Meistgehört", sbTotal: "Gesamt", sbListeners: "Hörer", sbAvg: "Durchschnitt", avRemove: "Foto entfernen", avSet: "Foto wählen…", ugListened: "Gehört", ugPhoto: "Profilbild", ugNever: "Nie", ugSeen: "Zuletzt aktiv", ugEdit: "Nutzer bearbeiten", ugDelete: "Nutzer löschen", ugAdd: "Foto hinzufügen", ugChange: "Foto ändern", ugSortName: "A–Z", ugSortTime: "Meistgehört", ugSortSeen: "Zuletzt aktiv", fsTitle: "Server-Rangliste", fsCard: "Server-Rangliste", fsToggle: "Meine Hörstatistiken teilen", fsJoin: "Aktiviere „Meine Hörstatistiken teilen“ im Anpassungs-Panel, um in der Server-Rangliste zu erscheinen.", fsWaiting: "Teilen ist aktiv — deine Zusammenfassung erscheint gleich in der Server-Rangliste, zusammen mit allen anderen.", fsHint: "Teile eine Zusammenfassung deines Hörens (Summen und Minuten pro Tag) mit den anderen auf diesem Server — sie speist die Server-Rangliste. Standardmäßig aktiv. Beim Ausschalten wirst du aus der Rangliste und ihren Summen entfernt, und alles Geteilte wird gelöscht.", yirBtn: "Jahresrückblick", yirTitle: "Dein Hörjahr", yirYear: "Letzte 12 Monate", yirDays: "Tage mit Hören", yirBest: "Bester Tag", yirMonths: "Nach Monat", yirNone: "Noch keine Hördaten.", bsCard: "Buch-Links", bsHint: "Buttons auf der Buchseite, um einen Titel anderswo nachzuschlagen. Goodreads und die größte Seite deiner Sprache sind vorab aktiv.", bsFind: "Suchen auf", bsGlobal: "Überall", bsLocal: "Für deine Sprache", bsOther: "Andere Länder", pgCard: "Neu gestaltete Seiten", pgHint: "Jede Option ersetzt eine Audiobookshelf-Seite durch die NanoHive-Version. Ausschalten bringt die Originalseite zurück.", pgNarrators: "Sprecher-Karten", pgCollections: "Sammlungs-Seiten", pgUsers: "Nutzer-Karten (Einstellungen)", pgStats: "Hör-Rangliste", pgPhoto: "Profilbild in der Kopfleiste", pgCinematic: "Kino-Hintergrund", pgTransitions: "Seitenübergänge", pSearch: "Einstellungen durchsuchen…", pSearchNone: "Nichts gefunden.", srvPick: "Was speichern:", srvGRest: "Funktionen & Verhalten", apCard: "Wiedergabe", fdToggle: "Werkzeuge für beendete Bücher in den Statistiken", ysNoDate: "kein Datum", hmShowing: "Diagramm zeigt", ysStreak: "Serie", ysCurrent: "Aktuell", ysLongest: "Längste", ysDaysTotal: "Tage gesamt", ysPace: "Tempo", ysPerDay: "Pro Hörtag", ysWhen: "Wann du hörst", ysTopBooks: "Meistgehörte Bücher", ysTopAuthors: "Meistgehörte Autoren", ysTopNarrators: "Meistgehörte Sprecher", rfToggle: "Bereich ‚Bewerten‘ auf der Startseite", hoTitle: "Reihenfolge der Startseite", hoEmpty: "Öffne einmal die Startseite und komm dann zurück.", hoReset: "Standardreihenfolge", scmTitle: "Serien-Seite", scmHint: "So sieht die erzeugte Titelgrafik einer Serie aus, wenn kein eigenes Cover hochgeladen wurde (nur dieser Browser).", scmDeck: "Gestapeltes Deck", scmFirst: "Cover des ersten Buchs", scmGrid: "Cover-Raster (Standard)", scmOff: "Ausgeblendet" , erTypeface: "Schriftart", erPage: "Seitenthema", erText: "Textfarbe", erBg: "Hintergrund", erDefault: "Standard (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › Serienfolge", lfBySeries: "Serie › Reihenfolge" , lfSecFilters: "Mehr Filter", lfSecSort: "Mehrfach-Sortierung", lfAuthor: "Autor", lfSeries: "Serie", lfTitle: "Titel", lfYear: "Jahr", lfAdded: "Hinzugefügt", lfDuration: "Dauer", lfNarrator: "Sprecher", lfGenre: "Genre", lfLanguage: "Sprache", lfProgress: "Fortschritt", lfPgFinished: "Beendet", lfPgInProgress: "Laufend", lfPgNot: "Nicht begonnen" },
     fr: { sbTitle: 'Classement du serveur', rpBadge: 'Signalements ouverts', wkTitle: 'Minutes d\u2019écoute — 7 derniers jours', wkAvg: 'Moyenne quotidienne', wkRow: 'Jours d\u2019affilée', lsTitle: 'Statistiques du serveur', lsAll: 'Toutes les bibliothèques', lsPlayed: 'Livres écoutés', lsBest: 'Les mieux notés', lsGenres: 'Genres principaux', srvPick: 'Quoi inclure :', srvGRest: 'Fonctions et comportement', aeBtn: 'Ranger les auteurs', aeTitle: 'Auteurs sans livre', aeNone: 'Chaque auteur ici a au moins un livre.', aeRemove: 'Supprimer', aeDone: 'Supprimés', aeWorking: 'Suppression…', rpMenu: 'Signaler un problème', rpTitle: 'Signaler un problème', rpWhat: 'Quel est le problème ?', rpNote: 'Autre chose à signaler à l\u2019administrateur ? (facultatif)', rpSend: 'Envoyer', rpSent: 'Envoyé. Merci.', rpFail: 'Envoi impossible', rpMissing: 'Contenu manquant ou incomplet', rpQuality: 'Mauvaise qualité audio', rpPlay: 'Ne se lit pas', rpWrong: 'Mauvais livre, couverture ou métadonnées', rpChapters: 'Chapitres incorrects', rpOther: 'Autre chose', rpCard: 'Problèmes signalés', rpHint: 'Problèmes signalés par les utilisateurs depuis une page de livre. Résoudre retire le signalement.', rpEmpty: 'Aucun signalement.', rpResolve: 'Résoudre', rpOpen: 'Ouvrir le livre', apCard: 'Lecture', apToggle: 'Lire automatiquement le livre suivant d\u2019une série', apHint: 'À la fin d\u2019un livre, démarre automatiquement le suivant de la même série. Uniquement les livres déjà dans votre bibliothèque, et non terminés.', apNext: 'Suivant de la série', fdToggle: 'Outils des livres terminés dans vos statistiques', ysFinished: 'Terminés récemment', ysAlmost: 'Presque fini', ysMarkDone: 'Marquer comme terminé', ysEditDate: 'Modifier la date de fin', ysNoDate: 'sans date', hmShowing: 'le graphique affiche', ysTitle: 'Votre écoute', ysStreak: 'Série', ysCurrent: 'Actuelle', ysLongest: 'Plus longue', ysDaysTotal: 'Jours au total', ysPace: 'Rythme', ysThisWeek: 'Cette semaine', ysPerDay: 'Par jour d\u2019écoute', ysBestDay: 'Meilleur jour', ysWhen: 'Quand vous écoutez', ysTopBooks: 'Livres les plus écoutés', ysTopAuthors: 'Auteurs les plus écoutés', ysTopNarrators: 'Narrateurs les plus écoutés', rfRate: 'Noter', rfSheet: 'Noter ce livre', rfOpen: 'Ouvrir la page du livre', rfPickHint: 'Choisissez une note', rfTitle: 'Notez vos livres terminés', rfToggle: 'Section « À noter » sur l’accueil', hoTitle: 'Ordre des sections d’accueil', hoEmpty: 'Ouvrez la page d’accueil une fois, puis revenez ici.', hoReset: 'Rétablir l’ordre par défaut', nrSearch: 'Filtrer les narrateurs…', nrSortName: 'Nom', nrSortBooks: 'Plus de livres', nrForms: ['Narrateur', 'Narrateurs'], nrBooksForms: ['livre', 'livres'], auForms: ['Auteur', 'Auteurs'], auSearch: 'Filtrer les auteurs…' , lsTitle: "Statistiques du serveur", lsAll: "Toutes les bibliothèques", lsPlayed: "Livres écoutés", lsBest: "Les mieux notés", lsGenres: "Genres principaux", rpCard: "Problèmes signalés", rpHint: "Problèmes signalés par les utilisateurs depuis une page de livre. Résoudre retire le signalement.", rpEmpty: "Aucun signalement.", rpResolve: "Résoudre", rpOpen: "Ouvrir le livre", ctIcon: "Icône", ctColour: "Accent", ctNeedBook: "Audiobookshelf ne peut pas enregistrer une collection vide — choisissez au moins un livre. Vous pourrez en ajouter ou retirer ensuite.", colEditIcon: "Changer l’icône", ciTitle: "Icône de la collection", ciReset: "Faire correspondre au nom automatiquement", colEditDesc: "Modifier la description", colBookForms: ["livre","livres"], colForms: ["Collection","Collections"], ctTitle: "Créer une collection", ctBlank: "Collection vide", ctNew: "Nouvelle collection", ctNewHint: "depuis un modèle", ctNamePh: "Nom de la collection", ctSearch: "Chercher des livres ou des auteurs…", ctCreate: "Créer", ctBack: "‹ Retour", ctAddAll: "Ajouter tous les livres", abTitle: "Ajouter des livres", abAdd: "Ajouter", sbWeek: "Semaine", sbMonth: "Mois", sbYear: "Année", sbAll: "Depuis toujours", sbBooks: "Livres", sbTopBooks: "Les plus écoutés", sbTotal: "Total", sbListeners: "Auditeurs", sbAvg: "Moyenne", avRemove: "Retirer la photo", avSet: "Choisir une photo…", ugListened: "Écouté", ugPhoto: "Photo de profil", ugNever: "Jamais", ugSeen: "Vu récemment", ugEdit: "Modifier l’utilisateur", ugDelete: "Supprimer l’utilisateur", ugAdd: "Ajouter une photo", ugChange: "Changer la photo", ugSortName: "A–Z", ugSortTime: "Les plus écoutés", ugSortSeen: "Actifs récemment", fsTitle: "Classement du serveur", fsCard: "Classement du serveur", fsToggle: "Partager mes statistiques d’écoute", fsJoin: "Activez « Partager mes statistiques d’écoute » dans le panneau de personnalisation pour apparaître dans le classement du serveur.", fsWaiting: "Partage activé — votre résumé rejoint bientôt le classement du serveur, avec tous les autres.", fsHint: "Partagez un résumé de votre écoute (totaux et minutes par jour) avec les autres personnes de ce serveur — il alimente le classement. Activé par défaut. En le désactivant, vous quittez le classement et ses totaux, et tout ce qui a été partagé est supprimé.", yirBtn: "Rétrospective de l’année", yirTitle: "Votre année d’écoute", yirYear: "12 derniers mois", yirDays: "Jours avec écoute", yirBest: "Meilleur jour", yirMonths: "Par mois", yirNone: "Pas encore de données d’écoute.", bsCard: "Liens du livre", bsHint: "Boutons sur la page du livre pour chercher un titre ailleurs. Goodreads et le plus grand site de votre langue sont activés par défaut.", bsFind: "Chercher sur", bsGlobal: "Partout", bsLocal: "Pour votre langue", bsOther: "Autres pays", pgCard: "Pages repensées", pgHint: "Chaque option remplace une page Audiobookshelf par la version NanoHive. Désactivez pour retrouver la page d’origine.", pgNarrators: "Cartes des narrateurs", pgCollections: "Pages des collections", pgUsers: "Cartes des utilisateurs (réglages)", pgStats: "Classement d’écoute", pgPhoto: "Photo de profil dans la barre du haut", pgCinematic: "Arrière-plan cinéma", pgTransitions: "Transitions de pages", pSearch: "Rechercher un réglage…", pSearchNone: "Rien ne correspond.", srvPick: "Quoi inclure :", srvGRest: "Fonctions et comportement", apCard: "Lecture", fdToggle: "Outils des livres terminés dans vos statistiques", ysNoDate: "sans date", hmShowing: "le graphique affiche", ysStreak: "Série", ysCurrent: "Actuelle", ysLongest: "Plus longue", ysDaysTotal: "Jours au total", ysPace: "Rythme", ysPerDay: "Par jour d’écoute", ysWhen: "Quand vous écoutez", ysTopBooks: "Livres les plus écoutés", ysTopAuthors: "Auteurs les plus écoutés", ysTopNarrators: "Narrateurs les plus écoutés", rfToggle: "Section « À noter » sur l’accueil", hoTitle: "Ordre des sections d’accueil", hoEmpty: "Ouvrez la page d’accueil une fois, puis revenez ici.", hoReset: "Rétablir l’ordre par défaut", scmTitle: "Page de série", scmHint: "Apparence de la couverture générée au-dessus du titre d’une série quand aucune couverture n’a été téléversée (ce navigateur uniquement).", scmDeck: "Pile en éventail", scmFirst: "Couverture du premier livre", scmGrid: "Grille de couvertures (par défaut)", scmOff: "Masquée" , erTypeface: "Police", erPage: "Thème de page", erText: "Couleur du texte", erBg: "Arrière-plan", erDefault: "Par défaut (ABS)", erAuto: "Auto" , lfByAuthor: "Auteur › ordre de série", lfBySeries: "Série › ordre" , lfSecFilters: "Plus de filtres", lfSecSort: "Tri multiple", lfAuthor: "Auteur", lfSeries: "Série", lfTitle: "Titre", lfYear: "Année", lfAdded: "Ajouté", lfDuration: "Durée", lfNarrator: "Narrateur", lfGenre: "Genre", lfLanguage: "Langue", lfProgress: "Progression", lfPgFinished: "Terminés", lfPgInProgress: "En cours", lfPgNot: "Non commencés" },
     es: { sbTitle: 'Clasificación del servidor', rpBadge: 'Informes de problemas abiertos', wkTitle: 'Minutos de escucha — últimos 7 días', wkAvg: 'Media diaria', wkRow: 'Días seguidos', lsTitle: 'Estadísticas del servidor', lsAll: 'Todas las bibliotecas', lsPlayed: 'Libros reproducidos', lsBest: 'Mejor valorados', lsGenres: 'Géneros principales', srvPick: 'Qué incluir:', srvGRest: 'Funciones y comportamiento', aeBtn: 'Ordenar autores', aeTitle: 'Autores sin libros', aeNone: 'Todos los autores aquí tienen al menos un libro.', aeRemove: 'Eliminar', aeDone: 'Eliminados', aeWorking: 'Eliminando…', rpMenu: 'Informar de un problema', rpTitle: 'Informar de un problema', rpWhat: '¿Qué ocurre?', rpNote: '¿Algo más que deba saber el administrador? (opcional)', rpSend: 'Enviar informe', rpSent: 'Enviado. Gracias.', rpFail: 'No se pudo enviar', rpMissing: 'Contenido ausente o incompleto', rpQuality: 'Mala calidad de audio', rpPlay: 'No se reproduce', rpWrong: 'Libro, portada o metadatos incorrectos', rpChapters: 'Capítulos incorrectos', rpOther: 'Otra cosa', rpCard: 'Problemas informados', rpHint: 'Problemas que los usuarios informaron desde una página de libro. Resolver lo quita de la lista.', rpEmpty: 'Nada informado.', rpResolve: 'Resolver', rpOpen: 'Abrir libro', apCard: 'Reproducción', apToggle: 'Reproducir automáticamente el siguiente libro de una serie', apHint: 'Cuando termina un libro, empieza automáticamente el siguiente de la misma serie. Solo libros que ya tienes y que no has terminado.', apNext: 'Siguiente de la serie', fdToggle: 'Herramientas de libros terminados en tus estadísticas', ysFinished: 'Terminados hace poco', ysAlmost: 'Casi terminado', ysMarkDone: 'Marcar como terminado', ysEditDate: 'Cambiar la fecha de fin', ysNoDate: 'sin fecha', hmShowing: 'el gráfico muestra', ysTitle: 'Tu escucha', ysStreak: 'Racha', ysCurrent: 'Actual', ysLongest: 'Más larga', ysDaysTotal: 'Días en total', ysPace: 'Ritmo', ysThisWeek: 'Esta semana', ysPerDay: 'Por día de escucha', ysBestDay: 'Mejor día', ysWhen: 'Cuándo escuchas', ysTopBooks: 'Libros más escuchados', ysTopAuthors: 'Autores más escuchados', ysTopNarrators: 'Narradores más escuchados', rfRate: 'Valorar', rfSheet: 'Valora este libro', rfOpen: 'Abrir la página del libro', rfPickHint: 'Elige una valoración', rfTitle: 'Valora lo que terminaste', rfToggle: 'Sección «Valorar» en el inicio', hoTitle: 'Orden de secciones del inicio', hoEmpty: 'Abre la página de inicio una vez y vuelve aquí.', hoReset: 'Restablecer el orden', nrSearch: 'Filtrar narradores…', nrSortName: 'Nombre', nrSortBooks: 'Más libros', nrForms: ['Narrador', 'Narradores'], nrBooksForms: ['libro', 'libros'], auForms: ['Autor', 'Autores'], auSearch: 'Filtrar autores…' , lsTitle: "Estadísticas del servidor", lsAll: "Todas las bibliotecas", lsPlayed: "Libros reproducidos", lsBest: "Mejor valorados", lsGenres: "Géneros principales", rpCard: "Problemas informados", rpHint: "Problemas que los usuarios informaron desde una página de libro. Resolver lo quita de la lista.", rpEmpty: "Nada informado.", rpResolve: "Resolver", rpOpen: "Abrir libro", ctIcon: "Icono", ctColour: "Acento", ctNeedBook: "Audiobookshelf no puede guardar una colección vacía: elige al menos un libro. Después podrás añadir o quitar los que quieras.", colEditIcon: "Cambiar icono", ciTitle: "Icono de la colección", ciReset: "Ajustar automáticamente al nombre", colEditDesc: "Editar descripción", colBookForms: ["libro","libros"], colForms: ["Colección","Colecciones"], ctTitle: "Crear una colección", ctBlank: "Colección vacía", ctNew: "Nueva colección", ctNewHint: "desde una plantilla", ctNamePh: "Nombre de la colección", ctSearch: "Buscar libros o autores…", ctCreate: "Crear", ctBack: "‹ Atrás", ctAddAll: "Añadir todos los libros", abTitle: "Añadir libros", abAdd: "Añadir", sbWeek: "Semana", sbMonth: "Mes", sbYear: "Año", sbAll: "Todo el tiempo", sbBooks: "Libros", sbTopBooks: "Más escuchados", sbTotal: "Total", sbListeners: "Oyentes", sbAvg: "Media", avRemove: "Quitar foto", avSet: "Elegir foto…", ugListened: "Escuchado", ugPhoto: "Foto de perfil", ugNever: "Nunca", ugSeen: "Última actividad", ugEdit: "Editar usuario", ugDelete: "Eliminar usuario", ugAdd: "Añadir foto", ugChange: "Cambiar foto", ugSortName: "A–Z", ugSortTime: "Más escuchados", ugSortSeen: "Activos recientemente", fsTitle: "Clasificación del servidor", fsCard: "Clasificación del servidor", fsToggle: "Compartir mis estadísticas de escucha", fsJoin: "Activa «Compartir mis estadísticas de escucha» en el panel de personalización para aparecer en la clasificación del servidor.", fsWaiting: "Compartir está activado: tu resumen se unirá en breve a la clasificación del servidor, junto con los demás.", fsHint: "Comparte un resumen de tu escucha (totales y minutos por día) con las demás personas de este servidor: alimenta la clasificación. Activado por defecto. Al desactivarlo desapareces de la clasificación y de sus totales, y todo lo compartido se elimina.", yirBtn: "Resumen del año", yirTitle: "Tu año de escucha", yirYear: "Últimos 12 meses", yirDays: "Días con escucha", yirBest: "Mejor día", yirMonths: "Por mes", yirNone: "Aún no hay datos de escucha.", bsCard: "Enlaces del libro", bsHint: "Botones en la página del libro para buscar un título en otros sitios. Goodreads y el mayor sitio de tu idioma vienen activados.", bsFind: "Buscar en", bsGlobal: "En todas partes", bsLocal: "Para tu idioma", bsOther: "Otros países", pgCard: "Páginas rediseñadas", pgHint: "Cada opción sustituye una página de Audiobookshelf por la versión NanoHive. Desactívala para volver a la original.", pgNarrators: "Tarjetas de narradores", pgCollections: "Páginas de colecciones", pgUsers: "Tarjetas de usuarios (ajustes)", pgStats: "Clasificación de escucha", pgPhoto: "Foto de perfil en la barra superior", pgCinematic: "Fondo cinematográfico", pgTransitions: "Transiciones de página", pSearch: "Buscar ajustes…", pSearchNone: "Nada coincide.", srvPick: "Qué incluir:", srvGRest: "Funciones y comportamiento", apCard: "Reproducción", fdToggle: "Herramientas de libros terminados en tus estadísticas", ysNoDate: "sin fecha", hmShowing: "el gráfico muestra", ysStreak: "Racha", ysCurrent: "Actual", ysLongest: "Más larga", ysDaysTotal: "Días en total", ysPace: "Ritmo", ysPerDay: "Por día de escucha", ysWhen: "Cuándo escuchas", ysTopBooks: "Libros más escuchados", ysTopAuthors: "Autores más escuchados", ysTopNarrators: "Narradores más escuchados", rfToggle: "Sección «Valorar» en el inicio", hoTitle: "Orden de secciones del inicio", hoEmpty: "Abre la página de inicio una vez y vuelve aquí.", hoReset: "Restablecer el orden", scmTitle: "Página de serie", scmHint: "Aspecto de la portada generada sobre el título de una serie cuando no se ha subido una propia (solo este navegador).", scmDeck: "Baraja apilada", scmFirst: "Portada del primer libro", scmGrid: "Cuadrícula de portadas (por defecto)", scmOff: "Oculta" , erTypeface: "Tipografía", erPage: "Tema de página", erText: "Color del texto", erBg: "Fondo", erDefault: "Predeterminado (ABS)", erAuto: "Auto" , lfByAuthor: "Autor › orden de serie", lfBySeries: "Serie › orden" , lfSecFilters: "Más filtros", lfSecSort: "Orden múltiple", lfAuthor: "Autor", lfSeries: "Serie", lfTitle: "Título", lfYear: "Año", lfAdded: "Añadido", lfDuration: "Duración", lfNarrator: "Narrador", lfGenre: "Género", lfLanguage: "Idioma", lfProgress: "Progreso", lfPgFinished: "Terminados", lfPgInProgress: "En curso", lfPgNot: "Sin empezar" },
@@ -3946,6 +3946,164 @@
     if (finished && finished.nextSibling) row.insertBefore(box, finished.nextSibling);
     else if (finished) row.appendChild(box);
     else row.appendChild(box);
+  }
+
+  // ---- Who's reading this (#23) ----
+  // A facepile button in the action row, sitting before the book-site links:
+  // it exists only when at least one OTHER user has this book in progress or
+  // finished (data from /_nh/api/progress?item=, the shared store each browser
+  // feeds — see nhFamilyProgressSync). Click opens a popup listing everyone.
+  const nhRd = { key: '', rows: null, fetching: false };
+
+  function nhRdAgo(ts) {
+    if (!ts) return '';
+    try {
+      const rtf = new Intl.RelativeTimeFormat(getUserLanguage() || 'en', { numeric: 'auto' });
+      const d = Date.now() - ts;
+      const min = 60000, hr = 3600000, day = 86400000;
+      if (d < hr) return rtf.format(-Math.max(1, Math.round(d / min)), 'minute');
+      if (d < day) return rtf.format(-Math.round(d / hr), 'hour');
+      if (d < 30 * day) return rtf.format(-Math.round(d / day), 'day');
+      if (d < 365 * day) return rtf.format(-Math.round(d / (30 * day)), 'month');
+      return rtf.format(-Math.round(d / (365 * day)), 'year');
+    } catch (e) {
+      return new Date(ts).toLocaleDateString();
+    }
+  }
+
+  function nhRdMyId() {
+    try { const u = window.$nuxt.$store.state.user.user; return (u && u.id) || ''; } catch (e) { return ''; }
+  }
+
+  function nhRdAv(uid, name, cls) {
+    const av = document.createElement('span');
+    av.className = cls;
+    av.textContent = (name || '?').charAt(0).toUpperCase();
+    nhAvatarInto(av, uid);
+    return av;
+  }
+
+  function nhRdOpen() {
+    const T = nhGsT();
+    const old = document.getElementById('nh-rd-modal'); if (old) old.remove();
+    const overlay = document.createElement('div'); overlay.id = 'nh-rd-modal';
+    const bg = document.createElement('div'); bg.className = 'nh-rt-modal-bg';
+    const box = document.createElement('div'); box.className = 'nh-rt-modal-box';
+    const close = () => overlay.remove();
+    bg.addEventListener('click', close);
+    const head = document.createElement('div'); head.className = 'nh-rt-modal-head';
+    const title = document.createElement('span'); title.textContent = T.rdTitle || PANEL_T.en.rdTitle;
+    const x = document.createElement('button'); x.type = 'button'; x.className = 'nh-rt-modal-x'; x.textContent = '×';
+    x.addEventListener('click', close);
+    head.appendChild(title); head.appendChild(x);
+    const list = document.createElement('div'); list.className = 'nh-rd-list';
+    (nhRd.rows || []).forEach((row) => {
+      const li = document.createElement('div'); li.className = 'nh-rd-row';
+      li.appendChild(nhRdAv(row.uid, row.name, 'nh-rd-av'));
+      const name = document.createElement('span'); name.className = 'nh-rd-name'; name.textContent = row.name;
+      li.appendChild(name);
+      const stat = document.createElement('span'); stat.className = 'nh-rd-stat';
+      if (row.fin) {
+        const fin = document.createElement('span'); fin.className = 'nh-rd-fin';
+        fin.textContent = T.rdFin || PANEL_T.en.rdFin;
+        stat.appendChild(fin);
+      } else {
+        const bar = document.createElement('span'); bar.className = 'nh-rd-bar';
+        const fill = document.createElement('span'); fill.className = 'nh-rd-fill';
+        fill.style.width = Math.round(row.p * 100) + '%';
+        bar.appendChild(fill);
+        const pct = document.createElement('span'); pct.className = 'nh-rd-pct';
+        pct.textContent = Math.round(row.p * 100) + '%';
+        stat.appendChild(bar); stat.appendChild(pct);
+      }
+      const when = document.createElement('span'); when.className = 'nh-rd-when'; when.textContent = nhRdAgo(row.ts);
+      stat.appendChild(when);
+      li.appendChild(stat);
+      list.appendChild(li);
+    });
+    box.appendChild(head); box.appendChild(list);
+    overlay.appendChild(bg); overlay.appendChild(box);
+    document.body.appendChild(overlay);
+  }
+
+  function nhWhoReading() {
+    const wrapper = document.getElementById('item-page-wrapper');
+    const m = window.location.pathname.match(/\/item\/([A-Za-z0-9_-]+)/);
+    if (!wrapper || !m) { nhRd.key = ''; nhRd.rows = null; return; }
+    const itemId = m[1];
+    nhScFetch(); // the avatars map rides the series-meta payload
+
+    if (nhRd.key !== itemId) {
+      if (nhRd.fetching) return;
+      const tok = nhSrToken();
+      if (!tok) return;
+      nhRd.fetching = true;
+      fetch('/_nh/api/progress?item=' + encodeURIComponent(itemId), { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => {
+          nhRd.fetching = false;
+          nhRd.key = itemId;
+          const users = (j && j.users) || {};
+          const me = nhRdMyId();
+          const rows = [];
+          Object.keys(users).forEach((uid) => {
+            if (uid === me) return;
+            const u = users[uid] || {};
+            rows.push({ uid: uid, name: u.user || '?', p: u.f ? 1 : (Number(u.p) || 0), fin: !!u.f, ts: Number(u.ts) || 0 });
+          });
+          // in-progress first, then finished, each newest first
+          rows.sort((a, b) => (a.fin - b.fin) || (b.ts - a.ts));
+          nhRd.rows = rows;
+        })
+        .catch(() => { nhRd.fetching = false; nhRd.key = itemId; nhRd.rows = []; });
+      return; // rendered on the tick after the data lands
+    }
+
+    const existing = wrapper.querySelector('#nh-rd-fp');
+    if (!nhRd.rows || !nhRd.rows.length) { if (existing) existing.remove(); return; }
+    const bsRow = wrapper.querySelector('.nh-bs-row');
+    const sig = itemId + '|' + nhRd.rows.map((r) => r.uid + ':' + (r.fin ? 'f' : r.p)).join(',') + '|' + (nhSc.ts || 0);
+    if (existing && existing.dataset.sig === sig) {
+      // injectBookSites re-inserts its row right after the beenhere button, which
+      // can leapfrog it in front of this one — keep the facepile before it.
+      if (bsRow && existing.nextElementSibling !== bsRow && bsRow.parentElement) bsRow.parentElement.insertBefore(existing, bsRow);
+      return;
+    }
+    if (existing) existing.remove();
+
+    const T = nhGsT();
+    const fp = document.createElement('button');
+    fp.type = 'button';
+    fp.id = 'nh-rd-fp';
+    fp.className = 'nh-rd-btn';
+    fp.dataset.sig = sig;
+    fp.title = T.rdTitle || PANEL_T.en.rdTitle;
+    const shown = nhRd.rows.slice(0, nhRd.rows.length > 3 ? 2 : 3);
+    shown.forEach((r) => fp.appendChild(nhRdAv(r.uid, r.name, 'nh-rd-fp-av')));
+    if (nhRd.rows.length > shown.length) {
+      const more = document.createElement('span');
+      more.className = 'nh-rd-fp-av nh-rd-fp-more';
+      more.textContent = '+' + (nhRd.rows.length - shown.length);
+      fp.appendChild(more);
+    }
+    fp.addEventListener('click', nhRdOpen);
+
+    if (bsRow && bsRow.parentElement) { bsRow.parentElement.insertBefore(fp, bsRow); return; }
+    // No book-site links chosen: anchor the same way injectBookSites does.
+    const playBtn = wrapper.querySelector('.abs-btn.bg-success') || wrapper.querySelector('.abs-btn');
+    if (!playBtn) { fp.remove(); return; }
+    let row = playBtn.parentElement;
+    while (row && row !== wrapper && !(row.classList.contains('flex') && row.querySelectorAll('button, a').length >= 1)) {
+      row = row.parentElement;
+    }
+    if (!row || row === wrapper) row = playBtn.closest('.flex');
+    if (!row) { fp.remove(); return; }
+    const finished = Array.prototype.find.call(row.children, (c) => {
+      const g = c.querySelector('.material-symbols');
+      return g && g.textContent.trim() === 'beenhere';
+    });
+    if (finished && finished.nextSibling) row.insertBefore(fp, finished.nextSibling);
+    else row.appendChild(fp);
   }
 
   // ==========================================
@@ -10116,7 +10274,7 @@
     if (Math.abs(want - cur) >= 4) root.style.setProperty('--nh-player-pad', want + 'px');
   }
 
-  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal, #nh-imp-modal, #nh-hx-modal';
+  const NH_MODAL_IDS = '#nh-yir-modal, #nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-rt-modal, #nh-imp-modal, #nh-hx-modal, #nh-rd-modal';
   function nhModalLock() {
     document.body.classList.toggle('nh-modal-open', !!document.querySelector(NH_MODAL_IDS));
   }
@@ -11472,6 +11630,103 @@
       .then(() => { nhFs.busy = false; });
   }
 
+  // ---- Shared book progress (#23): posting side ----
+  // Same shape as the A5 stats sync above and gated on the SAME familyStats
+  // switch — "share my listening stats" honestly covers which books you are in
+  // the middle of. The summary comes from the vuex user (ABS keeps mediaProgress
+  // there live), so posting costs one request and no /api/me fetch. Podcast
+  // episodes are skipped: the book page is the only consumer.
+  const NH_PG_EVERY = 30 * 60 * 1000; // progress moves faster than stats: 30 min, not 6 h
+  const nhPg = { busy: false, tried: 0 };
+  const nhPga = { busy: false, tried: 0 };
+
+  function nhPgSummary(mediaProgress) {
+    const reading = [];
+    const done = [];
+    (mediaProgress || []).forEach((e) => {
+      if (!e || !e.libraryItemId || e.episodeId) return;
+      const p = Math.max(Number(e.progress) || 0, Number(e.ebookProgress) || 0);
+      const ts = Number(e.finishedAt) || Number(e.lastUpdate) || 0;
+      if (e.isFinished) done.push({ i: e.libraryItemId, ts: ts });
+      else if (p > 0.001 && p < 1) reading.push({ i: e.libraryItemId, p: Math.round(p * 1000) / 1000, ts: ts });
+    });
+    reading.sort((a, b) => b.ts - a.ts);
+    done.sort((a, b) => b.ts - a.ts);
+    return { reading: reading.slice(0, 40), done: done.slice(0, 600) };
+  }
+
+  function nhFamilyProgressSync() {
+    const tok = nhSrToken();
+    if (!tok) return;
+    const on = nhSettings.familyStats === true;
+    let joined = '0';
+    try { joined = localStorage.getItem('nh-pg-on') || '0'; } catch (e) {}
+    if (!on) {
+      if (joined === '1' && !nhPg.busy) { // opted out: erase the record, once
+        nhPg.busy = true;
+        fetch('/_nh/api/progress', { method: 'DELETE', headers: { Authorization: 'Bearer ' + tok } })
+          .then(() => { try { localStorage.removeItem('nh-pg-on'); localStorage.removeItem('nh-pg-ts'); } catch (e) {} })
+          .catch(() => {})
+          .then(() => { nhPg.busy = false; });
+      }
+      return;
+    }
+    if (nhPg.busy || nhPg.tried > 3) return;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem('nh-pg-ts'), 10) || 0; } catch (e) {}
+    if (Date.now() - last < NH_PG_EVERY) return;
+    let mp = null;
+    try { mp = window.$nuxt.$store.state.user.user.mediaProgress; } catch (e) {}
+    if (!mp) return;
+    nhPg.busy = true; nhPg.tried++;
+    fetch('/_nh/api/progress', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+      body: JSON.stringify(nhPgSummary(mp)),
+    })
+      .then((r) => {
+        if (r && r.ok) {
+          try { localStorage.setItem('nh-pg-on', '1'); localStorage.setItem('nh-pg-ts', String(Date.now())); } catch (e) {}
+        }
+      })
+      .catch(() => {})
+      .then(() => { nhPg.busy = false; });
+  }
+
+  // Admin seeding twin, the nhFsAdminSeed shape: the book page is complete even
+  // for people who never open the web app. Tombstones are respected here and
+  // enforced again server-side.
+  function nhPgAdminSeed() {
+    if (!isUserAdmin()) return;
+    const tok = nhSrToken();
+    if (!tok || nhPga.busy || nhPga.tried > 2) return;
+    let last = 0;
+    try { last = parseInt(localStorage.getItem('nh-pga-ts'), 10) || 0; } catch (e) {}
+    if (Date.now() - last < NH_FS_EVERY) return;
+    nhPga.busy = true; nhPga.tried++;
+    const H = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+    Promise.all([
+      fetch('/api/users', { headers: H }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch('/_nh/api/progress', { headers: H, credentials: 'include' }).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(async (res) => {
+      const us = ((res[0] && (res[0].users || res[0])) || []).filter((u) => u && u.isActive !== false);
+      if (!us.length) { nhPga.busy = false; return; } // /api/users failed — not an admin session after all
+      const shared = (res[1] && res[1].users) || {};
+      for (const u of us) {
+        if (shared[u.id] && shared[u.id].out) continue;
+        try {
+          const full = await fetch('/api/users/' + u.id, { headers: H }).then((r) => (r.ok ? r.json() : null));
+          if (!full || !Array.isArray(full.mediaProgress)) continue;
+          const sum = nhPgSummary(full.mediaProgress);
+          sum.user = u.username;
+          await fetch('/_nh/api/progress-admin?forUser=' + encodeURIComponent(u.id), { method: 'POST', headers: H, credentials: 'include', body: JSON.stringify(sum) });
+        } catch (e) {}
+      }
+      try { localStorage.setItem('nh-pga-ts', String(Date.now())); } catch (e) {}
+      nhPga.busy = false;
+    }).catch(() => { nhPga.busy = false; });
+  }
+
   // ---- Year in Review: the caller's own last 12 months ----
   function nhYirMonthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 
@@ -12252,7 +12507,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.3.5';
+  const NH_THEME_VERSION = 'v2.4.0';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The
@@ -13431,6 +13686,8 @@
     safe(nhAutoplaySeries);
     safe(nhFamilyStatsSync);
     safe(nhFsAdminSeed);
+    safe(nhFamilyProgressSync);
+    safe(nhPgAdminSeed);
     safe(nhUsersPage);
     safe(nhUserEditModal);
     safe(nhSeriesReveal);
@@ -13470,6 +13727,7 @@
     safe(nhRequeryReveal);
     safe(manageCinematic);
     safe(injectBookSites);
+    safe(nhWhoReading);
   }
 
   // Reactive scheduler: run a tick within ~80ms of any DOM change instead of only

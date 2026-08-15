@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.132.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.133.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1310,7 +1310,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #nh-series-header .nh-sh-author a { color: inherit; cursor: pointer; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
 #nh-series-header .nh-sh-author a:hover { border-bottom-color: var(--nh-amber, #e0c27a); }
 /* Series description editor modal (admin; reuses the ratings popup chrome) */
-#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-hx-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-hx-modal, #nh-rd-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 /* Carousel X confirmation (#18). Small, so it gets a narrower box than the rest.
    z-index above the shared 500: it can be raised from the home page while nothing
    else is open, but it must never end up behind anything it was opened from. */
@@ -2710,6 +2710,30 @@ body.nh-selecting .nh-rp-badge { visibility: hidden !important; }
    material icons beside them instead of introducing brand colours. */
 .nh-bs-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 22px; height: 22px; background-color: var(--nh-text-2, #d8cfc2); transition: background-color .15s; -webkit-mask: var(--nh-bs-logo) center / contain no-repeat; mask: var(--nh-bs-logo) center / contain no-repeat; }
 #item-page-wrapper a.nh-bs-btn:hover .nh-bs-logo { background-color: var(--nh-amber, #e0c27a); }
+
+/* Who's reading this (#23): facepile button in the action row + its popup.
+   The button matches the 48px book-site squares next to it; inside, up to three
+   overlapping mini avatars (photo layers over the monogram, the scoreboard
+   trick: on 404 the img removes itself and the letter shows). */
+#item-page-wrapper button.nh-rd-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 48px !important; height: 48px !important; min-width: 48px !important; padding: 0 !important; margin: 0 2px; box-sizing: border-box; border-radius: 12px; border: 1px solid rgba(255,255,255,0.15); background: transparent; cursor: pointer; vertical-align: middle; transition: border-color .15s, background-color .15s; }
+#item-page-wrapper button.nh-rd-btn:hover { border-color: var(--nh-amber, #e0c27a); background: rgba(255,255,255,0.06); }
+.nh-rd-fp-av { position: relative; overflow: hidden; width: 18px; height: 18px; margin-left: -6px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: var(--nh-raised, #221e1a); border: 1px solid rgba(255,255,255,0.25); font-family: var(--nh-sans, system-ui); font-size: 0.6rem; font-weight: 700; line-height: 1; color: var(--nh-text-2, #d8cfc2); }
+.nh-rd-fp-av:first-child { margin-left: 0; }
+.nh-rd-fp-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.nh-rd-fp-more { font-size: 0.56rem; }
+#nh-rd-modal .nh-rt-modal-box { max-width: 480px; width: 92vw; }
+.nh-rd-list { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; max-height: min(56vh, 480px); overflow-y: auto; scrollbar-width: thin; }
+.nh-rd-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 10px; }
+.nh-rd-row:hover { background: rgba(255,255,255,0.04); }
+.nh-rd-av { position: relative; overflow: hidden; width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; background: var(--nh-raised, #221e1a); border: 1px solid rgba(255,255,255,0.18); font-family: var(--nh-sans, system-ui); font-size: 0.82rem; font-weight: 700; color: var(--nh-text-2, #d8cfc2); }
+.nh-rd-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.nh-rd-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--nh-sans, system-ui); font-size: 0.92rem; color: var(--nh-text-1, #f4eee2); }
+.nh-rd-stat { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; font-family: var(--nh-sans, system-ui); }
+.nh-rd-bar { position: relative; width: 74px; height: 6px; border-radius: 999px; background: rgba(255,255,255,0.12); overflow: hidden; }
+.nh-rd-fill { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 999px; background: var(--nh-amber, #e0c27a); }
+.nh-rd-pct { font-size: 0.8rem; font-weight: 600; color: var(--nh-text-2, #d8cfc2); min-width: 34px; text-align: right; }
+.nh-rd-fin { font-size: 0.8rem; font-weight: 600; color: var(--nh-amber, #e0c27a); }
+.nh-rd-when { font-size: 0.74rem; color: var(--nh-muted-2, #9a9085); }
 /* panel: grouped checkbox list */
 #nh-booksites .nh-bs-group { font-family: var(--nh-sans, system-ui); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); margin: 12px 0 6px; }
 #nh-booksites .nh-bs-group:first-child { margin-top: 0; }

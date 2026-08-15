@@ -253,6 +253,26 @@ server {
         js_content nh_ratings.stats;
     }
 
+    # Shared book progress (#23). Same contract as /_nh/api/stats: each browser
+    # POSTs a summary of its OWN /api/me mediaProgress, any authenticated user
+    # may GET (?item=<id> for the book page's tiny per-item view), DELETE is the
+    # caller's opt-out tombstone.
+    location = /_nh/api/progress {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 64k;
+        client_body_buffer_size 64k;   # njs r.requestText is empty for temp-file bodies
+        js_content nh_ratings.progress;
+    }
+
+    # Admin seeding twin, same gate and reasoning as /_nh/api/stats-admin.
+    location = /_nh/api/progress-admin {
+        auth_request /_nh/admincheck;
+        set $nh_progress_admin 1;
+        client_max_body_size 64k;
+        client_body_buffer_size 64k;
+        js_content nh_ratings.progress;
+    }
+
     location = /_nh/api/whoami {
         internal;
         proxy_pass ${ABS_UPSTREAM}/api/me;
