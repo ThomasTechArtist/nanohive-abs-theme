@@ -1,4 +1,4 @@
-/* NanoHive ABS — JS Enhancements  v6.195.0  (injected build) */
+/* NanoHive ABS — JS Enhancements  v6.197.0  (injected build) */
 
 (function () {
   'use strict';
@@ -5862,7 +5862,18 @@
   // series header aggregate. Refreshed in the background when >60s old so other
   // users' ratings drift in; local saves patch it instantly via the
   // 'nh-rating-change' event book-details fires (no refetch).
-  const nhRs = { items: null, at: 0, fetching: false, tries: 0, dead: false };
+  const nhRs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false };
+  // Content signature, NOT a timestamp. The A8 view and the open panel key their
+  // rebuild on this; keying on nhRs.at meant every 60s background refetch bumped
+  // the signature with IDENTICAL data and the whole filtered shelf tore itself
+  // down and re-rendered — Pawel's "it refreshes every once in a while" flicker.
+  function nhRsSig(items) {
+    let s = '';
+    try { s = JSON.stringify(items); } catch (e) { return String(Date.now()); }
+    let h = 0;
+    for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return s.length + ':' + h;
+  }
   function nhRsItems() {
     if (nhRs.dead) return nhRs.items;
     const stale = Date.now() - nhRs.at > 60000;
@@ -5878,7 +5889,7 @@
           })
           .then((j) => {
             nhRs.fetching = false;
-            if (j && j.items) { nhRs.items = j.items; nhRs.at = Date.now(); nhRs.tries = 0; }
+            if (j && j.items) { nhRs.items = j.items; nhRs.at = Date.now(); nhRs.sig = nhRsSig(j.items); nhRs.tries = 0; }
           })
           .catch(() => { nhRs.fetching = false; });
       }
@@ -5906,16 +5917,28 @@
     return typeof v === 'number' ? { avg: v, n: 1 } : null;
   }
 
-  // Everyone who has rated anything, for the "whose ratings" picker.
-  function nhRsRaters() {
+  // Everyone who has rated anything, for the "whose ratings" picker, with how
+  // many ratings each of them holds (shown as the row badge — Pawel: without
+  // it, a one-rating user in the list reads like a bug).
+  // `within`: an optional Set of item ids. When given, only ratings on THOSE
+  // items count and zero-count users are dropped — the Monika case: her one
+  // rating lives in the Polish library, so offering her in the English library
+  // and answering "0 books" read as broken. Series-key ratings never count
+  // (they are not books the filter could show).
+  function nhRsRaters(within) {
     const rs = nhRs.items || {};
     const seen = {};
     Object.keys(rs).forEach((item) => {
+      if (item.indexOf('series:') === 0) return;
+      if (within && !within.has(item)) return;
       Object.keys(rs[item] || {}).forEach((uid) => {
-        if (!seen[uid]) seen[uid] = (rs[item][uid] && rs[item][uid].user) || '?';
+        const e = rs[item][uid];
+        if (!e || typeof e.stars !== 'number') return;
+        if (!seen[uid]) seen[uid] = { name: e.user || '?', n: 0 };
+        seen[uid].n++;
       });
     });
-    return Object.keys(seen).map((id) => ({ id: id, name: seen[id] }))
+    return Object.keys(seen).map((id) => ({ id: id, name: seen[id].name, n: seen[id].n }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -5925,6 +5948,7 @@
     if (d.ratings && Object.keys(d.ratings).length) nhRs.items[d.itemId] = d.ratings;
     else delete nhRs.items[d.itemId];
     nhRs.at = Date.now();
+    nhRs.sig = nhRsSig(nhRs.items); // a real change SHOULD rebuild the view
     // wipe render signatures so the next tick redraws badges + the A8 panel
     document.querySelectorAll('.nh-cr').forEach((b) => { delete b.dataset.nhCrSig; });
     nhLf.viewSig = '';
@@ -7225,6 +7249,13 @@
     if (vm && vm.__nhLfPatched) {
       if (vm.__nhOrigFetch) vm.fetchEntites = vm.__nhOrigFetch;
       vm.__nhLfPatched = false;
+      // The natSig block has usually JUST scheduled its stale-margin nudge for
+      // this same clear (filter leaving changes natSig). Letting that
+      // setCardSize+executeRebuild fire 60ms into the resetEntities re-fetch
+      // races two rebuilds over one shelf — cards from both layouts pile up as
+      // a broken mosaic (Pawel's clear-filters screenshot). The reset alone
+      // re-lays everything; the nudge is redundant here.
+      clearTimeout(nhLf.relayoutT);
       try { vm.resetEntities(); } catch (e) {} // patched ⇒ we were serving; refresh to native
     }
     nhLf.viewSig = '';
@@ -7233,6 +7264,7 @@
 
   function nhLfReset() {
     document.querySelectorAll('#toolbar .nh-lf-count, #toolbar .nh-lf-clearx').forEach((el) => el.remove());
+    clearTimeout(nhLf.relayoutT); // never let a scheduled nudge outlive the page it measured
     try { nhFfTeardown(); } catch (e) {}
     nhLf.sort = '';
     nhLf.sorts = [];
@@ -8031,8 +8063,17 @@
 
     // Whose ratings (#23): scopes the rating sort AND the quick-filters above to
     // one person's stars. Only offered once a second rater exists — with a single
-    // rater the average IS that person.
-    const raters = nhRsRaters();
+    // rater the average IS that person. Counted against THIS library's items so
+    // nobody is offered where they have nothing to show.
+    let within = null;
+    if (nhLf.items) {
+      within = new Set();
+      nhLf.items.forEach((li) => {
+        if (nhLf.mode === 'series') (li.books || []).forEach((bk) => within.add(bk.id || bk.libraryItemId));
+        else within.add(li.id);
+      });
+    }
+    const raters = nhRsRaters(within);
     if (raters.length >= 2 || nhLf.who) {
       const whoRows = [{
         label: T.lfEveryone || PANEL_T.en.lfEveryone,
@@ -8040,8 +8081,17 @@
         toggle: () => { nhLf.who = ''; nhFfApply(); },
       }].concat(raters.map((u) => ({
         label: u.name,
+        n: u.n,
         on: nhLf.who === u.id,
-        toggle: () => { nhLf.who = nhLf.who === u.id ? '' : u.id; nhFfApply(); },
+        toggle: () => {
+          nhLf.who = nhLf.who === u.id ? '' : u.id;
+          // Picking a person with no rating filter or sort active would change
+          // nothing visible (Pawel hit exactly that) — so it implies "Rated":
+          // choosing monika means "show me monika's books". Explicit state, the
+          // radio above lights up, and any other rating choice is left alone.
+          if (nhLf.who && !nhLf.filter && !nhLf.sorts.some((s) => s.d === 'rating')) nhLf.filter = 'rated';
+          nhFfApply();
+        },
       }))).filter((r) => !q || r.label.toLowerCase().indexOf(q) >= 0);
       section('who', T.lfWho || PANEL_T.en.lfWho, whoRows, true);
     }
@@ -8195,7 +8245,7 @@
       nhFfHideNative(toolbar);
       // Redraw an OPEN panel only when the data behind it changes (the item list
       // arriving, ratings refreshing). Everything else is the cheap sync path.
-      const dataSig = ((nhLf.items || []).length) + '|' + nhRs.at + '|' + nhLf.mode + '|' + (nhLf.libId || '');
+      const dataSig = ((nhLf.items || []).length) + '|' + nhRs.sig + '|' + nhLf.mode + '|' + (nhLf.libId || '');
       if (nhFf.open && nhFf.dataSig !== dataSig) {
         nhFf.dataSig = dataSig;
         nhFfRender();
@@ -8320,7 +8370,7 @@
 
     // Build the composed view (full minified item objects — the same shape the
     // shelf fetches itself, so it can render them natively).
-    const viewSig = key + '|' + nhLf.sort + '|' + nhLf.filter + '|' + nhLf.who + '|' + nhLfFxSig() + '|' + nhRs.at;
+    const viewSig = key + '|' + nhLf.sort + '|' + nhLf.filter + '|' + nhLf.who + '|' + nhLfFxSig() + '|' + nhRs.sig;
     if (nhLf.viewSig !== viewSig) {
       nhLf.viewSig = viewSig;
       // series rating = mean of its rated books' averages (same math as the
@@ -12555,7 +12605,7 @@
   // at-a-glance "what am I running" readout. Restore it and add the theme version.
   // Bump NH_THEME_VERSION on each release (the composite THEME_VERSION from NH_CONFIG is
   // shown on hover for exact per-file versions).
-  const NH_THEME_VERSION = 'v2.4.0';
+  const NH_THEME_VERSION = 'v2.4.1';
   // The RELEASES LIST, not this version's own tag. Linking to
   // /releases/tag/<version> looked tidier, but it 404s for any build running
   // ahead of its release — which is every staging build, and any nightly. The
