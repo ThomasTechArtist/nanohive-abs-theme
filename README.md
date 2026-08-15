@@ -35,15 +35,20 @@ be hidden.
 reviews on every book page, shared between all users. Stars appear on every card (library grid,
 home shelves, series, collections), and whole series can be rated too, with a books-average line
 beside the series rating. You can also **import your ratings from StoryGraph or Goodreads** —
-[details below](#ratings-reviews-and-importing).
+[details below](#ratings-reviews-and-importing). And a book page can show **who else is on that
+book**: tiny avatars before the lookup links of everyone reading or finished, with their progress
+in a click, handy for a family book club. It follows the same sharing switch as
+[family stats](#family-listening-stats).
 
 **Finding things**: search across every library at once with a library badge on each hit; a
 rebuilt **Filter & sort** panel on the library and series pages replacing ABS's two dropdowns
 with one: sort by several things at once with the precedence and direction of each level in
 front of you (and Author sorts by surname or by first name, your choice), and stack filters
 across genre, author, narrator, series, tag, publisher, language, year, progress, format and
-rating, every value listed with its count and searchable. Whatever is active shows as chips in
-the toolbar, so dropping one filter takes a single click. The series page gets it too: sort by
+rating, every value listed with its count and searchable. A **Whose ratings** section scopes the
+rating sort and filters to one person on your server (each name shows how many books they rated
+in that library), so you can browse exactly what one reader loved. Whatever is active shows as
+chips in the toolbar, so dropping one filter takes a single click. The series page gets it too: sort by
 name, rating, number of books or how far through you are. Prefer the old menus? One toggle
 brings them back with nothing lost. Plus a per-user start page.
 
@@ -254,8 +259,11 @@ own listening to the proxy.
 - Sharing is **on by default**. Turn it off in Settings → Theme → *Family stats* and your shared
   summary is deleted, you disappear from the ranking, and you stop counting toward its totals —
   for everyone, admins included.
-- The summary lives at `/data/nh/stats.json` (`/_nh/api/stats`): totals, per-day minutes and your
-  top few titles. Never anything ABS doesn't already know.
+- The same switch covers the **who's reading this** row on book pages: your in-progress and
+  finished books are shared as a small summary too, and opting out erases it the same way.
+- The summaries live at `/data/nh/stats.json` (`/_nh/api/stats`) and `/data/nh/progress.json`
+  (`/_nh/api/progress`): totals, per-day minutes, your top few titles, and which books you are
+  partway through or done with. Never anything ABS doesn't already know.
 - Only your own record can be written — the user id comes from your verified login token, never
   from the request body.
 
