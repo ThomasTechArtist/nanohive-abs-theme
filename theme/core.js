@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.131.0  (injected build) */
+/* NanoHive ABS — Core Theme & Player  v3.132.0  (injected build) */
 
 (function () {
   'use strict';
@@ -1118,6 +1118,16 @@ body.nh-series-page #bookshelf.nh-with-series-header::after { content: ''; displ
 #mediaPlayerContainer .modal .text-gray-300, #mediaPlayerContainer .modal .text-gray-400 { color: var(--nh-text-2) !important; }
 body:has(#mediaPlayerContainer) [aria-label="Library Sidebar"] .border-t { display: none !important; }
 body:has(#reader) #mediaPlayerContainer { z-index: 61 !important; }
+/* #24: the 61 above beats every menu the ereader itself opens. The settings
+   modal is a .modal that teleports to body when shown (display flex, still
+   z-60, one short); the TOC drawer lives INSIDE #reader (z-60 context), so no
+   z-index of its own could ever clear the player. Fix both: any visible modal
+   outrunning the player while reading, and the reader itself lifted while its
+   drawer is open (open = translate-x-0 on the transition-transform child; the
+   modal-child variant covers ABS builds that keep the modal inside #reader). */
+body:has(#reader) .modal:not(.hidden) { z-index: 70 !important; }
+#reader:has(> .transition-transform.translate-x-0),
+#reader:has(> .modal:not(.hidden)) { z-index: 70 !important; }
 /* Fill the whole viewport with the reader background when the player is open.
    Stock shrinks #reader to calc(100% - 164px), exposing the page underneath.
    Safe: epub.js computes page height in JS (windowHeight - 164), not from this CSS,
