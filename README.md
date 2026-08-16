@@ -50,6 +50,8 @@ Web only (the mobile apps keep working through it, just unthemed).
 - Server ranking with medals, personal listening insights, Year in Review
 - Admin server statistics: most played, best rated, top genres, per library
 - Finished-book tools, including the books stuck at 99% (one tap marks them done)
+- Mark as finished: books you clearly finished but never closed out show up as a home
+  shelf and a badge on your avatar; one click (with confirmation) settles them
 
 **Reading and playback**
 - Extended ereader in your theme colours with curated fonts (incl. OpenDyslexic)
@@ -67,6 +69,8 @@ Web only (the mobile apps keep working through it, just unthemed).
 **Per user, not per device**
 - Everyone gets the settings panel and their choices follow their account, so a shared tablet
   stops handing one person's setup to the next. 40 languages.
+- The panel itself is tidy: five tabs (Style / Main Page / Books / Features / Administration),
+  a search box across all of them, and explanations tucked behind small ? buttons.
 
 ## Run it
 
