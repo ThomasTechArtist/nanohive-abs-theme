@@ -26,7 +26,10 @@ Web only (the mobile apps keep working through it, just unthemed).
 **Ratings and reviews**
 - Goodreads-style stars and reviews on every book, shared server-wide, stars on every card
 - Rate whole series too
-- Import your history from StoryGraph or Goodreads (dry run first, you confirm every match)
+- Import your history from Goodreads, StoryGraph or Hardcover (dry run first, you confirm
+  every match, and you can mark the matched books as finished in one click)
+- Hardcover sync: paste your API key and every rating you save lands on your Hardcover
+  account too, or push the whole library at once
 - See who else is reading or finished a book, with their progress (great for book clubs)
 - Full, half or quarter star steps; podcasts excluded; per-library switches
 
@@ -54,6 +57,9 @@ Web only (the mobile apps keep working through it, just unthemed).
 
 **For admins**
 - Save your look as the server-wide default in one click
+- Social switches: what the server shares between users is your call, globally and per user
+- Recent sessions card: the last 10 listening sessions server-wide, live ones on top
+- The redesigned pages (narrators, collections, users...) switch on or off for everyone
 - Upload a custom logo (works fully offline), series covers and descriptions, user photos
 - Problem reports from users land in a queue you can read and clear
 - Tidy authors left with no books
@@ -124,6 +130,7 @@ Server Defaults), which also beat the env vars.
 | `NH_RECENT_SERIES_COUNT` | `12` | Series in that shelf |
 | `NH_CUSTOM_SERIES_CARDS` | `true` | Stacked series covers, `false` = stock cards |
 | `NH_SHOW_RATINGS` | `true` | Book ratings |
+| `NH_SOCIAL` | *(empty)* | `false` disables every social feature; the admin Social card decides otherwise |
 | `NH_FOUC_BG` | `#181512` | Background before the theme loads, match your base theme |
 
 Canvas colours for `NH_FOUC_BG`: `warm` `#181512` · `slate` `#111625` · `black` `#080808` ·
@@ -138,14 +145,17 @@ The container refuses to start on a malformed value instead of serving a half-br
 or drop `logo.png` into `/data/nh` and set the logo to `/_nh/logo.png`. Served from the
 volume, no internet needed.
 
-**Importing ratings**: export from StoryGraph (Manage Your Data → Export) or Goodreads
-(My Books → Import and export), pick the file under Settings → Theme → Book Page. Matching
-goes by ISBN/ASIN, then title + author, then a close-match pass, and nothing is written until
-you confirm the dry-run list. Quarter stars survive.
+**Importing ratings**: export from StoryGraph (Manage Your Data → Export), Goodreads
+(My Books → Import and export) or Hardcover (Account → Exports, or straight over the API with
+your key), pick the file under Settings → Theme → Books. Matching goes by ISBN/ASIN, then
+title + author, then a close-match pass, and nothing is written until you confirm the dry-run
+list. Quarter stars survive.
 
-**Family sharing**: the ranking, and the who's-reading row, work off small summaries each
-browser publishes. On by default; the *Family stats* toggle turns it off and erases what you
-shared, for everyone including admins.
+**Family sharing**: the ranking, shared top titles and the who's-reading row work off small
+summaries each browser publishes. Listening TIME is on by default (it powers the ranking);
+anything that reveals which books people actually read ships OFF until an admin switches it on
+in the Social card. Every user keeps two personal sharing toggles on top, and `NH_SOCIAL=false`
+kills all of it at the container level.
 
 **Security**: every API call is validated against ABS with the caller's own login token, so
 nobody can rate or write as someone else. Admin-only writes are proven by replaying the token

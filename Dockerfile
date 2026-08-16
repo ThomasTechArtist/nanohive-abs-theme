@@ -22,7 +22,7 @@ RUN if [ "$NH_MINIFY" = "true" ]; then \
         node --check "theme/$f" || exit 1; \
         printf '%-18s %s\n' "$f" "$(wc -c < "theme/$f") bytes"; \
       done; \
-    else echo "NH_MINIFY=false — shipping readable sources"; fi
+    else echo "NH_MINIFY=false - shipping readable sources"; fi
 
 FROM nginx:alpine
 
@@ -45,7 +45,7 @@ RUN chmod +x /docker-entrypoint.d/05-check-env.sh
 # Every NH_* var below must match this filter or it will be left literal in the
 # generated config and the injected JSON will be invalid.
 ENV NGINX_ENVSUBST_FILTER="^(ABS_UPSTREAM|THEME_VERSION|NH_[A-Z0-9_]+)$" \
-    THEME_VERSION="core3.133.0_enh6.197.0_book1.44.0_early1.8.0_njs1.16.0"
+    THEME_VERSION="core3.137.0_enh6.220.0_book1.45.0_early1.8.0_njs1.22.0"
 
 # --- Default appearance. Each user can override any of these in the in-app
 # --- settings panel (gear icon); their choice is stored per-browser.
@@ -64,6 +64,8 @@ ENV NH_APP_NAME="" \
     NH_SHOW_HERO_CAROUSEL="true" \
     NH_SHOW_RATINGS="true" \
     NH_GLOBAL_SEARCH="true" \
+    NH_SOCIAL="" \
+    NH_HC_UPSTREAM="https://api.hardcover.app/v1/graphql" \
     NH_FOUC_BG="#181512"
 
 EXPOSE 80

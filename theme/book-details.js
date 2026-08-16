@@ -1,4 +1,4 @@
-/* NanoHive ABS — Book Details Redesign  v1.44.0  (injected build) */
+/* NanoHive ABS - Book Details Redesign  v1.45.0  (injected build) */
 
 (function () {
   'use strict';
@@ -10,7 +10,7 @@
     /* CINEMATIC BACKGROUND: the page itself goes transparent; the actual blurred-cover
        backdrop is the body-level #nh-home-bg managed by enhancements.js (one shared,
        crossfading background for home, series, and item pages). The old per-page
-       #nh-cinematic-bg element was removed — core.js had display:none'd it anyway. */
+       #nh-cinematic-bg element was removed, core.js had display:none'd it anyway. */
     #page-wrapper.nh-cinematic-mode,
     #page-wrapper.nh-cinematic-mode > #item-page-wrapper {
         background-color: transparent !important;
@@ -78,7 +78,7 @@
     }
 
     /* Hide native cover overlays: the progress bar (BOTH in-progress bg-yellow-400 AND
-       finished bg-success — ABS hardcodes its width to 208px, so it renders as a broken
+       finished bg-success, ABS hardcodes its width to 208px, so it renders as a broken
        half-width stub on the resized detail cover) + the hover/edit overlay. The bar stays
        in the DOM (display:none) so the JS finished-badge can still read its bg-success state. */
     #item-page-wrapper > div.flex > div:first-child .bg-yellow-400.absolute.bottom-0,
@@ -91,8 +91,7 @@
 
     /* Finished indicator, top-right of the cover. Injected by JS (section 4) when
        the (hidden) native bar carries bg-success. This is the SAME mark the shelf
-       cards carry (core.js, .nh-finished::after) and it has to look identical —
-       it used to be a frosted disc with a thin accent tick, which read as a
+       cards carry (core.js, .nh-finished::after) and it has to look identical,        it used to be a frosted disc with a thin accent tick, which read as a
        different thing entirely once the shelf badge became a solid green fill.
        Colours come from the same --nh-finished-* variables, so both move together. */
     #nh-finished-badge {
@@ -344,7 +343,7 @@
     #item-page-wrapper .w-full.my-2.mt-6:has(.border-black-200.shadow-lg) { position: relative !important; z-index: 25 !important; }
     /* Files-table row menus: let the box grow to its labels (ABS gives it a fixed
        width that clips "Set as supplementary"). Direction (drop-up vs drop-down) is
-       decided per-open in JS from the actual space below — see nhMenuDirection. */
+       decided per-open in JS from the actual space below, see nhMenuDirection. */
     :is(#item-page-wrapper, .modal) .tracksTable [role="menu"] { min-width: max-content !important; }
 
     :is(#item-page-wrapper, .modal) .tracksTable tr,
@@ -373,7 +372,7 @@
         background-color: transparent !important;
         font-size: 0.95rem !important;
     }
-    /* No separator under the last row — it would cut across the panel's rounded base. */
+    /* No separator under the last row, it would cut across the panel's rounded base. */
     :is(#item-page-wrapper, .modal) .tracksTable tr:last-child td {
         border-bottom: none !important;
     }
@@ -385,7 +384,7 @@
         font-size: 0.9rem !important;
         color: #9a9085 !important;
     }
-    /* :not([role=menuitem]) — the row-kebab dropdown's items are <button>s inside the
+    /* :not([role=menuitem]), the row-kebab dropdown's items are <button>s inside the
        table too; without the guard they render as stacked pills instead of menu rows. */
     :is(#item-page-wrapper, .modal) .tracksTable button:not([role="menuitem"]) {
         background-color: rgba(255,255,255,0.05) !important;
@@ -404,7 +403,7 @@
         #item-page-wrapper p.mb-2 { font-size: 0.8rem !important; }
         #item-description { font-size: 0.85rem !important; line-height: 1.5 !important; max-width: 100% !important; }
 
-        /* Metadata now sits before the description — compact wrapping pills, not a tall list */
+        /* Metadata now sits before the description, compact wrapping pills, not a tall list */
         .nh-metadata-container {
             display: flex !important; flex-wrap: wrap !important; grid-template-columns: none !important;
             row-gap: 6px !important; column-gap: 10px !important; margin: 14px 0 !important; padding: 0 !important;
@@ -415,8 +414,7 @@
             flex-direction: row !important; align-items: baseline !important; gap: 4px !important;
         }
         .nh-metadata-container .flex.py-0\\.5 > div:first-child span { font-size: 0.58rem !important; white-space: nowrap !important; flex-shrink: 0 !important; }
-        /* The label CELL itself must never flex-shrink under its nowrap span —
-           it squeezed to "GENR" with the value painting right after (Pawel's
+        /* The label CELL itself must never flex-shrink under its nowrap span,            it squeezed to "GENR" with the value painting right after (Pawel's
            phone). max-content pins the cell to the label's own width. */
         .nh-metadata-container .flex.py-0\\.5 > div:first-child {
             flex: 0 0 auto !important; width: auto !important; min-width: max-content !important; margin-bottom: 0 !important;
@@ -496,7 +494,7 @@
     .nh-rt-modal-head > span { font-family: var(--nh-serif), 'Spectral', serif; font-size: 1.15rem; color: #f4eee2; }
     .nh-rt-modal-x { background: none; border: none; color: #9a9085; font-size: 26px; line-height: 1; cursor: pointer; padding: 2px 6px; }
     .nh-rt-modal-x:hover { color: #ffffff; }
-    /* Inside the popup the accent-coloured number can sit too dark on the panel — go white. */
+    /* Inside the popup the accent-coloured number can sit too dark on the panel, go white. */
     .nh-rt-modal-box .nh-rt-avg { color: #f4eee2; }
     #nh-rt-editor { margin-top: 10px; max-width: 620px; }
     #nh-rt-review { width: 100%; min-height: 58px; background: rgba(0,0,0,0.25); color: #d8cfc2; border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 10px 12px; font-size: 0.95rem; font-family: inherit; resize: vertical; box-sizing: border-box; }
@@ -562,16 +560,16 @@
   // Stars + short reviews shared by every user of this server. The nginx side
   // (njs/nh-ratings.js) verifies identity against ABS /api/me, so the client
   // only ever sends its own Bearer token. All user-generated strings are
-  // rendered via textContent — never innerHTML.
+  // rendered via textContent - never innerHTML.
   // Resilience: right after a hard page load the Vue auth store may not have a
-  // token yet, so the first fetch can 401 — retry with backoff instead of
+  // token yet, so the first fetch can 401 - retry with backoff instead of
   // latching an error. If the backend truly isn't there (404: theme deployed
   // without the njs API) the section removes itself quietly.
   const nhRt = { itemId: null, ratings: null, tries: 0, timer: null, fetching: false, gone: false, dead: false, editorOpen: false, draft: null, modalOpen: false };
 
   function nhRtEnabled() {
     // A library can opt out of ratings entirely (podcast libraries do by
-    // default) — that decision is owned by enhancements.js, which knows the
+    // default) - that decision is owned by enhancements.js, which knows the
     // current library's media type. Absent, assume the library takes part.
     if (window.__nhRatingsHere && !window.__nhRatingsHere()) return false;
     // Same precedence as the rest of the theme: user setting > UI server
@@ -592,7 +590,7 @@
 
   function nhRtToken() {
     // First choice: the token sniffed from ABS's own API traffic (core.js mirrors
-    // every Authorization header the app sends) — immune to store-layout changes.
+    // every Authorization header the app sends) - immune to store-layout changes.
     if (window.__NH_TOKEN) return window.__NH_TOKEN;
     try {
       const st = window.$nuxt && window.$nuxt.$store;
@@ -620,8 +618,8 @@
 
   // ---- Started / Finished dates, under the metadata block in the left column --
   // ABS records both but shows neither. The finished date is EDITABLE (a PATCH of
-  // finishedAt sticks); the started date is not — ABS accepts the field, answers
-  // 200 and then keeps its own value, verified twice — so it is shown as plain
+  // finishedAt sticks); the started date is not - ABS accepts the field, answers
+  // 200 and then keeps its own value, verified twice - so it is shown as plain
   // text rather than as a picker that silently does nothing.
   const NH_BD_DT = {
     en: { started: 'Started', finished: 'Finished', edit: 'Change the finished date', editStart: 'Change the started date' },
@@ -682,7 +680,7 @@
       return cell;
     };
     // readOnly date inputs render without the browser's calendar glyph, so each
-    // one is wrapped with our own accent icon (core.js .nh-date-wrap) — the cue
+    // one is wrapped with our own accent icon (core.js .nh-date-wrap) - the cue
     // that the field opens a picker.
     const wrapDate = (inp) => {
       const w = document.createElement('span'); w.className = 'nh-date-wrap';
@@ -848,11 +846,11 @@
 
   // Preferred home for the report action: FIRST entry of the book page's
   // three-dot menu. That menu is a Vue component whose `items` array we can
-  // unshift into — far more robust than injecting DOM into a dropdown whose
+  // unshift into - far more robust than injecting DOM into a dropdown whose
   // markup ABS has changed before. Its action name is ours, so the emit is
   // intercepted here rather than handed to ABS, which would not know it.
   function nhKebabReport() {
-    // The tracks table's row kebabs also carry [aria-haspopup=menu] — and sit
+    // The tracks table's row kebabs also carry [aria-haspopup=menu] - and sit
     // earlier in the DOM, which is exactly how the entry first shipped into the
     // WRONG menu (Pawel's screenshot: Report above Download/Delete/More Info).
     // The real item menu is the ui-context-menu-dropdown in the Play-button row;
@@ -877,7 +875,7 @@
       // permission, so a REGULAR user's item menu is e.g. [playlists, download]
       // and matching on collections alone left them the fallback link (Pawel).
       // Playlists is in every signed-in user's item menu; download alone is NOT
-      // a valid marker — the tracks-table kebabs are download-only.
+      // a valid marker - the tracks-table kebabs are download-only.
       if (cvm && Array.isArray(cvm.items) &&
           cvm.items.some((x) => x && (x.action === 'collections' || x.action === 'playlists' || x.action === 'nh-report'))) { vm = cvm; break; }
     }
@@ -911,7 +909,7 @@
     const old = document.getElementById('nh-rp-link');
     if (!m || !host) { if (old) old.remove(); return; }
     // In the menu is where Pawel wants it. The standalone link stays only as a
-    // fallback for a build where the menu component is not what we expect —
+    // fallback for a build where the menu component is not what we expect -
     // otherwise the feature would simply vanish.
     if (nhKebabReport()) { if (old) old.remove(); return; }
     let btn = old;
@@ -949,7 +947,7 @@
     return forms[2];
   }
 
-  // Ink-aware clip so a half star splits at the glyph's visual middle — the
+  // Ink-aware clip so a half star splits at the glyph's visual middle - the
   // shared helper lives in enhancements.js (always loaded first); the naive
   // row-percentage stays as the fallback shape.
   function nhRtFillSet(wrap, fill, v) {
@@ -957,10 +955,33 @@
     fill.style.width = (Math.max(0, Math.min(5, v || 0)) / 5 * 100) + '%';
   }
 
-  // Every rating number on this page, formatted for the chosen precision — a
+  // Every rating number on this page, formatted for the chosen precision - a
   // hardcoded toFixed(1) turned a 4.25 quarter-star rating into "4.3".
   function nhRtStarText(v) {
     return window.__nhStarText ? window.__nhStarText(v) : String(Number((+v || 0).toFixed(2)));
+  }
+
+  // The ★ glyph comes from whatever symbol font the platform falls back to
+  // (Segoe UI Symbol on Windows), and several of those draw the ink LOW inside
+  // the line box - so a flex-centred row shows the stars sagging under the
+  // score and review text (Pawel's long-unreproducible report; it is font-
+  // dependent, which is why another machine looked fine). Measure the actual
+  // ink of the rendered glyph against the font's line box with canvas metrics
+  // and counter-shift the element by exactly that difference.
+  function nhRtStarNudge(el) {
+    try {
+      if (!el.isConnected) { requestAnimationFrame(function () { nhRtStarNudge(el); }); return; }
+      const cs = getComputedStyle(el);
+      const ctx2 = (nhRtStarNudge._c = nhRtStarNudge._c || document.createElement('canvas').getContext('2d'));
+      ctx2.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' / ' + cs.lineHeight + ' ' + cs.fontFamily;
+      const g = ctx2.measureText('★');
+      const f = ctx2.measureText('Hg');
+      if (g.actualBoundingBoxAscent === undefined || f.fontBoundingBoxAscent === undefined) return;
+      const inkMid = (g.actualBoundingBoxAscent - g.actualBoundingBoxDescent) / 2;
+      const boxMid = (f.fontBoundingBoxAscent - f.fontBoundingBoxDescent) / 2;
+      const off = inkMid - boxMid; // negative = ink sits low = translate up
+      if (Math.abs(off) > 0.5) el.style.transform = 'translateY(' + off.toFixed(2) + 'px)';
+    } catch (e) {}
   }
 
   function nhRtStarsEl(value, big) {
@@ -975,6 +996,7 @@
     wrap.appendChild(base); wrap.appendChild(fill);
     nhRtFillSet(wrap, fill, value || 0);
     wrap._fill = fill;
+    requestAnimationFrame(function () { nhRtStarNudge(wrap); });
     return wrap;
   }
 
@@ -997,7 +1019,7 @@
     nhRt.tries++;
     if (nhRt.tries > 6) {
       nhRt.dead = true;
-      try { console.warn('[NanoHive] ratings: giving up after retries — last HTTP status: ' + (nhRt.lastStatus || 'network/no-token')); } catch (e) {}
+      try { console.warn('[NanoHive] ratings: giving up after retries, last HTTP status: ' + (nhRt.lastStatus || 'network/no-token')); } catch (e) {}
       nhRtRemove();
       return;
     }
@@ -1315,7 +1337,7 @@
 
   // Series-page mount API: enhancements.js calls this every tick from the series
   // header with key "series:<seriesId>". It reuses the SAME widget state, renderer
-  // and endpoints — a book page and a series page never coexist, so one instance
+  // and endpoints - a book page and a series page never coexist, so one instance
   // serves both. Returns true while the widget is (or just became) live; false
   // when disabled, torn down, or the backend is absent. Call with a null host to
   // tear down (also clears the body-level reviews popup and the shared state).
@@ -1334,7 +1356,7 @@
       }
       return false;
     }
-    // Backend absent (404) or retries exhausted for this key: stay hidden quietly —
+    // Backend absent (404) or retries exhausted for this key: stay hidden quietly -
     // recreating the section would refetch in a loop.
     if (nhRt.itemId === key && (nhRt.gone || nhRt.dead)) {
       if (external) section.remove();
@@ -1410,7 +1432,7 @@
 
           // Desktop: under the cover in the left column. Mobile: above the description,
           // since the left column collapses. Runs every mutation cycle, so only move when
-          // the container is in the wrong parent — otherwise we'd thrash the DOM.
+          // the container is in the wrong parent - otherwise we'd thrash the DOM.
           if (metadataContainer.classList.contains('nh-metadata-container')) {
               const desktop = window.matchMedia('(min-width: 1024px)').matches;
               if (desktop && leftColumn) {
@@ -1449,7 +1471,7 @@
       if (detailsCoverContainer && !detailsCoverContainer.dataset.hdFixed) {
           const origImg = detailsCoverContainer.querySelector('img:not([data-nh-clone])');
           // Placeholder artwork (item has no cover file): there is nothing to
-          // upgrade — mark the container done anyway, or the page-reveal mask
+          // upgrade - mark the container done anyway, or the page-reveal mask
           // waits its full failsafe for a swap that can never happen.
           if (origImg && origImg.src && !origImg.src.includes('/api/items/')) {
               detailsCoverContainer.dataset.hdFixed = 'true';
@@ -1566,7 +1588,7 @@
           }
       }
 
-      // Edit Chapters / Manage Tracks buttons don't share a class — match by
+      // Edit Chapters / Manage Tracks buttons don't share a class - match by
       // text and force identical box sizing so one doesn't wrap taller than the other.
       const sectionButtons = Array.from(document.querySelectorAll('#item-page-wrapper button, #item-page-wrapper a')).filter(el => {
           const t = (el.textContent || '').trim();
@@ -1579,7 +1601,7 @@
           btn.style.justifyContent = 'center';
       });
 
-      // 4. Finished badge on the item-page cover — a frosted accent checkmark, top-right,
+      // 4. Finished badge on the item-page cover - a frosted accent checkmark, top-right,
       //    replacing the hidden native progress-bar stub. The bar stays in the DOM, so its
       //    bg-success class still tells us the finished state. Resilient: prefer [cy-id],
       //    fall back to the positional bottom-left bar sitting in the cover's .group wrapper.
@@ -1610,7 +1632,7 @@
   // the item-page redesign (and thus the page-reveal mask) lands as soon as Vue
   // mounts, instead of on the next 500ms poll. enhanceBookDetails is idempotent
   // Rebuild a plain-text description into paragraphs. Only when ABS rendered it
-  // as raw text (no element children) — an HTML description is left untouched.
+  // as raw text (no element children) - an HTML description is left untouched.
   // Vue owns this node: if it ever patches the text back in, the stamp no longer
   // matches and we simply rebuild, so the two cannot fight.
   function nhDescParagraphs() {

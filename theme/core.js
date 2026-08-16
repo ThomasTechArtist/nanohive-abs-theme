@@ -1,4 +1,4 @@
-/* NanoHive ABS — Core Theme & Player  v3.133.0  (injected build) */
+/* NanoHive ABS - Core Theme & Player  v3.137.0  (injected build) */
 
 (function () {
   'use strict';
@@ -16,7 +16,7 @@
   }
   // Mirror the Bearer token from ABS's own traffic (axios/XHR + fetch). Theme
   // features that call the API (ratings, hero) previously guessed where each ABS
-  // release keeps its token in the Vuex store — and the guesses go stale (observed:
+  // release keeps its token in the Vuex store - and the guesses go stale (observed:
   // a session where every store path was empty while ABS itself authenticated
   // fine). Whatever header ABS sends is by definition the right one.
   function nhSniffAuth(value) {
@@ -180,7 +180,7 @@ body.nh-pad-page #app-content .page { padding-top: 75px !important; }
 /* ============ SCROLLBAR STYLING ============ */
 /* scrollbar-width: ABS only thins ONE scroller natively, so e.g. the book-detail
    page (#item-page-wrapper) showed a fat default bar on Firefox. Thin the VERTICAL
-   scrollers only — horizontal shelf rows carry ABS's .no-scroll (hidden bar), and
+   scrollers only, horizontal shelf rows carry ABS's .no-scroll (hidden bar), and
    forcing a width there re-showed row scrollbars on Firefox (user report). */
 #bookshelf, .page, #item-page-wrapper, .overflow-y-auto, .overflow-x-auto, .overflow-y-scroll, .overflow-x-scroll { scrollbar-color: var(--nh-amber) transparent !important; }
 #bookshelf, .page, #item-page-wrapper, .overflow-y-auto, .overflow-y-scroll { scrollbar-width: thin !important; }
@@ -196,7 +196,7 @@ body.nh-pad-page #app-content .page { padding-top: 75px !important; }
 #nh-series-header::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
 /* Author pages: one coherent LEFT-anchored block. ABS centers the photo+bio as
-   a lone island while the shelves sit left — on ultrawides that reads as two
+   a lone island while the shelves sit left, on ultrawides that reads as two
    unrelated pages (user). Header aligns to the same gutter as the shelves,
    the bio stays at a readable measure, everything else spans the width. */
 body.nh-author-page #app-content .page > .max-w-6xl > .flex.justify-center { justify-content: flex-start !important; }
@@ -208,7 +208,7 @@ body.nh-author-page #app-content .page > .max-w-6xl > .flex > .grow { max-width:
   body.nh-author-page #app-content .page > .max-w-6xl > .flex.justify-center { justify-content: center !important; }
   body.nh-author-page #app-content .page > .max-w-6xl > .flex > div:first-child { margin-right: 0 !important; }
   /* the edit pencil shares the name's row, so centering the ROW leaves the name
-     itself sitting left of centre — pin the pencil and centre the name alone */
+     itself sitting left of centre, pin the pencil and centre the name alone */
   body.nh-author-page #app-content .page > .max-w-6xl > .flex > .grow > .flex.items-center { justify-content: center; position: relative; }
   body.nh-author-page #app-content .page > .max-w-6xl > .flex > .grow > .flex.items-center > h1 { flex: 1 1 auto; text-align: center; }
   body.nh-author-page #app-content .page > .max-w-6xl > .flex > .grow > .flex.items-center > :not(h1) { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
@@ -221,13 +221,12 @@ body.nh-author-page #app-content .page > .max-w-6xl > .flex > .grow { max-width:
   body.nh-author-page #app-content .page > .max-w-6xl > .flex h1 { font-size: 2.3rem; }
 }
 /* No-photo placeholder: ABS blows a decorative svg up to 140% with negative
-   margins — at ultrawide it reads as a BROKEN image. Tame it into a quiet
+   margins, at ultrawide it reads as a BROKEN image. Tame it into a quiet
    watermark inside a proper card. Real <img> photos are untouched. */
 body.nh-author-page .w-48 .bg-primary.overflow-hidden { border-radius: 14px !important; background-color: var(--nh-raised, #221e1a) !important; border: 1px solid var(--nh-hairline, rgba(255,255,255,0.08)); }
 body.nh-author-page .w-48 .bg-primary.overflow-hidden > svg { width: 100% !important; height: 100% !important; margin: 0 !important; opacity: 0.15 !important; }
 
-/* Toolbar item counts ("157 Series") are utility labels, not literary copy —
-   they were inheriting the global serif body font. */
+/* Toolbar item counts ("157 Series") are utility labels, not literary copy,    they were inheriting the global serif body font. */
 #toolbar > p { font-family: var(--nh-sans, system-ui) !important; font-size: 0.8rem !important; letter-spacing: 0.02em; color: var(--nh-muted-2, #9a9085) !important; }
 ::-webkit-scrollbar-thumb, *::-webkit-scrollbar-thumb { background: var(--nh-amber) !important; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover, *::-webkit-scrollbar-thumb:hover { background: var(--nh-amber-hover) !important; }
@@ -251,7 +250,7 @@ body.nh-author-page .w-48 .bg-primary.overflow-hidden > svg { width: 100% !impor
 
 /* App Name Alignment & Styling */
 #appbar a[href$="/"] { display: flex !important; align-items: center !important; height: 100% !important; text-decoration: none !important; }
-/* Custom logos are rarely square — never let ABS's fixed w/h box stretch them. */
+/* Custom logos are rarely square, never let ABS's fixed w/h box stretch them. */
 #appbar a[href$="/"] img { object-fit: contain !important; }
 #appbar h1 { font-family: var(--nh-serif); font-weight: 500; margin: 0 !important; margin-right: 1.5rem !important; margin-top: 2px !important; line-height: 1 !important; text-decoration: none !important; }
 #appbar a:hover, #appbar a:hover h1 { text-decoration: none !important; }
@@ -261,7 +260,7 @@ body.nh-author-page .w-48 .bg-primary.overflow-hidden > svg { width: 100% !impor
 }
 [data-v-7254587f] input:focus { background-color: rgba(255, 255, 255, 0.1) !important; border-color: var(--nh-amber) !important; }
 
-/* CSS-Only Logo Colorizer — class added by enhancements.js to the specific <a> tag */
+/* CSS-Only Logo Colorizer, class added by enhancements.js to the specific <a> tag */
 .nh-logo-colorized img { display: none !important; opacity: 0 !important; }
 .nh-logo-colorized::before {
   content: ''; display: inline-block;
@@ -285,16 +284,16 @@ body.nh-author-page .w-48 .bg-primary.overflow-hidden > svg { width: 100% !impor
 /* LIBRARY / SERIES PAGE TOOLBAR (FROSTED) */
 /* Scoped to <body>, NOT to a class on #toolbar itself. ABS replaces the #toolbar
    ELEMENT on filter/sort/library changes, and manageLayout only re-classes it on a
-   200ms poll — so the fresh toolbar spent up to 200ms with no .nh-frosted-toolbar,
+   200ms poll, so the fresh toolbar spent up to 200ms with no .nh-frosted-toolbar,
    i.e. without the position:fixed below. It dropped into a 0x0 wrapper and the whole
    page jumped, then jumped back: the "flickers once when I filter or sort" report.
    <body> is never replaced, so a new toolbar is styled correctly on its first frame. */
 /* Side padding: flat 32px (stock ABS uses px-8 = 32px), so the item count and the
-   filter/sort controls hug the screen edges at EVERY width — the old centered-band
+   filter/sort controls hug the screen edges at EVERY width, the old centered-band
    formula (50vw - 800px) pushed them absurdly inward on ultrawide monitors. */
 body.nh-has-toolbar:not(.nh-home) #toolbar {
   position: fixed !important;
-  /* Flush with the bottom of the appbar band — see nhMeasureAppbar. A 1px gap here
+  /* Flush with the bottom of the appbar band, see nhMeasureAppbar. A 1px gap here
      is a strip of unblurred artwork between two frosted panels, and very visible. */
   top: var(--nh-appbar-h, 64px) !important;
   left: 80px !important;
@@ -315,7 +314,7 @@ body.nh-has-toolbar:not(.nh-home) #toolbar {
 }
 
 /* Unify library toolbar filter/sort controls with the top-menu search/selector pill style.
-   :not([role=menuitem]) — the toolbar kebab's dropdown ROWS are also <button>s nested in
+   :not([role=menuitem]), the toolbar kebab's dropdown ROWS are also <button>s nested in
    #toolbar; without the guard they inherit the pill border/background and look nothing
    like every other context menu (B4). */
 body.nh-has-toolbar:not(.nh-home) #toolbar button:not([role="menuitem"]) {
@@ -333,7 +332,7 @@ body.nh-has-toolbar:not(.nh-home) #toolbar button:not([role="menuitem"]):hover {
 }
 /* A filter dropdown is TWO sibling buttons: the trigger, and a clear-✕ absolutely
    overlaying its right ~44px. ABS only pads the trigger by 12px, so a long filter
-   name ("Gatunek: Action & Adventure") runs underneath that ✕ — and our pill rule
+   name ("Gatunek: Action & Adventure") runs underneath that ✕, and our pill rule
    was also painting the overlay ✕ as a pill. Exclude absolutely-positioned buttons
    from the pill styling, and give a trigger that has such a sibling its room back. */
 #toolbar div:has(> button.absolute.right-0) > button:not(.absolute) {
@@ -377,14 +376,14 @@ body.nh-home #toolbar.nh-toolbar-scrolled {
     body.nh-has-toolbar:not(.nh-home) #toolbar, body.nh-home #toolbar { left: 0 !important; }
 }
 
-/* ============ DROPDOWN / CONTEXT MENUS — unified NanoHive surface ============ */
+/* ============ DROPDOWN / CONTEXT MENUS, unified NanoHive surface ============ */
 /* EVERY ABS popover box shares Tailwind border-black-200 + shadow-lg, regardless of role
    or bg colour: ContextMenuDropdown (div role=menu), Sort/Filter selects, GlobalSearch
    (bg-bg), the library switcher (bg-primary), AND the book-card MoreMenu (plain divs, NO
-   role=menu — which is exactly why the card three-dot kept its stock look). Match that
+   role=menu, which is exactly why the card three-dot kept its stock look). Match that
    shared signature so all of them are one surface.
-   OPAQUE, not translucent: backdrop-filter blur is unreliable here — ABS wraps cards in
-   transformed ancestors that stop it painting the page behind — so a see-through bg only
+   OPAQUE, not translucent: backdrop-filter blur is unreliable here, ABS wraps cards in
+   transformed ancestors that stop it painting the page behind, so a see-through bg only
    showed sharp covers ("too transparent"). Near-solid frosted-dark; blur is a bonus only
    where the browser honours it. */
 .border-black-200.shadow-lg {
@@ -399,8 +398,7 @@ body.nh-home #toolbar.nh-toolbar-scrolled {
        version renames the item classes below (material-symbols icons keep their own font). */
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
 }
-/* Items: every menu row (INCLUDING the roleless MoreMenu rows) carries hover:bg-white/5 —
-   the one hook common to all four components. Compact SANS so the theme's serif body font
+/* Items: every menu row (INCLUDING the roleless MoreMenu rows) carries hover:bg-white/5,    the one hook common to all four components. Compact SANS so the theme's serif body font
    can't widen a label onto a second line ("Show Subtitles"). */
 .border-black-200.shadow-lg [class*="hover:bg-white"],
 .border-black-200.shadow-lg [role="menuitem"] {
@@ -418,7 +416,7 @@ body.nh-home #toolbar.nh-toolbar-scrolled {
 /* Selected sort/filter row → amber tint (its text-yellow-400 already maps to --nh-amber). */
 .border-black-200.shadow-lg [role="menuitem"].text-yellow-400 { background-color: var(--nh-amber-tint) !important; }
 /* ContextMenuDropdown hardcodes an inline width per call site (192px on the book page,
-   a cramped 110px on toolbars and file/chapter tables) — with our nowrap labels the
+   a cramped 110px on toolbars and file/chapter tables), with our nowrap labels the
    narrow ones clipped and looked like a different menu. min-width beats inline width,
    so every menu grows to fit its own labels and they all read as ONE component.
    Scoped to [role="menu"] boxes: the native globalSearchMenu shares the border/shadow
@@ -427,20 +425,19 @@ body.nh-home #toolbar.nh-toolbar-scrolled {
 .border-black-200.shadow-lg.z-50 { min-width: max-content !important; z-index: 50 !important; }
 /* Kebab-menu rows (ContextMenuDropdown buttons + roleless card MoreMenu rows all carry
    hover:bg-white/5): identical geometry everywhere. Sort/filter listbox rows keep their
-   native padding — they reserve right space for the selected-check icon. */
+   native padding, they reserve right space for the selected-check icon. */
 .border-black-200.shadow-lg [class*="hover:bg-white"] { padding: 7px 11px !important; }
-/* Submenu Back rows carry pl-9 to clear their ABSOLUTE arrow_left container —
-   the unified padding crushed it and the arrow painted over the "B" (Pawel).
+/* Submenu Back rows carry pl-9 to clear their ABSOLUTE arrow_left container,    the unified padding crushed it and the arrow painted over the "B" (Pawel).
    Preserve the clearance wherever ABS asked for it. */
 .border-black-200.shadow-lg [class*="hover:bg-white"][class*="pl-9"] { padding-left: 36px !important; }
-/* One row typography for BOTH toolbar dropdowns — ABS ships the filter list at
+/* One row typography for BOTH toolbar dropdowns, ABS ships the filter list at
    text-sm and the sort list at text-xs, which read as two different menus. */
 #toolbar .w-36 ul li:not(.nh-lf-mhead), #toolbar .w-36 ul li:not(.nh-lf-mhead) span:not(.material-symbols) { font-size: 0.8rem !important; }
-/* Our value submenus (author/genre/… lists) go COMPACT — they are long. */
+/* Our value submenus (author/genre/… lists) go COMPACT, they are long. */
 #toolbar .w-36 ul.nh-lf-subopen .nh-lf-mi { padding: 4px 10px 4px 11px !important; }
 #toolbar .w-36 ul.nh-lf-subopen .nh-lf-mi .nh-lf-mtxt { font-size: 0.76rem !important; }
 /* ABS's OWN value lists (its Genre/Author/Narrator pages) match ours. A native
-   submenu page is identified by its Back row — the only li carrying pl-9 — via
+   submenu page is identified by its Back row, the only li carrying pl-9, via
    :has(); nhLfInjectMenus also tags it .nh-lf-natsub as a belt-and-braces hook.
    The Back row keeps its 36px clearance from the rule above. */
 #toolbar .w-36 ul:has(> li[class*="pl-9"]) > li,
@@ -509,7 +506,7 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
 /* Finished books on shelves: the 100%-width bar carries no information, so hide it and
    mark the card with a small check badge (mirrors the detail-page read toggle).
    Cards are tagged .nh-finished by nhTagFinished() in enhancements.js, which inspects
-   [cy-id="progressBar"] directly — resilient to ABS class-chain changes (h-1e vs h-1.5). */
+   [cy-id="progressBar"] directly, resilient to ABS class-chain changes (h-1e vs h-1.5). */
 [id^="cover-area-"].nh-finished [cy-id="progressBar"], [cy-id="card"].nh-finished [cy-id="progressBar"] { display: none !important; }
 /* The badge was a dark translucent disc with a thin accent tick, which readers
    kept missing against busy artwork. Inverted and enlarged: a solid fill with a
@@ -518,7 +515,7 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
    overridable so the colour is one edit rather than four. */
 [id^="cover-area-"].nh-finished::after, [cy-id="card"].nh-finished::after {
   /* U+2714 HEAVY CHECK MARK, written as an escape so the source stays readable,
-     followed by U+FE0E (text presentation selector) — bare U+2714 is rendered as
+     followed by U+FE0E (text presentation selector), bare U+2714 is rendered as
      a colour emoji by Android and some Windows fonts, which would ignore the
      badge's own colours. font-variant-emoji says the same thing to newer engines. */
   content: '\\2714\\FE0E'; font-variant-emoji: text;
@@ -533,12 +530,12 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
 
 /* ---- ABS's STANDARD (skeuomorphic) home view -------------------------------
    ABS ships two home layouts. In DETAIL view each shelf is a .bookshelf-row that
-   CONTAINS its own <h2>, which the rule above styles. In STANDARD view — the one
-   a user reported from the field — the strip is .bookshelf-row.categorizedBookshelfRow
+   CONTAINS its own <h2>, which the rule above styles. In STANDARD view, the one
+   a user reported from the field, the strip is .bookshelf-row.categorizedBookshelfRow
    and the heading lives in a SIBLING placard: a small plate on a wooden shelf edge,
    drawn BELOW its books. So the rule above matched nothing there, the native titles
    kept ABS's plate (0.9em, and it scales with the cover-size widget) while our own
-   injected rows drew 1.55rem serif headings above their books — "the titles are
+   injected rows drew 1.55rem serif headings above their books, "the titles are
    inconsistent in font and layout and size", which is exactly what it looked like.
    The whole theme is a restyle, so the fix is to bring this view into it rather than
    dress our rows up as wooden shelves: the plate loses its chrome, the shelf edge and
@@ -547,10 +544,10 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
    and shelf-hiding behave the same in both.
    Scoped by :has(> .bookshelf-row.categorizedBookshelfRow) so it cannot reach DETAIL
    view; a browser without :has() simply keeps stock ABS. The left indent is copied
-   from the strip in JS (nhStdShelfTitles) — it is an em value ABS computes.
+   from the strip in JS (nhStdShelfTitles), it is an em value ABS computes.
    NOTE the display below is deliberately NOT !important: Hide Homepage Shelves hides a
    shelf with an inline display:none, and an !important stylesheet rule outranks a plain
-   inline style — with it, no shelf could be hidden in this view at all. The selector is
+   inline style, with it, no shelf could be hidden in this view at all. The selector is
    specific enough (id + :has) to win on its own. */
 #bookshelf div:has(> .bookshelf-row.categorizedBookshelfRow) { display: flex; flex-direction: column; }
 #bookshelf div:has(> .bookshelf-row.categorizedBookshelfRow) > .bookshelf-row { order: 2; }
@@ -564,10 +561,9 @@ div.fixed.right-4.z-50 > div span.material-symbols:hover { color: var(--nh-amber
 /* Settings -> General: ABS's two "use bookshelf view" switches are hidden, because the
    theme owns both layouts and forces them to the detail view (nhForceDetailView). Left
    available they would let an admin switch the library grid to a view that has no card
-   captions — and the caption line is where our rating badges live, so the ratings would
+   captions, and the caption line is where our rating badges live, so the ratings would
    vanish from every tile with no explanation.
-   Matched on ABS's own element ids, which are language-independent (the labels are not —
-   see the shelf-hiding fix). The row is div.flex.items-center.py-2 ; :has() matches
+   Matched on ABS's own element ids, which are language-independent (the labels are not,    see the shelf-hiding fix). The row is div.flex.items-center.py-2 ; :has() matches
    ancestors too, so the class list has to be the row's exact one or the whole settings
    card would disappear. */
 div.flex.items-center.py-2:has(> div > p > #settings-home-page-uses-bookshelf),
@@ -590,7 +586,7 @@ div.flex.items-center.py-2:has(> div > p > #settings-library-uses-bookshelf) { d
 /* Our headings carry a bottom margin; the wrapper owns it now so the buttons sit
    on the title's line rather than being pushed below it. */
 .nh-sa-head > h2.nh-rs-heading, .nh-sa-head > h2.nh-rf-heading { margin-bottom: 0 !important; }
-#nh-recent-series-row .nh-sa-head, #nh-rate-finished-row .nh-sa-head { margin: 0 0 1rem; }
+#nh-recent-series-row .nh-sa-head, :is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-sa-head { margin: 0 0 1rem; }
 
 /* Drawer and backdrop are built in JS at every viewport, but all their styling lives in
    the max-width:640px block. Above that they'd otherwise be unstyled divs in normal flow,
@@ -614,7 +610,7 @@ div.flex.items-center.py-2:has(> div > p > #settings-library-uses-bookshelf) { d
 html:not(.nh-stock-series) [cy-id="card"][id^="series-card-"] { width: var(--nh-series-w, 196px) !important; }
 html:not(.nh-stock-series) [cy-id="covers-area"] { height: var(--nh-series-w, 196px) !important; overflow: visible !important; }
 html:not(.nh-stock-series) [cy-id="item"] { overflow: visible !important; }
-/* :not(.nh-sc-tile) — the shorthand's !important would wipe the custom series
+/* :not(.nh-sc-tile), the shorthand's !important would wipe the custom series
    cover's inline background-image (A1). EVERY themed child injected into
    covers-area needs its own :not() here or this rule silently erases it: it has
    already eaten the custom cover tile (A1), the rating strip's gradient (.nh-cr)
@@ -628,7 +624,7 @@ html:not(.nh-stock-series) [cy-id="covers-area"] [id^="group-cover-"] { overflow
    corner -- which is most of them, and all of the generated demo covers -- makes
    the stack read as two drop shadows rather than as a stack of books. A hairline
    ring plus a hard edge shadow separates the layers regardless of the artwork. */
-/* No hairline ring on the deck covers (Pawel) — just the drop shadow. */
+/* No hairline ring on the deck covers (Pawel), just the drop shadow. */
 html:not(.nh-stock-series) [cy-id="covers-area"] [id^="group-cover-"] > div { left: 0 !important; top: 0 !important; width: var(--nh-series-cover, 168px) !important; height: var(--nh-series-cover, 168px) !important; border-radius: 12px !important; overflow: hidden !important; box-shadow: 0 10px 24px rgba(0,0,0,0.42) !important; transition: filter .2s ease, box-shadow .2s ease !important; }
 html:not(.nh-stock-series) [cy-id="card"][id^="series-card-"]:hover [id^="group-cover-"] > div:nth-child(1) { filter: brightness(0.7) !important; box-shadow: 0 10px 24px rgba(0,0,0,0.42) !important; }
 html:not(.nh-stock-series) [cy-id="covers-area"] [id^="group-cover-"] > div img { border-radius: 12px !important; }
@@ -639,10 +635,9 @@ html:not(.nh-stock-series) [cy-id="covers-area"] [id^="group-cover-"] > div:nth-
 /* Standard 1.6:1 libraries: stacked tiles go portrait (heights x1.6, widths unchanged) */
 html:not(.nh-stock-series).nh-covers-std [cy-id="covers-area"] { height: calc(var(--nh-series-w, 196px) * 1.6) !important; }
 html:not(.nh-stock-series).nh-covers-std [cy-id="covers-area"] [id^="group-cover-"] > div { height: calc(var(--nh-series-cover, 168px) * 1.6) !important; }
-/* Custom series cover (A1): the uploaded image becomes the FRONT of the stack —
-   it sits exactly on the c1 slot (same size/position, one z higher) so books
+/* Custom series cover (A1): the uploaded image becomes the FRONT of the stack,    it sits exactly on the c1 slot (same size/position, one z higher) so books
    #1/#2 still peek out behind and custom series read like stock ones. Hidden in
-   stock mode — that mode means "give me ABS's native look". */
+   stock mode, that mode means "give me ABS's native look". */
 .nh-sc-tile { position: absolute; top: 0; left: 0; width: var(--nh-series-cover, 168px); height: var(--nh-series-cover, 168px); border-radius: 12px; background-position: center; background-size: cover; background-color: var(--nh-raised); box-shadow: 0 10px 24px rgba(0,0,0,0.42); z-index: 4; transition: filter .2s ease; }
 html.nh-covers-std .nh-sc-tile { height: calc(var(--nh-series-cover, 168px) * 1.6); }
 html:not(.nh-stock-series) [id^="series-card-"].nh-has-custom:hover .nh-sc-tile { filter: brightness(0.7); }
@@ -653,16 +648,16 @@ html.nh-stock-series .nh-sc-tile { display: none !important; }
 html.nh-stock-series [id^="series-card-"] [cy-id="hoveringDisplayTitle"] { display: flex !important; background: rgba(0,0,0,0.3) !important; }
 html.nh-stock-series [id^="series-card-"] [cy-id="hoveringDisplayTitle"] > * { visibility: hidden !important; }
 [cy-id="seriesProgressBar"] { display: none !important; }
-/* Series completion badge (#13) — the replacement for the native bar hidden just
+/* Series completion badge (#13), the replacement for the native bar hidden just
    above. Anchored to the top-right corner of the FRONT cover of the stack, which
    sits at left 0 / top 0 and is --nh-series-cover wide, so the corner is that
    width minus a small inset. z-index clears the deck (1-4) and ABS's own cover
-   wrapper, which is Tailwind z-10 — a lower value only shows during the cover's
+   wrapper, which is Tailwind z-10, a lower value only shows during the cover's
    fade-in, which is exactly how the rating badge first shipped broken.
    Green = every book finished, amber = started but not finished. A series nobody
    has touched gets no badge at all. */
 /* FIXED colours, deliberately NOT var(--nh-amber). The "started" state used the
-   accent, which is whatever colour the user picked — on a warm or greenish accent
+   accent, which is whatever colour the user picked, on a warm or greenish accent
    the two states became the same badge at two brightnesses (Pawel). Finished and
    started mean different things, so they get their own hues and keep them whatever
    the theme is. Green and orange are ~120 degrees apart in hue and differ in
@@ -710,49 +705,47 @@ html.nh-covers-std .categorizedBookshelfRow [cy-id="title"] + p { font-size: 0.7
 /* ---- "Rate finished" home row ---------------------------------------------
    Books finished but never rated. Sized off the same em-based scale ABS uses for
    its own shelves so it sits in the rhythm of the page rather than next to it. */
-#nh-rate-finished-row { width: 100%; box-sizing: border-box; margin: 1.5em 0; }
-#nh-rate-finished-row .nh-rf-heading { font-family: var(--nh-serif), 'Spectral', serif !important; font-weight: 500; font-size: 1.55rem; letter-spacing: -0.01em; color: var(--nh-text-1, #f4eee2); margin: 0 0 14px; }
-/* match ABS's own shelf headings on phones (16.8px there vs our fixed 24.8px —
-   the row title read as a different species on mobile, Pawel) */
-@media (max-width: 640px) { #nh-rate-finished-row .nh-rf-heading { font-size: 1.05rem; margin-bottom: 10px; } }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) { width: 100%; box-sizing: border-box; margin: 1.5em 0; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-heading { font-family: var(--nh-serif), 'Spectral', serif !important; font-weight: 500; font-size: 1.55rem; letter-spacing: -0.01em; color: var(--nh-text-1, #f4eee2); margin: 0 0 14px; }
+/* match ABS's own shelf headings on phones (16.8px there vs our fixed 24.8px,    the row title read as a different species on mobile, Pawel) */
+@media (max-width: 640px) { :is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-heading { font-size: 1.05rem; margin-bottom: 10px; } }
 
 /* ---- Reported problems on the ACCOUNT page (admins) ----------------------
-   The admin end of "Report a problem" lives under the account settings — the
+   The admin end of "Report a problem" lives under the account settings, the
    appbar badge's button leads exactly here. List rows reuse .nh-rp-*. */
 #nh-acc-reports { margin: 18px 0 22px; padding: 20px 22px 22px; background: var(--nh-raised, #221e1a); border: 1px solid var(--nh-hairline, rgba(255,255,255,0.06)); border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.30); }
 #nh-acc-reports .nh-acc-rp-t { font-family: var(--nh-serif), 'Spectral', serif; font-size: 1.15rem; font-weight: 600; color: var(--nh-amber, #e0c27a); margin: 0 0 6px; }
 #nh-acc-reports .nh-acc-rp-hint { font-family: var(--nh-sans, system-ui); font-size: 0.78rem; color: var(--nh-muted-2, #9a9085); margin: 0 0 14px; }
-#nh-rate-finished-row .nh-rf-scroll { display: flex; flex-wrap: nowrap; gap: 16px; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; scrollbar-width: none; }
-#nh-rate-finished-row .nh-rf-scroll::-webkit-scrollbar { display: none; height: 0; width: 0; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-scroll { display: flex; flex-wrap: nowrap; gap: 16px; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; scrollbar-width: none; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-scroll::-webkit-scrollbar { display: none; height: 0; width: 0; }
 /* Tile size tracks the cover-size control: --nh-rf-cw/--nh-rf-fs are measured off
    a real ABS cover and title each layout (nhRateFinishedSize), exactly as the
    Recent Series row does. They were hardcoded 154px/0.82rem, which is why this
    row alone ignored the +/- button and sat at a different size to everything
    around it. The fallbacks only apply before the first measurement lands. */
-#nh-rate-finished-row .nh-rf-card { flex: 0 0 auto; width: var(--nh-rf-cw, 154px); text-decoration: none; cursor: pointer; }
-#nh-rate-finished-row .nh-rf-cover { position: relative; width: var(--nh-rf-cw, 154px); height: var(--nh-rf-cw, 154px); border-radius: var(--nh-tile-r, 14px); background-position: center; background-size: cover; background-color: var(--nh-raised, #221e1a); box-shadow: var(--nh-tile-sh, 0 10px 24px rgba(0,0,0,0.40)); transition: filter .18s ease, box-shadow .18s ease; }
-html.nh-covers-std #nh-rate-finished-row .nh-rf-cover { height: calc(var(--nh-rf-cw, 154px) * 1.6); }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card { flex: 0 0 auto; width: var(--nh-rf-cw, 154px); text-decoration: none; cursor: pointer; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-cover { position: relative; width: var(--nh-rf-cw, 154px); height: var(--nh-rf-cw, 154px); border-radius: var(--nh-tile-r, 14px); background-position: center; background-size: cover; background-color: var(--nh-raised, #221e1a); box-shadow: var(--nh-tile-sh, 0 10px 24px rgba(0,0,0,0.40)); transition: filter .18s ease, box-shadow .18s ease; }
+html.nh-covers-std :is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-cover { height: calc(var(--nh-rf-cw, 154px) * 1.6); }
 /* Tiles DARKEN on hover, they never lift (house rule). */
-#nh-rate-finished-row .nh-rf-card:hover .nh-rf-cover { filter: brightness(0.7); }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card:hover .nh-rf-cover { filter: brightness(0.7); }
 /* Saved: collapse the card out of the row instead of it just vanishing. */
-#nh-rate-finished-row .nh-rf-card { transition: opacity .24s ease, transform .24s ease; }
-#nh-rate-finished-row .nh-rf-card.nh-rf-done { opacity: 0; transform: scale(0.94); pointer-events: none; }
-#nh-rate-finished-row .nh-rf-title { font-family: var(--nh-serif), 'Spectral', serif; font-size: var(--nh-rf-fs, 0.82rem); color: var(--nh-text-2, #d8cfc2); margin: 8px 0 0; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card { transition: opacity .24s ease, transform .24s ease; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card.nh-rf-done { opacity: 0; transform: scale(0.94); pointer-events: none; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-title { font-family: var(--nh-serif), 'Spectral', serif; font-size: var(--nh-rf-fs, 0.82rem); color: var(--nh-text-2, #d8cfc2); margin: 8px 0 0; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* The prompt under the title is what tells you the tile is a rating control --
    the row used to say so only by revealing stars on hover, which said nothing at
    all on a phone. Tapping the tile opens the rate sheet (nhRfSheet). */
-#nh-rate-finished-row .nh-rf-cta { display: flex; align-items: center; gap: 0.3em; font-family: var(--nh-sans, system-ui); font-size: calc(var(--nh-rf-fs, 0.82rem) * 0.92); color: var(--nh-muted-2, #9a9085); margin: 3px 0 0; }
-#nh-rate-finished-row .nh-rf-cta .nh-rt-stars { font-size: 1em; letter-spacing: 1px; }
-#nh-rate-finished-row .nh-rf-card:hover .nh-rf-cta { color: var(--nh-amber, #e0c27a); }
-#nh-rate-finished-row .nh-rf-card:hover .nh-rf-cta .nh-rt-stars { color: rgba(224,194,122,0.45); }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-cta { display: flex; align-items: center; gap: 0.3em; font-family: var(--nh-sans, system-ui); font-size: calc(var(--nh-rf-fs, 0.82rem) * 0.92); color: var(--nh-muted-2, #9a9085); margin: 3px 0 0; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-cta .nh-rt-stars { font-size: 1em; letter-spacing: 1px; }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card:hover .nh-rf-cta { color: var(--nh-amber, #e0c27a); }
+:is(#nh-rate-finished-row, #nh-mark-finished-row) .nh-rf-card:hover .nh-rf-cta .nh-rt-stars { color: rgba(224,194,122,0.45); }
 /* Rate sheet: the ratings-popup chrome (book-details.js injects it on every page)
    with one oversized star row. Sized so a HALF star -- the smallest thing you can
    aim at -- clears 24px: 3.3rem measures ~250px across, /10 = 25px each. The old
    strip on the tile put half-stars at 11px, which was never a thumb target. The
    250px has to survive a 360px phone too, hence the reduced box padding below. */
 /* Everything in the sheet sits on ONE centered axis (Pawel): cover on top,
-   title and author centered beneath it, then the stars, value and buttons —
-   the old cover-left/text-right row was the only left-aligned block in an
+   title and author centered beneath it, then the stars, value and buttons,    the old cover-left/text-right row was the only left-aligned block in an
    otherwise centered dialog. */
 #nh-rf-sheet .nh-rf-sheet-cover { width: 96px; height: 96px; border-radius: 12px; background-size: cover; background-position: center; background-color: var(--nh-raised, #221e1a); flex: none; }
 #nh-rf-sheet .nh-rf-sheet-top { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; margin: 8px 0 14px; }
@@ -844,7 +837,7 @@ html.nh-covers-std #nh-rate-finished-row .nh-rf-cover { height: calc(var(--nh-rf
    only on the listing page, where there is room for it. */
 /* An author with no photo gets a SILHOUETTE, not a bare initial: a lone letter in
    a circle read as an empty ellipse (Pawel). The disc is ::before, the figure is
-   ::after painted as a mask so it takes the accent colour — same technique as the
+   ::after painted as a mask so it takes the accent colour, same technique as the
    book-site logos. */
 #bookshelf a[href*="/author/"] [cy-id="imageArea"][data-nh-ini]::before {
   content: "";
@@ -918,7 +911,7 @@ body #nh-custom-progress > div:first-child > div {
 /* Home <-> item mode: gradients can't transition, so BOTH overlays exist stacked and
    crossfade via opacity (::after = home tint, ::before = lighter item tint); the layer
    brightness change rides the filter transition above. Previously the gradient and
-   filter swapped instantly — a visible snap when opening a book. */
+   filter swapped instantly, a visible snap when opening a book. */
 #nh-home-bg::after { content: ''; position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(var(--nh-bg-rgb), 0.5) 0%, rgba(var(--nh-bg-rgb), 0.8) 55%, rgb(var(--nh-bg-rgb)) 100%) !important; opacity: 1; transition: opacity 1.2s ease !important; }
 #nh-home-bg::before { content: ''; position: absolute; inset: 0; z-index: 2; background: linear-gradient(180deg, rgba(var(--nh-bg-rgb), 0.3) 0%, rgba(var(--nh-bg-rgb), 0.6) 55%, rgb(var(--nh-bg-rgb)) 100%) !important; opacity: 0; transition: opacity 1.2s ease !important; }
 body.nh-cinematic-item #nh-home-bg .nh-bg-layer { filter: blur(55px) brightness(0.62) saturate(1.3) !important; }
@@ -970,7 +963,7 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
    calc(100% - 150px), to stop a long Find Chapters list pushing its buttons off
    screen. It also hit the editor's own form area, which cost 70px (#19), and the
    exclusion added in 2.1.2 named #formWrapper specifically. That id does not
-   exist in every ABS layout — niblem85's dialog has no #formWrapper at all — so on
+   exist in every ABS layout, niblem85's dialog has no #formWrapper at all, so on
    those the cap applied to the main form scroller and stole 150px, which is the
    band he kept reporting.
    It was never needed anyway: the panel clamp below already keeps the buttons on
@@ -1006,14 +999,14 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
 .modal #match-wrapper > form { flex: 0 0 auto !important; }
 .modal #match-wrapper > .matchListWrapper,
 .modal #match-wrapper > .h-full:not(.absolute) { flex: 1 1 auto !important; min-height: 0 !important; max-height: none !important; height: auto !important; }
-/* GitHub #14 — the item editor's Save buttons are unreachable on a short viewport.
+/* GitHub #14, the item editor's Save buttons are unreachable on a short viewport.
    ABS's Modal component sizes its panel with INLINE styles computed when the modal
    opens (height: innerHeight - 150; margin-top: 75px) and never re-clamps them, so the
    panel keeps a height the viewport no longer has. Nothing scrolls back to the footer:
    the panel is inside a position:fixed overlay, and the only scroller (#formWrapper)
    sits ABOVE the button row. Reproduced identically on unthemed ABS, so this is an
    upstream flaw we bound rather than a regression of ours.
-   Fixing it in CSS costs one rule and covers every trigger — browser or OS zoom, a
+   Fixing it in CSS costs one rule and covers every trigger, browser or OS zoom, a
    resized window, a bookmarks bar appearing, a rotated tablet. max-height beats the
    inline height, #formWrapper's own max-height is a PERCENTAGE of the panel so the
    form area shrinks with it, and the footer stays on screen.
@@ -1030,7 +1023,7 @@ input.nh-er-color { width: 36px; height: 26px; border: 1px solid rgba(255,255,25
   .modal > div[style*="min-height"][style*="margin-top"] { margin-top: 46px !important; max-height: calc(95vh - 56px) !important; max-height: calc(100dvh - 66px) !important; }
 }
 /* Description rich-text editor (Trix). ABS ships it neutral-gray (rgb(35,35,35)) which
-   clashes with the warm theme — recolour the editor surface and its toolbar. Use
+   clashes with the warm theme, recolour the editor surface and its toolbar. Use
    background-COLOR (not the shorthand) on buttons so their icon background-image survives.
    NOT scoped to .modal: ABS lazy-loads Trix's stylesheet with the edit-modal chunk, and the
    .modal ancestor never matched, so this whole block was dead CSS. Trix only ever renders in
@@ -1076,7 +1069,7 @@ button[role="checkbox"] { border-color: var(--nh-hairline) !important; }
 .page.streaming, #app-content .page.streaming, #ab-page-wrapper.streaming { height: 100% !important; max-height: none !important; padding-bottom: 0px !important; box-sizing: border-box !important; }
 
 /* Bottom clearance so the LAST item can scroll clear of the floating player (fixed,
-   bottom:24px, ~110px tall). It MUST go on the real scroll containers — never on the
+   bottom:24px, ~110px tall). It MUST go on the real scroll containers, never on the
    .page wrapper: .page is overflow-hidden + h-full, so padding there only shrinks the
    inner scroller and leaves a permanent empty "lip". As scroller padding it lives inside
    the scroll flow, so it's only ever seen once you scroll to the very bottom. Home/library
@@ -1086,7 +1079,7 @@ body:has(#mediaPlayerContainer) #item-page-wrapper { padding-bottom: var(--nh-pl
 /* …and the two page-level scrollers that were missing it: the series header
    COLUMN on desktop (its description ran 26px under the player) and the plain
    page wrapper behind /account and /config (183px under). The item page is
-   excluded — #item-page-wrapper above already reserves its own clearance, and
+   excluded, #item-page-wrapper above already reserves its own clearance, and
    padding both would double it. Phones are covered by .nh-series-cols instead,
    hence the desktop-only guard on the header. */
 body:has(#mediaPlayerContainer) #page-wrapper:not(:has(#item-page-wrapper)),
@@ -1097,7 +1090,7 @@ body:has(#mediaPlayerContainer) #nh-cols-grid { padding-bottom: var(--nh-player-
 
 /* Series page: the grid must be able to scroll AT LEAST as far as the header
    overflows, or a short shelf under a long description leaves the header's
-   tail unreachable (user report). A real ::after spacer, not padding — Chrome
+   tail unreachable (user report). A real ::after spacer, not padding, Chrome
    ignores a scroll container's bottom padding past overflowing content. */
 body.nh-series-page #bookshelf.nh-with-series-header::after { content: ''; display: block; width: 1px; height: var(--nh-sp-extra, 0px); }
 
@@ -1177,8 +1170,7 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
     body.nh-menu-open #nh-menu-backdrop { display: block; }
 
     /* Hero: flex row default-stretches all slides to the tallest one, but the
-       banner inside each slide doesn't fill that stretched height on its own —
-       that gap is both the "shadow on short slides" and the phantom scroll
+       banner inside each slide doesn't fill that stretched height on its own,        that gap is both the "shadow on short slides" and the phantom scroll
        space below the carousel on the home page. Same bug, one fix. */
     #nh-hero-track { align-items: stretch !important; }
     .nh-hero-slide { display: flex !important; }
@@ -1201,11 +1193,10 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
     #appbar h1 { display: none !important; }
     .nh-hide-upload-mobile { display: none !important; }
 
-    /* Drawer height already uses 100dvh at the source (see #nh-mobile-drawer above) —
-       100vh includes the mobile address-bar strip, causing "one more swipe to
+    /* Drawer height already uses 100dvh at the source (see #nh-mobile-drawer above),        100vh includes the mobile address-bar strip, causing "one more swipe to
        reach the true bottom" on any page with a 100vh-sized fixed element. */
 
-    /* Welcome heading — scoped to #bookshelf so book detail titles aren't touched */
+    /* Welcome heading, scoped to #bookshelf so book detail titles aren't touched */
     #bookshelf h1, #bookshelf .text-3xl, #bookshelf .text-4xl, #bookshelf .text-5xl { font-size: 1.3rem !important; line-height: 1.15 !important; }
     /* #bookshelf .categoryPlacard h2 is the STANDARD-view shelf title; it has to step
        down with its DETAIL-view twin or the two views disagree on a phone. */
@@ -1228,7 +1219,7 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
        made the carousel touch the right screen edge while keeping the left gutter. */
     #nh-hero-container { width: 100% !important; }
     .nh-hero-banner { flex-direction: column !important; align-items: center !important; text-align: center !important; padding: clamp(20px, 4vw, 40px) clamp(18px, 4vw, 44px) !important; gap: 0 !important; border-radius: 18px !important; }
-    /* cover on top — real portrait aspect, responsive, never cropped */
+    /* cover on top, real portrait aspect, responsive, never cropped */
     .nh-hero-banner > div:nth-child(4) { order: 1 !important; width: auto !important; height: auto !important; margin: 0 auto clamp(14px, 2.5vw, 22px) !important; flex-shrink: 0 !important; }
     /* --nh-hero-cover-h: set by nhHeroFit on phones so the whole banner fits
        the first screen; the fallback is the stock responsive clamp. */
@@ -1275,7 +1266,7 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
     .nh-hero-banner div.nh-hero-desc { display: none !important; }
     .nh-hero-banner > div:nth-child(4) img { height: var(--nh-hero-cover-h, clamp(220px, 60vw, 330px)) !important; max-width: 84vw !important; }
     .nh-hero-author { margin-bottom: 14px !important; font-size: 0.95rem !important; }
-    /* progress bar first, Continue full-width under it (Pawel) — explicit
+    /* progress bar first, Continue full-width under it (Pawel), explicit
        order on the progress box, not column-reverse, so a Read button keeps
        its place after Play */
     .nh-hero-banner > div:nth-child(3) > div:last-child { flex-direction: column !important; align-items: stretch !important; gap: 12px !important; }
@@ -1285,14 +1276,14 @@ button.bg-success, button.bg-success *, a.bg-success, a.bg-success *, .abs-btn.b
 }
 
 /* Series-page header (built by enhancements.js). All header styling lives HERE, not in
-   the recent-series style block — that one is only injected on the home page, so a direct
+   the recent-series style block, that one is only injected on the home page, so a direct
    series-page load rendered the header unstyled.
    Mobile/stacked: header above #bookshelf, takes over appbar/toolbar clearance, bookshelf
    gives up that height so the 100% chain still sums. Desktop: two columns, details left. */
 body #nh-series-header { padding: 87px 26px 10px; }
 body.nh-has-toolbar #nh-series-header { padding-top: 127px; }
 #nh-series-header .nh-sh-eyebrow { font-family: var(--nh-sans, system-ui); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--nh-amber, #e0c27a); opacity: 0.9; }
-/* Custom series cover in the header (A1): full column width — same box the
+/* Custom series cover in the header (A1): full column width, same box the
    description text fills. Upload/remove live in the series toolbar kebab menu
    (admin only, injected by enhancements.js); the header just hosts the hidden
    file input and a tiny status glyph. */
@@ -1310,7 +1301,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 #nh-series-header .nh-sh-author a { color: inherit; cursor: pointer; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
 #nh-series-header .nh-sh-author a:hover { border-bottom-color: var(--nh-amber, #e0c27a); }
 /* Series description editor modal (admin; reuses the ratings popup chrome) */
-#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-hx-modal, #nh-rd-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+#nh-sd-modal, #nh-col-modal, #nh-ct-modal, #nh-ab-modal, #nh-us-modal, #nh-ae-modal, #nh-rf-sheet, #nh-hx-modal, #nh-rd-modal, #nh-amf-confirm { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 /* Carousel X confirmation (#18). Small, so it gets a narrower box than the rest.
    z-index above the shared 500: it can be raised from the home page while nothing
    else is open, but it must never end up behind anything it was opened from. */
@@ -1368,7 +1359,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
    Sized in em, not rem: ABS scales the whole shelf by writing font-size on
    #bookshelf, so em makes the stars track the cover-size control for free.
    The room the stars need is reserved by nhCardRatings() as a padding on the
-   text element — it is measured, because a fixed reserve is either wasteful or
+   text element, it is measured, because a fixed reserve is either wasteful or
    short depending on cover size. */
 [id^="description-area-"] .nh-cr, [cy-id="detailBottomText"] .nh-cr { position: absolute; right: 0; bottom: 0.14em; z-index: 5; display: flex; align-items: center; pointer-events: none; }
 /* Book captions are two lines and the badge belongs on the lower (author) one,
@@ -1387,7 +1378,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 .nh-gs-stars .nh-cr-n { color: var(--nh-muted-2, #9a9085); }
 /* A8 v2: rating options integrated INTO the native Filter/Sort dropdowns + the
    overlay results grid. While active the native (virtual) shelf is only
-   visibility-hidden — its layout and measuring loops keep running so handing
+   visibility-hidden, its layout and measuring loops keep running so handing
    back never re-flows. The dropdowns themselves get a frosted reskin. */
 #toolbar button.bg-bg { background: rgba(255,255,255,0.06) !important; border: 1px solid rgba(255,255,255,0.15) !important; border-radius: 9px !important; transition: background 0.15s, border-color 0.15s; }
 #toolbar button.bg-bg:hover { background: rgba(255,255,255,0.11) !important; border-color: rgba(255,255,255,0.30) !important; }
@@ -1396,7 +1387,7 @@ html.nh-covers-std #nh-series-header .nh-sh-cover { aspect-ratio: 1 / 1.6; }
 .nh-lf-mhead { padding: 8px 12px 3px; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); font-family: var(--nh-sans, system-ui); border-top: 1px solid rgba(255,255,255,0.08); margin-top: 4px; list-style: none; }
 .nh-lf-mi { list-style: none; }
 .nh-lf-mi .nh-lf-mcheck { position: absolute; top: 50%; transform: translateY(-50%); right: 10px; font-size: 0.85rem; font-weight: 700; color: var(--nh-amber, #e0c27a); font-family: var(--nh-sans, system-ui); }
-/* dropdown identity icons (funnel / arrows) — the two buttons looked identical */
+/* dropdown identity icons (funnel / arrows), the two buttons looked identical */
 #toolbar .nh-lf-ico { display: inline-flex; align-items: center; flex: none; margin-right: 6px; opacity: 0.7; color: currentColor; }
 #toolbar .nh-lf-hasico { justify-content: flex-start !important; }
 #toolbar .nh-lf-hasico > .truncate, #toolbar .nh-lf-hasico > .nh-lf-lbl { flex: 1 1 auto; min-width: 0; }
@@ -1506,8 +1497,7 @@ body.nh-ff-active #toolbar .nh-ff-nat { display: none !important; }
   #toolbar #nh-ff-chips { display: none; }
 }
 /* Skeleton bars while the series data loads: the header column is created (and the
-   two-column layout entered) BEFORE any data arrives, so the shelf never re-flows —
-   these placeholders just keep the reserved column from looking empty meanwhile. */
+   two-column layout entered) BEFORE any data arrives, so the shelf never re-flows,    these placeholders just keep the reserved column from looking empty meanwhile. */
 #nh-series-header.nh-sh-loading h1::before { content: ''; display: block; width: 62%; height: 1.5em; border-radius: 9px; background: rgba(255,255,255,0.08); }
 #nh-series-header.nh-sh-loading .nh-sh-author::before { content: ''; display: block; width: 42%; height: 0.95em; border-radius: 7px; background: rgba(255,255,255,0.07); }
 #nh-series-header.nh-sh-loading .nh-sh-stats::before { content: ''; display: block; width: 30%; height: 0.85em; border-radius: 7px; background: rgba(255,255,255,0.06); }
@@ -1521,11 +1511,11 @@ body.nh-ff-active #toolbar .nh-ff-nat { display: none !important; }
 
      Why not ABS's own scroller: a viewport-height change RESETS #bookshelf's
      scrollTop (measured: 3000 -> 19) and re-mounts its cards, and on Android the
-     URL bar hides the instant you drag — so every scroll snapped back a moment
+     URL bar hides the instant you drag, so every scroll snapped back a moment
      later and the page felt frozen with the books parked far below. The wrapper
      is OUR element: its scrollTop survives that same rebuild untouched
      (measured: 3217 -> 3223). No transform sync, no measured padding, no
-     --nh-sh-h dependency — nothing to go stale. */
+     --nh-sh-h dependency, nothing to go stale. */
   body.nh-series-page .nh-series-cols { position: relative; height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
   body #bookshelf.nh-with-series-header { position: relative !important; height: auto !important; min-height: 0 !important; max-height: none !important; overflow: visible !important; padding-top: 8px !important; }
   body #nh-series-header { position: static !important; transform: none !important; pointer-events: auto; }
@@ -1542,7 +1532,7 @@ body.nh-ff-active #toolbar .nh-ff-nat { display: none !important; }
   #nh-series-header .nh-sh-desc { -webkit-line-clamp: 4; }
 }
 /* Series page mask: hidden from the instant of navigation (route hook) until the
-   two-column layout is applied, the shelf re-measured, and badges painted — then one
+   two-column layout is applied, the shelf re-measured, and badges painted, then one
    clean fade-in. Kills the staged reveal (wide books -> squeeze -> shift -> badges). */
 /* Same instant-hide / animated-reveal split as the general page mask */
 body.nh-series-page #bookshelf, #nh-series-header { transition: none; }
@@ -1554,8 +1544,7 @@ body.nh-series-page:not(.nh-series-ready) #nh-series-header { opacity: 0 !import
    settings, ...): the whole page container is masked from the instant of navigation
    until its content has settled (nhPageReveal), then one fade-in. The series detail
    pages use the dedicated mask above; login is handled by the boot veil. */
-/* Hide is INSTANT (the outgoing page must vanish the moment navigation starts —
-   a 0.4s fade-out left its content ghosting mid-screen, user report); only the
+/* Hide is INSTANT (the outgoing page must vanish the moment navigation starts,    a 0.4s fade-out left its content ghosting mid-screen, user report); only the
    REVEAL of the settled page animates. */
 body.nh-page-loading #app-content .page { transition: none; }
 body.nh-page-loading.nh-page-ready #app-content .page { transition: opacity 0.4s ease; }
@@ -1565,7 +1554,7 @@ body.nh-page-loading:not(.nh-page-ready) #app-content .page { opacity: 0 !import
    the collections ones best." The collections grid's 44/64px is now the single
    source of truth (--nh-gutter) and every CSS-driven surface reads it.
    NOT unified here: the ABS virtual bookshelf (books/series GRID pages). Its ~107px
-   is ABS centring fixed-width cards inside its own 64px shelfPadding — the leftover
+   is ABS centring fixed-width cards inside its own 64px shelfPadding, the leftover
    of the column it cannot fit is split onto both sides. It is computed in Vue
    (entitiesPerShelf / bookshelfMarginLeft), not CSS, and overriding that chain broke
    the card widths and collapsed the series view on resize. The supported lever is
@@ -1602,12 +1591,12 @@ body.nh-page-loading:not(.nh-page-ready) #app-content .page { opacity: 0 !import
 body:not(.nh-home) #bookshelf [id^="shelf-"] > .absolute { margin-left: var(--nh-shelf-nudge, 0px); }
 /* Phones: hand ABS back the 16px it holds in reserve. It sizes a grid with
    floor((shelfWidth - 16) / (cardWidth + gap)), so a layout can land one column
-   short by a couple of pixels — Pawel's 360px phone at cover size 80 needed 346
+   short by a couple of pixels, Pawel's 360px phone at cover size 80 needed 346
    for two series columns and was offered 344. Widening the MEASURED shelf by
    exactly that reserve buys the column. The inflation is symmetric (-8px left,
    +16px wide = +8px right), so ABS's bookshelfMarginLeft and nhShelfNudge both
    still centre the row over the real viewport and nothing can overflow: the row
-   is at most as wide as the true width. Not on home — its rows are horizontal
+   is at most as wide as the true width. Not on home, its rows are horizontal
    scrollers with their own gutters. */
 @media (max-width: 640px) {
   body:not(.nh-home) #bookshelf { width: calc(100% + 16px) !important; margin-left: -8px !important; }
@@ -1626,12 +1615,12 @@ body.nh-requery #bookshelf { transition: none; }
 body.nh-requery.nh-requery-ready #bookshelf { transition: opacity 0.25s ease; }
 body.nh-requery:not(.nh-requery-ready) #bookshelf { opacity: 0 !important; }
 
-/* B5: eased card entrance — cards mounting during the post-navigation window fade
+/* B5: eased card entrance, cards mounting during the post-navigation window fade
    in instead of popping (opacity only: the virtual shelf owns the cards'
    positioning, transforms are off-limits). The window now closes ~1.2s after the
    REVEAL rather than 2.2s after the route change, so it never expires before a
    slow page has even appeared. :not([data-nh-stale]) keeps the animation off the
-   OUTGOING page's still-mounted shelf, which nhRouteMask marks — restarting 100+
+   OUTGOING page's still-mounted shelf, which nhRouteMask marks, restarting 100+
    dead cards' animations on every navigation bought nothing. */
 @keyframes nhCardIn { from { opacity: 0; } to { opacity: 1; } }
 /* Covers that land after the reveal ease in instead of snapping (nhCoverFadeIn
@@ -1640,7 +1629,7 @@ body.nh-requery:not(.nh-requery-ready) #bookshelf { opacity: 0 !important; }
 @keyframes nhImgIn { from { opacity: 0; } to { opacity: 1; } }
 #bookshelf img.nh-img-in, #item-page-wrapper img.nh-img-in { animation: nhImgIn 0.28s ease both; }
 body.nh-entering #bookshelf:not([data-nh-stale]) [id^="book-card-"], body.nh-entering #bookshelf:not([data-nh-stale]) [id^="series-card-"], body.nh-entering #bookshelf:not([data-nh-stale]) [id^="collection-card-"], body.nh-entering #bookshelf:not([data-nh-stale]) [id^="author-card-"], body.nh-entering #bookshelf:not([data-nh-stale]) [id^="narrator-card-"], body.nh-entering #bookshelf:not([data-nh-stale]) [id^="playlist-card-"], body.nh-entering #nh-narrators .nh-nr-card { animation: nhCardIn 0.5s ease both; }
-/* A9: narrators page — card grid replaces the stock table */
+/* A9: narrators page, card grid replaces the stock table */
 body.nh-narrators-page #app-content .page table { display: none !important; }
 #nh-narrators { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; padding: 4px 4px 120px; }
 .nh-nr-card { display: block; background: linear-gradient(160deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.015) 70%); border: 1px solid var(--nh-hairline, rgba(255,255,255,0.09)); border-radius: 14px; padding: 16px; text-decoration: none; color: inherit; transition: box-shadow 0.18s ease, border-color 0.18s ease; }
@@ -1670,7 +1659,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 .nh-nr-search::placeholder { color: var(--nh-muted-2, #8a8075); }
 .nh-nr-search:hover { background: var(--nh-ctl-bg-hi, rgba(255,255,255,0.10)); border-color: var(--nh-amber, #e0c27a); }
 .nh-nr-search:focus { border-color: var(--nh-amber, #e0c27a); box-shadow: 0 0 0 2px rgba(224,194,122,0.18); }
-/* themed sort dropdown — pill button + DARK menu (a native select pops the
+/* themed sort dropdown, pill button + DARK menu (a native select pops the
    white OS list, nothing like the reskinned dropdowns elsewhere) */
 .nh-nr-dd { position: relative; }
 .nh-nr-dd-btn { display: inline-flex; align-items: center; justify-content: space-between; height: 28px; width: 176px; padding: 0 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 9px; background: rgba(255,255,255,0.06); color: var(--nh-text-2, #cfc6b8); font-size: 0.75rem; font-family: var(--nh-sans, system-ui); cursor: pointer; transition: border-color 0.15s, background 0.15s; }
@@ -1687,7 +1676,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
    (sm:ml-4). margin-left:auto computes to 0 here because ABS's own .grow spacer
    already absorbed the free space, so this padding is what creates the gap. */
 /* gap, or the filter input and the Tidy button sit flush against each other
-   at desktop widths (Pawel) — the ≤640 block sets its own tighter gap. */
+   at desktop widths (Pawel), the ≤640 block sets its own tighter gap. */
 #nh-au-bar { display: flex; align-items: center; margin-left: auto; padding-left: 16px; gap: 10px; }
 @media (max-width: 640px) {
   #nh-narrators { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); padding: 12px 14px 160px; gap: 14px; }
@@ -1699,8 +1688,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
   #nh-nr-bar, #nh-au-bar { margin-left: 0; padding-left: 0; gap: 6px; flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
   #nh-nr-bar select, #nh-au-bar select { max-width: 108px; }
   /* Four controls on one 360-412px row: everything one step smaller so the
-     LABELS survive (they were ellipsising to "Matc…"/"Filt"), with real gaps —
-     the search box was sitting flush against both neighbours. */
+     LABELS survive (they were ellipsising to "Matc…"/"Filt"), with real gaps,      the search box was sitting flush against both neighbours. */
   #nh-au-bar { gap: 7px; padding-left: 7px; }
   #nh-au-bar .nh-nr-search { flex: 1 1 44px; min-width: 40px; padding: 0 7px; font-size: 0.66rem; }
   #nh-au-bar .nh-nr-search:focus { flex-basis: 130px; }
@@ -1712,7 +1700,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
   body.nh-authors-list #toolbar .w-36, body.nh-narrators-page #toolbar .w-36 { width: 96px !important; flex: 0 0 auto; height: 26px !important; margin-left: 8px !important; }
   body.nh-authors-list #toolbar .w-36 button, body.nh-narrators-page #toolbar .w-36 button { font-size: 0.62rem !important; padding-left: 7px !important; padding-right: 5px !important; }
   body.nh-authors-list #toolbar .w-36 button .material-symbols { font-size: 0.95rem !important; }
-  /* Author tiles: two-line names instead of "A. C. G…" — the single-line
+  /* Author tiles: two-line names instead of "A. C. G…", the single-line
      truncate leaves 6 characters at this tile width. */
   #bookshelf a[href*="/author/"] [cy-id="textInline"] p:first-child {
     white-space: normal !important; font-size: 0.8rem !important; line-height: 1.25 !important;
@@ -1732,7 +1720,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 /* ---- themed select (nhSelectify): a native <select>'s popup is OS chrome no
    CSS can reach (the white list in Pawel's screenshot), so every themed select
    keeps the hidden native element for state + change events and renders this
-   frosted menu instead — same chrome as the unified dropdown menus. */
+   frosted menu instead, same chrome as the unified dropdown menus. */
 .nh-sel { position: relative; display: block; width: 100%; }
 .nh-sel select.nh-sel-native { display: none !important; }
 .nh-sel-btn { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.25); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.14)); border-radius: 10px; padding: 10px 13px; color: var(--nh-text-1, #f4eee2); font-family: var(--nh-sans, system-ui); font-size: 0.95rem; text-align: left; cursor: pointer; transition: border-color .15s, background .15s; }
@@ -1746,7 +1734,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
    not inside the select any more (see .nh-sel-fixed further down). */
 /* ---- rating import (StoryGraph / Goodreads CSV) ----
    The dialog opens FROM the customizations pop-up (z-index 1000), so it sits above
-   it at 1100 — and the themed dropdowns inside it are a fixed layer at 1200, above
+   it at 1100, and the themed dropdowns inside it are a fixed layer at 1200, above
    both. It is not in the shared modal rule for that reason (that one is z-index
    500), but it repeats the same centring so it is a centred box and not a static
    block. It carries its own scroller: a match list can be hundreds of rows. */
@@ -1779,10 +1767,10 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 #nh-imp-modal .nh-imp-cbw { flex: none; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; margin-left: -4px; cursor: pointer; }
 #nh-imp-modal .nh-imp-cb { flex: none; width: 17px; height: 17px; accent-color: var(--nh-amber, #e0c27a); cursor: pointer; }
 #nh-imp-modal .nh-imp-cb:disabled { opacity: 0.35; cursor: default; }
-/* wide enough for "4.25 <star>" on one line — at 2.6em the glyph wrapped under the digits */
+/* wide enough for "4.25 <star>" on one line, at 2.6em the glyph wrapped under the digits */
 #nh-imp-modal .nh-imp-stars { flex: none; width: 3.6em; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--nh-amber, #e0c27a); }
 /* the star glyph is written as a CSS escape; inside this template literal it needs
-   DOUBLING — a single-backslash CSS escape is read as an octal escape here and is a
+   DOUBLING, a single-backslash CSS escape is read as an octal escape here and is a
    hard SyntaxError, in a comment just as much as in a rule */
 #nh-imp-modal .nh-imp-stars::after { content: ' \\2605'; font-size: 0.85em; }
 #nh-imp-modal .nh-imp-src, #nh-imp-modal .nh-imp-dst { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
@@ -1832,7 +1820,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
   #nh-imp-modal .nh-imp-why { margin-left: auto; }
   /* The checkbox itself stays 17px (the OS draws it); the label around it takes the
      thumb-sized hit area. Keyed off WIDTH, not (hover: none): that query does not
-     fire on a touchscreen laptop and cannot be relied on here — the same finding
+     fire on a touchscreen laptop and cannot be relied on here, the same finding
      that moved the card rating badges into the caption. */
   #nh-imp-modal .nh-imp-cbw { width: 34px; height: 34px; margin-left: -8px; }
 }
@@ -1842,7 +1830,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 }
 
 /* The menu is a child of <body>, not of the select, and becomes a fixed layer when
-   open — so no ancestor overflow can clip it, no scroller's scrollHeight changes, and
+   open, so no ancestor overflow can clip it, no scroller's scrollHeight changes, and
    the panel's own DOM is never mutated (Firefox re-balances a multi-column box when
    nodes come or go inside it, nudging every card). top/left/bottom/min-width/max-height
    are set inline by place(). Display is keyed off the menu's OWN class for the same
@@ -1853,7 +1841,7 @@ html.nh-covers-std .nh-nr-cbox { width: 70px; }
 .nh-sel-item:hover { background: rgba(255,255,255,0.07); color: #fff; }
 /* Keyboard focus inside the menu. Same weight as :hover so arrowing through the list
    reads exactly like pointing at it; there is no focus ring because the rows are not
-   focusable elements — the menu keeps focus and moves this class. */
+   focusable elements, the menu keeps focus and moves this class. */
 .nh-sel-item.nh-active { background: rgba(255,255,255,0.10); color: #fff; outline: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.16)); outline-offset: -1px; }
 .nh-sel-item.nh-on { color: var(--nh-text-1, #f4eee2); }
 .nh-sel-item.nh-on::after { content: '✓'; color: var(--nh-amber, #e0c27a); font-size: 0.85em; }
@@ -1871,8 +1859,7 @@ body.nh-global-search #appbar .globalSearchMenu { display: none !important; }
 #nh-gs-panel .nh-gs-head { padding: 8px 10px 4px; font-size: 0.64rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--nh-amber, #e0c27a); opacity: 0.85; }
 #nh-gs-panel .nh-gs-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 9px; cursor: pointer; }
 #nh-gs-panel .nh-gs-row.nh-gs-sel { background: rgba(255,255,255,0.07); }
-/* Follows the library's cover aspect like every other cover in the theme —
-   square by default, 1:1.6 only when the standard-covers mode is on. It was
+/* Follows the library's cover aspect like every other cover in the theme,    square by default, 1:1.6 only when the standard-covers mode is on. It was
    hardcoded portrait, so square art came out letterboxed in search results. */
 #nh-gs-panel .nh-gs-cover { width: 40px; height: 40px; min-width: 40px; object-fit: cover; border-radius: 5px; background: rgba(0,0,0,0.3); }
 html.nh-covers-std #nh-gs-panel .nh-gs-cover { height: 64px; }
@@ -1903,7 +1890,7 @@ body.nh-series-page #toolbar > div.w-6.h-6.rounded-full { display: none !importa
 @media (min-width: 1024px) {
   body .nh-series-cols { display: flex !important; align-items: stretch !important; overflow: hidden !important; }
   /* Column-height box with INTERNAL scroll driven only by nhSeriesSyncScroll
-     (scrollbar hidden, wheel forwarded to the grid) — height:auto let a long
+     (scrollbar hidden, wheel forwarded to the grid), height:auto let a long
      description stretch the whole flex row and blow up the grid's geometry. */
   body #nh-series-header { flex: 0 0 34%; width: 34%; max-width: 520px; height: 100%; overflow-y: auto; padding: 127px 16px 32px 34px; box-sizing: border-box; }
   body #bookshelf.nh-with-series-header { height: 100% !important; flex: 1 1 auto; min-width: 0; padding-left: 0 !important; }
@@ -1914,7 +1901,7 @@ body.nh-series-page #toolbar > div.w-6.h-6.rounded-full { display: none !importa
 }
 
 /* ============================================================
-   A10 — Collection detail page (/collection/<id>)
+   A10, Collection detail page (/collection/<id>)
    The native page is already a two-column skeleton (stacked cover
    left, content right) but capped at max-w-6xl and centered, with
    the books rendered by a slow table. We widen it to the same axis
@@ -1968,10 +1955,10 @@ html.nh-covers-std .nh-col-tile .nh-col-cover { aspect-ratio: 1 / 1.6; }
    The native shelf renders each collection as a wide two-cover card that loads
    many full covers at once (slow at scale) and reads generically. We hide the
    native cards and mount our own tile grid inside #bookshelf: each collection
-   is an ICON EMBLEM on a category-tinted card (fast — no cover images at all),
+   is an ICON EMBLEM on a category-tinted card (fast, no cover images at all),
    with the name and a book count. Click → the /collection/<id> detail. An
    admin-only "New" tile opens the curated template picker. */
-/* Hide the native shelf entirely (NOT its children) — our grid is a SIBLING in
+/* Hide the native shelf entirely (NOT its children), our grid is a SIBLING in
    .page, never inside #bookshelf: injecting foreign nodes into the LazyBookshelf
    corrupts Vue's reconciliation when the SAME component re-renders for series
    (collections↔series share one #bookshelf), leaving series blank. */
@@ -1992,7 +1979,7 @@ body.nh-collections-page #toolbar > p:not(.nh-cl-count-top) { display: none !imp
    grid read as a candy shop. */
 /* Borderless (Pawel): the inner top highlight still gives the glass its edge,
    but there is no outline drawn round the tile. Author and narrator cards keep
-   theirs deliberately — they are the only tiles that are mostly flat colour. */
+   theirs deliberately, they are the only tiles that are mostly flat colour. */
 .nh-cl-emblem { position: relative; width: 100%; aspect-ratio: 1 / 1; border-radius: var(--nh-tile-r, 14px); overflow: hidden; display: flex; align-items: center; justify-content: center; border: none; background-image: var(--nh-cl-bg, none); background-color: rgba(24,21,18,0.34); -webkit-backdrop-filter: blur(16px) saturate(1.15); backdrop-filter: blur(16px) saturate(1.15); box-shadow: var(--nh-tile-sh, 0 10px 24px rgba(0,0,0,0.40)), var(--nh-glass-edge, inset 0 1px 0 rgba(255,255,255,0.18)), inset 0 -30px 40px -22px rgba(0,0,0,0.55); transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
 .nh-cl-card:hover .nh-cl-emblem { filter: brightness(0.7); border-color: var(--nh-tile-bd-hi, rgba(255,255,255,0.26)); }
 .nh-cl-emblem .nh-cl-ico { position: relative; font-size: 3.1rem; color: rgba(255,255,255,0.92); text-shadow: 0 2px 14px rgba(0,0,0,0.45); z-index: 2; }
@@ -2024,10 +2011,10 @@ body.nh-collections-page #toolbar > p:not(.nh-cl-count-top) { display: none !imp
 .nh-ct-desc { font-family: var(--nh-sans, system-ui); font-size: 0.72rem; line-height: 1.42; color: var(--nh-muted-2, #9a9085); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* ============================================================
-   A11 — Admin Family Scoreboard + per-user drill-down (/config/stats)
+   A11, Admin Family Scoreboard + per-user drill-down (/config/stats)
    ============================================================ */
 /* clear the fixed appbar at the top AND the fixed settings sub-rail on the left
-   (w-44 = 176px, position:fixed left-0) — #page-wrapper here spans the FULL width
+   (w-44 = 176px, position:fixed left-0), #page-wrapper here spans the FULL width
    with no offset of its own, so a wide centered grid would slide under both.
    Scoped to nh-stats-dash so only this page. */
 body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: border-box; }
@@ -2037,17 +2024,17 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 /* Your Stats (left/top) + Server Ranking (right/bottom): stacked on narrow,
    side by side on wide, using most of the width (was capped ~900px = big margins). */
 /* padding-bottom, not margin: #page-wrapper is the scroller, and a margin on the
-   last child collapses out of the scroll height — the page ended flush against
+   last child collapses out of the scroll height, the page ended flush against
    the ranking card with nothing under it (Pawel). */
 #nh-stats-grid { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 2000px; margin: 0 auto; padding-bottom: 72px; align-items: stretch; }
 /* Your Stats already contains its OWN native card panels (bg-bg rounded-md
-   shadow-lg border) — Your Stats + Year in Review. So .configContent is just a
+   shadow-lg border), Your Stats + Year in Review. So .configContent is just a
    transparent passthrough here (adding a panel double-wrapped it = the misaligned
    titles + off heatmap). We match the RANKING to the native panel instead (below). */
 #nh-stats-grid > .configContent { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 0 !important; background: none !important; border: none !important; box-shadow: none !important; }
 /* Side-by-side only when each column can hold Your Stats' intrinsic content:
    chart (w-96=384) + sessions (w-80=320) + card padding ≈ 740px per column.
-   Below that, stack — a squeezed column clips the native row (overflow-hidden). */
+   Below that, stack, a squeezed column clips the native row (overflow-hidden). */
 @media (min-width: 1800px) {
   #nh-stats-grid { flex-direction: row; align-items: flex-start; }
   #nh-stats-grid > * { flex: 1 1 0; min-width: 0; }
@@ -2060,17 +2047,17 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 #nh-stats-grid .configContent .bg-bg.rounded-md .flex.flex-col.md\\:flex-row { flex-wrap: wrap; }
 /* .w-96 (the chart) is deliberately NOT capped: its bars are absolutely
    positioned against a 384px box, so capping the box just clips them. It is
-   fitted by scaling instead — see nhStatsFit. */
+   fitted by scaling instead, see nhStatsFit. */
 #nh-stats-grid .configContent .bg-bg.rounded-md .w-80 { max-width: 100%; }
 /* overflow-x HIDDEN, not auto: nhStatsFit scales the heatmap to fit, but a scale
-   never changes the layout box, and scrollWidth is measured from that box — so
+   never changes the layout box, and scrollWidth is measured from that box, so
    the container still believed it had ~24px of overflow and kept a scrollbar
    under a graph that visually fits perfectly. Nothing is actually clipped. */
 #nh-stats-grid .configContent .bg-bg.rounded-md > .w-full.my-2 { max-width: 100%; overflow-x: hidden; }
 /* ---- "Your Stats" reskin -------------------------------------------------
    All ABS's own markup; we only restyle it so it reads as part of the theme
    instead of a stock panel parked next to the ranking. Selectors prefer
-   [class*="…"] over escaped Tailwind names — inside a JS template literal an
+   [class*="…"] over escaped Tailwind names, inside a JS template literal an
    escaped class needs a DOUBLE backslash (.md\\:flex-row), which is a standing
    invitation to a silent selector typo. */
 #nh-stats-grid .configContent .bg-bg.rounded-md {
@@ -2109,7 +2096,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 #nh-stats-grid .configContent div[class*="w-80"] p[class*="text-white/80"] { color: var(--nh-text-2, #d8cfc2) !important; font-size: 0.9rem !important; }
 #nh-stats-grid .configContent div[class*="w-80"] p[class*="text-white/50"] { color: var(--nh-muted-2, #9a9085) !important; }
 #nh-stats-grid .configContent div[class*="w-80"] p[class*="font-bold"] { color: var(--nh-amber, #e0c27a) !important; }
-/* ABS ships the chart column as "scale-75 lg:scale-100" — and this is TAILWIND v4
+/* ABS ships the chart column as "scale-75 lg:scale-100", and this is TAILWIND v4
    (note the "mb-4!" bang-suffix elsewhere in its markup), where scale-75 compiles
    to the standalone "scale" property, NOT to transform. transform:none looks
    like it works because at lg the class resets to 100% anyway; below lg the
@@ -2117,14 +2104,14 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
    under-filled its width and left the rest of the box as dead space.
    Both here and on the year heatmap the size is now driven by nhStatsFit(), which
    scales to exactly the room available and cancels the leftover box with negative
-   margins — so the scale is disabled from BOTH properties here. */
+   margins, so the scale is disabled from BOTH properties here. */
 #nh-stats-grid .configContent div[class*="scale-75"] { scale: none !important; transform: none; transform-origin: top left; }
 /* Both columns also carry mx-auto, which in a flex ROW resolves to "push apart",
    so on a wide card they drifted to opposite edges with a 300px hole between
    them. Centre the PAIR with a real gap instead. Only from md up: below that ABS
    stacks the columns and mx-auto is doing the right thing (centring each). */
 /* Both columns also carry mx-auto, which in a flex ROW resolves to "push apart",
-   and both are a FIXED width (w-96 / w-80) — so on a wide card they drifted to
+   and both are a FIXED width (w-96 / w-80), so on a wide card they drifted to
    opposite edges with a hole between them and hard-truncated session titles.
    The chart cannot grow (its bars are absolutely positioned against a 384px box)
    but the session list can, so the row is left-aligned and Recent Sessions takes
@@ -2133,7 +2120,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 @media (min-width: 768px) {
   #nh-stats-grid .configContent .bg-bg.rounded-md > div[class*="flex-col"] { justify-content: flex-start; align-items: flex-start; gap: 40px; }
   #nh-stats-grid .configContent .bg-bg.rounded-md > div[class*="flex-col"] > div { margin-left: 0 !important; margin-right: 0 !important; }
-  /* The chart column grows too now — nhStatsFit scales the chart up to fill it
+  /* The chart column grows too now, nhStatsFit scales the chart up to fill it
      (it is DOM boxes, not a bitmap), so both columns share the row instead of
      the chart sitting small at a fixed 384px with dead space beside it. */
   /* Grows to share the row, but NOT centred and NOT scaled up: its children are
@@ -2164,7 +2151,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
    mid-sized screen"). */
 #nh-ys { width: 100%; flex: 1 1 720px; min-width: 280px; margin: 24px 0 6px; }
 .nh-ys-title { font-family: var(--nh-serif), 'Spectral', Georgia, serif; font-size: 1.2rem; font-weight: 500; color: var(--nh-text-1, #f4eee2); margin: 0 0 12px; }
-/* Exactly three columns at every desktop width (Pawel) — auto-fit made the
+/* Exactly three columns at every desktop width (Pawel), auto-fit made the
    column count drift with the panel's luck in the flex row. Phones keep the
    single-column override below. The server-stats page reuses the card look via
    .nh-ls-grid but keeps auto-fit: its grid spans the whole page, where four or
@@ -2176,7 +2163,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 /* wrap: three long durations side by side overlapped at mid widths */
 .nh-ys-figrow { display: flex; flex-wrap: wrap; gap: 10px 16px; }
 .nh-ys-fig { flex: 1 1 90px; min-width: 0; }
-/* nowrap: a duration is one token — "6h 44m" broke across two lines in a narrow
+/* nowrap: a duration is one token, "6h 44m" broke across two lines in a narrow
    column and made the card twice as tall as the one beside it. */
 .nh-ys-val { font-family: var(--nh-serif), 'Spectral', serif; font-size: 1.4rem; font-weight: 600; color: var(--nh-text-1, #f4eee2); line-height: 1.1; white-space: nowrap; }
 .nh-ys-lab { font-family: var(--nh-sans, system-ui); font-size: 0.7rem; color: var(--nh-muted-2, #9a9085); margin-top: 3px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
@@ -2195,7 +2182,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 .nh-ys-week { display: flex; align-items: flex-end; gap: 6px; height: 96px; }
 .nh-ys-day { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; min-width: 0; }
 .nh-ys-dtrack { flex: 1 1 auto; width: 100%; display: flex; align-items: flex-end; }
-/* Neutral bars with only the heaviest day in the accent — the point of this card
+/* Neutral bars with only the heaviest day in the accent, the point of this card
    is which day stands out, and seven accent bars answer that with none. */
 .nh-ys-dfill { width: 100%; border-radius: 4px 4px 2px 2px; background: rgba(255,255,255,0.13); }
 .nh-ys-day.nh-ys-top .nh-ys-dfill { background: var(--nh-amber, #e0c27a); }
@@ -2207,7 +2194,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 .nh-ys-frow.nh-ys-gone { opacity: 0; transform: translateX(10px); }
 .nh-ys-pct { flex: none; font-family: var(--nh-sans, system-ui); font-size: 0.74rem; color: var(--nh-muted-2, #9a9085); }
 /* Full-bleed card + its own inner grid: with a cover, a title AND a full date per
-   row, one column of the insights grid is not enough — the date field was being
+   row, one column of the insights grid is not enough, the date field was being
    clipped mid-year. */
 .nh-ys-card.nh-ys-wide { grid-column: 1 / -1; }
 .nh-ys-fgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2px 20px; }
@@ -2216,7 +2203,7 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 /* Date fields carry the theme, not the browser default: raised surface, the
    theme's control border and radius, and an ACCENT-tinted calendar glyph.
    Chrome paints that glyph as a black bitmap, so it is recoloured with a filter
-   chain (invert to white, then sepia+hue-rotate toward the accent) — there is no
+   chain (invert to white, then sepia+hue-rotate toward the accent), there is no
    colour property for it. */
 .nh-ys-date { flex: none; width: auto; min-width: 8.5em; background: var(--nh-ctl-bg, rgba(255,255,255,0.05)); color: var(--nh-text-2, #d8cfc2); border: 1px solid var(--nh-ctl-bd, rgba(255,255,255,0.14)); border-radius: var(--nh-ctl-r, 11px); padding: 4px 8px; font-family: var(--nh-sans, system-ui); font-size: 0.76rem; transition: border-color .15s ease, background .15s ease; }
 .nh-ys-date:hover { background: rgba(255,255,255,0.09); border-color: var(--nh-tile-bd-hi, rgba(255,255,255,0.26)); }
@@ -2225,8 +2212,8 @@ body.nh-stats-dash #page-wrapper { padding-top: 96px !important; box-sizing: bor
 /* The calendar glyph is OUR overlay span, not the input's own indicator:
    browsers drop ::-webkit-calendar-picker-indicator on readOnly date inputs
    (and readOnly is what suppresses the native popup for the themed picker), so
-   round 9 silently lost the icon. The span is pointer-events:none — clicks land
-   on the input and open the popover — and an accent-coloured MASK, so it tracks
+   round 9 silently lost the icon. The span is pointer-events:none, clicks land
+   on the input and open the popover, and an accent-coloured MASK, so it tracks
    any accent. Every readOnly date input gets wrapped in .nh-date-wrap. */
 .nh-date-wrap { position: relative; display: inline-flex; align-items: center; min-width: 0; }
 .nh-ys-date, .nh-bd-dt-inp { -webkit-appearance: none; appearance: none; }
@@ -2301,7 +2288,7 @@ body.nh-lf-none #bookshelf > *:not(#nh-lf-none) { display: none !important; }
 
 /* ---- Server statistics (admin) --------------------------------------------
    Mounts where the sidebar's "Library Stats" ACTUALLY goes: /library/<id>/stats
-   (there is no /config/library-stats route in ABS — round 9 aimed at a URL that
+   (there is no /config/library-stats route in ABS, round 9 aimed at a URL that
    never mounts). On the library route the host is the page's own #bookshelf
    scroller, which already clears the toolbar, so only the CONFIG variant (kept
    for other ABS builds) needs the sub-rail and appbar padding. */
@@ -2355,7 +2342,7 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 #nh-stats-grid .configContent .abs-btn:hover { background: rgba(255,255,255,0.10) !important; border-color: var(--nh-amber, #e0c27a) !important; color: var(--nh-text-1, #f4eee2) !important; }
 #nh-stats-grid .configContent p[class*="text-white/70"] { color: var(--nh-muted-2, #9a9085) !important; }
 /* ---- the year heatmap ----
-   The panel is CSS; the CELLS are not — ABS writes their colour inline, as a
+   The panel is CSS; the CELLS are not, ABS writes their colour inline, as a
    fixed GitHub-green ramp, so no stylesheet can reach them and they stayed green
    whatever the accent. nhHeatmapSkin() repaints them; see it for the mapping. */
 /* Edge to edge like every other block in the card (Pawel): ABS's wrapper is
@@ -2372,7 +2359,7 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 #heatmap div[class*="rounded-xs"] { border-radius: 3px !important; outline: none !important; }
 
 /* match the native Your Stats panel exactly: #221e1a, radius 16, border 0.06,
-   shadow 0 8px 24px 0.3, p-4 (16px) — so the two columns are true twins. */
+   shadow 0 8px 24px 0.3, p-4 (16px), so the two columns are true twins. */
 #nh-scoreboard { width: 100%; margin: 0; padding: 16px 18px; border-radius: 16px; background: var(--nh-raised, #221e1a); border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 8px 24px rgba(0,0,0,0.3); box-sizing: border-box; }
 /* summary tiles */
 .nh-sb-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 18px; }
@@ -2380,14 +2367,14 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 .nh-sb-tval { font-family: var(--nh-serif), 'Spectral', serif; font-size: 1.7rem; font-weight: 600; color: #f4eee2; line-height: 1; }
 .nh-sb-tlab { font-family: var(--nh-sans, system-ui); font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--nh-muted-2, #9a9085); margin-top: 6px; }
 /* podium (top 3) */
-/* Podium. The portrait is the point of this block, so it carries the size — and
+/* Podium. The portrait is the point of this block, so it carries the size, and
    the place is a numbered chip on a coloured ring rather than an emoji medal,
    which every OS drew in its own house style (Windows: a blue-ribboned sticker
    that matched nothing else here). --nh-pl is the place colour: gold / silver /
    bronze, set per tile and reused by the ring, the chip and the panel wash. */
 .nh-sb-podium { display: grid; grid-template-columns: 1fr 1.12fr 1fr; gap: 16px; align-items: end; justify-content: center; margin-bottom: 24px; }
 .nh-sb-pod { --nh-pl: 224,194,122; --nh-pl-lt: 255,241,201; --nh-pl-dk: 146,110,44; display: flex; flex-direction: column; align-items: center; gap: 9px; padding: 22px 14px 20px; border-radius: 18px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); text-align: center; transition: filter .18s ease, background .18s ease, border-color .18s ease; }
-/* Tiles darken on hover, they never lift (house rule — book and series cards set
+/* Tiles darken on hover, they never lift (house rule, book and series cards set
    the convention and a lift made these the odd ones out). */
 .nh-sb-pod:hover { filter: brightness(1.14); border-color: rgba(var(--nh-pl), 0.55); }
 .nh-sb-pod.p1 { --nh-pl: 231,196,110; --nh-pl-lt: 255,245,206; --nh-pl-dk: 150,109,32; padding: 34px 14px 26px; background: linear-gradient(165deg, rgba(var(--nh-pl),0.20), rgba(var(--nh-pl),0.04)); border-color: rgba(var(--nh-pl),0.42); box-shadow: 0 14px 34px rgba(0,0,0,0.38); }
@@ -2397,17 +2384,17 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
    column reserving a row for it. */
 .nh-sb-pod-avw { position: relative; display: inline-flex; margin-bottom: 3px; }
 /* isolation: the photo inside .nh-sb-pod-av is absolutely positioned with
-   z-index:1, and the avatar itself is position:relative with z-index:auto — so it
+   z-index:1, and the avatar itself is position:relative with z-index:auto, so it
    creates NO stacking context and that 1 escapes into whatever context does
    exist, painting the photo OVER the medal that follows it in the DOM. Half of
    each medal disappeared behind the portrait. Isolating the avatar keeps the
    photo inside it; the medal's own z-index then only has its siblings to beat.
-   Same fix as the appbar account photo — see the note there. */
+   Same fix as the appbar account photo, see the note there. */
 .nh-sb-pod-av { isolation: isolate; }
 .nh-sb-pod-av { width: 78px; height: 78px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.1); color: #f4eee2; font-family: var(--nh-sans, system-ui); font-weight: 700; font-size: 1.9rem; box-shadow: 0 0 0 2px rgba(var(--nh-pl),0.55), 0 6px 18px rgba(0,0,0,0.35); }
 .nh-sb-pod.p1 .nh-sb-pod-av { width: 104px; height: 104px; font-size: 2.5rem; background: linear-gradient(150deg, rgba(var(--nh-pl),0.5), rgba(var(--nh-pl),0.2)); box-shadow: 0 0 0 3px rgba(var(--nh-pl),0.7), 0 0 30px rgba(var(--nh-pl),0.18), 0 8px 22px rgba(0,0,0,0.4); }
 /* A struck medal rather than a numbered dot. Four cues do the work at 28px:
-   a MILLED RIM (the conic gradient painted on the border box — alternating light
+   a MILLED RIM (the conic gradient painted on the border box, alternating light
    and dark around the circumference reads as a reeded coin edge), a DOMED FACE
    (radial highlight offset to the top-left, clipped to the content box, which the
    2px padding separates from the rim), an ENGRAVED RING (::after), and an
@@ -2443,7 +2430,7 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 .nh-sb-pill { background: none; border: none; cursor: pointer; font-family: var(--nh-sans, system-ui); font-size: 0.8rem; color: var(--nh-muted-2, #9a9085); padding: 5px 13px; border-radius: 999px; transition: background .15s, color .15s; }
 .nh-sb-pill:hover { color: #e8e0d2; }
 .nh-sb-pill.nh-on { background: var(--nh-amber, #e0c27a); color: #24211c; font-weight: 600; }
-/* ranks 4+ — tiles, not a bar list: a photo, a name and a time read at a glance
+/* ranks 4+, tiles, not a bar list: a photo, a name and a time read at a glance
    where a column of bars scaled to an arbitrary maximum said very little. */
 /* padding-bottom, not just a max-height: the list used to be sliced flush by the
    scroll box, so the last row always looked like a rendering error rather than
@@ -2476,7 +2463,7 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 .nh-sb-yir { font-family: var(--nh-sans, system-ui); font-size: 0.8rem; padding: 6px 15px; border-radius: 999px; border: 1px solid rgba(224,194,122,0.4); background: rgba(224,194,122,0.12); color: var(--nh-amber, #e0c27a); cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
 .nh-sb-yir:hover { background: var(--nh-amber, #e0c27a); color: #24211c; }
 .nh-sb-empty { font-family: var(--nh-sans, system-ui); font-size: 0.9rem; line-height: 1.55; color: var(--nh-muted-2, #9a9085); padding: 10px 2px 4px; }
-/* Year in Review (A5) — the caller's own last 12 months */
+/* Year in Review (A5), the caller's own last 12 months */
 #nh-yir-modal { position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 #nh-yir-modal .nh-rt-modal-box { max-width: 720px; width: 94vw; }
 /* ONE scroller in this sheet, not two (Pawel, phone). Two bars appeared side by
@@ -2487,7 +2474,7 @@ body.nh-libstats-cfg #page-wrapper { padding-top: 96px !important; box-sizing: b
 #nh-yir-modal .nh-rt-modal-head { flex: 0 0 auto; }
 .nh-yir-body { flex: 1 1 auto; min-height: 0; max-height: 74vh; overflow-y: auto; }
 #nh-yir-modal .nh-yir-body { max-height: none; }
-/* …and the page BEHIND a modal must not scroll either — its bar sat right next
+/* …and the page BEHIND a modal must not scroll either, its bar sat right next
    to the sheet's own. Every scroller we own is frozen while a modal is up. */
 body.nh-modal-open #bookshelf,
 body.nh-modal-open .nh-series-cols,
@@ -2524,7 +2511,7 @@ body.nh-modal-open #app-content .page { overflow: hidden !important; }
 body.nh-users-grid .configContent table { display: none !important; }
 /* ABS pins the config panel to 900px; a card grid earns the extra room on a wide
    screen. The widening itself is MEASURED in JS (nhUsersWiden) because the
-   settings sub-rail is position:fixed over a full-width wrapper — centring a
+   settings sub-rail is position:fixed over a full-width wrapper, centring a
    wider box inside that wrapper slides its left edge under the rail and clips
    the heading. Inline styles are removed on leave (.configContent is shared). */
 #nh-ug-bar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin: 2px 0 10px; }
@@ -2541,7 +2528,7 @@ body.nh-users-grid .configContent table { display: none !important; }
 .nh-ug-av:hover { border-color: var(--nh-amber, #e0c27a); }
 .nh-ug-av.nh-busy { opacity: 0.5; }
 .nh-ug-av img { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
-/* ABS's own .material-symbols rule sets display, and it loads after ours — a
+/* ABS's own .material-symbols rule sets display, and it loads after ours, a
    single-class selector here loses and the glyph lands in the top-left corner
    instead of the middle. Beat it on specificity, not on order. */
 .nh-ug-av .nh-ug-cam { position: absolute; inset: 0; z-index: 2; display: flex !important; align-items: center; justify-content: center; line-height: 1; border-radius: 50%; background: rgba(0,0,0,0.55); color: #f4eee2; font-size: 1.2rem; opacity: 0; transition: opacity .15s; }
@@ -2578,7 +2565,7 @@ body.nh-users-grid .configContent table { display: none !important; }
 .nh-um-btn[disabled] { opacity: 0.5; cursor: default; }
 .nh-um-rm { border-color: rgba(255,255,255,0.14); background: none; color: var(--nh-muted-2, #9a9085); }
 .nh-um-rm:hover { background: rgba(255,143,143,0.15); border-color: rgba(255,143,143,0.45); color: #ff8f8f; }
-/* template picker — build phase (name + book search) */
+/* template picker, build phase (name + book search) */
 .nh-ct-build { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
 .nh-ct-input { width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #f4eee2; font-family: var(--nh-sans, system-ui); font-size: 0.9rem; }
 .nh-ct-input:focus { outline: none; border-color: rgba(224,194,122,0.5); }
@@ -2589,7 +2576,7 @@ body.nh-users-grid .configContent table { display: none !important; }
 .nh-ct-row.nh-on { border-color: var(--nh-amber, #e0c27a); background: rgba(224,194,122,0.12); }
 .nh-ct-row.nh-ct-have { opacity: 0.5; cursor: default; }
 .nh-ct-row.nh-ct-have .nh-ct-rt { color: var(--nh-amber, #e0c27a); }
-/* Why the create button is disabled — ABS rejects a collection with no books, so
+/* Why the create button is disabled, ABS rejects a collection with no books, so
    this is a server constraint we can only explain, not remove. */
 .nh-ct-hint { font-family: var(--nh-sans, system-ui); font-size: 0.72rem; line-height: 1.42; color: var(--nh-muted-2, #8a8075); margin: 2px 0 0; }
 /* icon + accent picker (create dialog and the detail page's Change icon modal) */
@@ -2665,6 +2652,32 @@ body.nh-selecting #appbar a[href$="/account"] { visibility: hidden !important; }
    already position:relative; pointer-events none so the button stays one click
    target. z-index 2 beats the isolated avatar (whose photo tops out at 1). */
 .nh-rp-badge { position: absolute; top: -6px; right: -6px; z-index: 2; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: var(--nh-amber, #e0c27a); color: #14110d; font-family: var(--nh-sans, system-ui); font-weight: 700; font-size: 0.66rem; line-height: 17px; text-align: center; box-shadow: 0 1px 5px rgba(0,0,0,0.5); pointer-events: none; }
+/* Mark-as-finished badge (green, bottom corner so it can coexist with the
+   admin's report badge above). Clickable: it routes to the stats card. */
+.nh-amf-badge { position: absolute; bottom: -6px; right: -6px; z-index: 2; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: #58c27d; color: #04240f; font-family: var(--nh-sans, system-ui); font-weight: 700; font-size: 0.66rem; line-height: 17px; text-align: center; box-shadow: 0 1px 5px rgba(0,0,0,0.5); cursor: pointer; }
+.nh-amf-chk { font-size: 1rem; line-height: 1; color: #58c27d; }
+#nh-ys-almost.nh-amf-flash { animation: nh-amf-flash 1.3s ease 2; }
+@keyframes nh-amf-flash { 0%, 100% { box-shadow: none; } 50% { box-shadow: 0 0 0 3px #58c27d; } }
+/* Finished + Almost done side by side once both exist (spans the insights grid) */
+.nh-fd-cols { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+@media (max-width: 980px) { .nh-fd-cols { grid-template-columns: 1fr; } }
+.nh-fd-cols > .nh-ys-card { margin: 0; }
+/* mark-as-finished confirmation dialog */
+#nh-amf-confirm .nh-rt-modal-box { max-width: 420px; width: 92vw; }
+.nh-amf-q-title { margin: 10px 0 2px; font-family: var(--nh-serif, serif); font-size: 1.1rem; color: var(--nh-text-1, #f4eee2); }
+.nh-amf-q { margin: 2px 0 16px; font-family: var(--nh-sans, system-ui); font-size: 0.92rem; color: var(--nh-muted-2, #9a9085); }
+.nh-amf-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.nh-amf-yes { background: var(--nh-amber, #e0c27a); color: #14110d; border: none; border-radius: 10px; padding: 10px 20px; font-family: var(--nh-sans, system-ui); font-weight: 600; cursor: pointer; }
+.nh-amf-no { background: transparent; color: var(--nh-muted-2, #9a9085); border: 1px solid var(--nh-hairline-lit, rgba(255,255,255,0.15)); border-radius: 10px; padding: 10px 20px; font-family: var(--nh-sans, system-ui); font-weight: 600; cursor: pointer; }
+.nh-amf-no:hover, .nh-amf-yes:hover { filter: brightness(1.08); }
+/* admin-only marker: this user opted out, others cannot see them */
+.nh-sb-opted { font-size: 0.95em; margin-left: 6px; vertical-align: -2px; color: var(--nh-muted-2, #9a9085); opacity: 0.85; }
+/* sessions card (admin tab): rows are links; a pulsing dot marks live ones */
+.nh-sesh-row { text-decoration: none; }
+.nh-sesh-row:hover .nh-ys-name { color: var(--nh-amber, #e0c27a); }
+.nh-sesh-sub { display: flex; align-items: center; gap: 6px; font-family: var(--nh-sans, system-ui); font-size: 0.74rem; color: var(--nh-muted-2, #9a9085); }
+.nh-sesh-dot { width: 8px; height: 8px; border-radius: 50%; background: #58c27d; box-shadow: 0 0 6px #58c27d; animation: nh-sesh-pulse 1.6s ease infinite; }
+@keyframes nh-sesh-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 body.nh-selecting .nh-rp-badge { visibility: hidden !important; }
 /* Collection actions live in the toolbar / title row, not as grid tiles.
    TWO contexts, TWO rules -- one shared rule served neither: a 999px amber pill
@@ -2812,7 +2825,7 @@ body.nh-selecting .nh-rp-badge { visibility: hidden !important; }
   // Measured rather than corrected to a constant: the frosted band is the appbar's
   // PARENT (#appbar itself is transparent and 1px shorter), and a fractional height
   // there would reopen the hairline. Floored, so any rounding overlaps instead of
-  // gapping — the two surfaces share a tint, so a sub-pixel overlap is invisible
+  // gapping - the two surfaces share a tint, so a sub-pixel overlap is invisible
   // while a sub-pixel gap is not.
   function nhMeasureAppbar() {
       const ab = document.getElementById('appbar');
@@ -2883,7 +2896,7 @@ body.nh-selecting .nh-rp-badge { visibility: hidden !important; }
   // ==========================================
   // Flip ANY unified dropdown upward when it would run past the bottom of the
   // viewport (last table rows, toolbar kebabs near the fold, card menus at the
-  // bottom shelf). Space is measured per open — a static CSS rule can't know it.
+  // bottom shelf). Space is measured per open - a static CSS rule can't know it.
   // Generalized from the files-table-only listener that shipped in book-details
   // v1.25; only flips when there is actually room above.
   document.addEventListener('click', function () {

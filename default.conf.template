@@ -5,7 +5,7 @@ map $http_upgrade $connection_upgrade {
 
 # Preserve the client's original protocol when this container sits behind another
 # reverse proxy (outer nginx / NPM / Traefik terminating TLS). $scheme here is how
-# THIS container was reached — usually plain http — which would stomp the outer
+# THIS container was reached - usually plain http - which would stomp the outer
 # proxy's "X-Forwarded-Proto: https" and make ABS reject OIDC callback URLs as
 # cross-origin (https callback vs http expected origin). Pass the incoming header
 # through untouched; fall back to $scheme only when we are the edge proxy.
@@ -22,7 +22,7 @@ js_import nh_ratings from nh-ratings.js;
 
 # The theme is INLINED into the HTML shell, so a browser that heuristically caches
 # the shell keeps running an OLD theme build after a redeploy (stale until a hard
-# refresh — mixed-version weirdness). Forbid caching of HTML responses only; the
+# refresh - mixed-version weirdness). Forbid caching of HTML responses only; the
 # hashed /_nuxt/* assets keep whatever caching ABS gives them. add_header with an
 # empty value emits nothing, so non-HTML responses are untouched.
 map $upstream_http_content_type $nh_html_no_store {
@@ -34,6 +34,11 @@ server {
     listen 80;
     server_name _;
     client_max_body_size 0;
+
+    # NH_SOCIAL env for njs (#25): set at SERVER level so every njs location
+    # (social, stats, progress) sees the assigned value - a per-location set
+    # would leave it empty everywhere else.
+    set $nh_social_env "${NH_SOCIAL}";
 
     gzip on;
     gzip_comp_level 5;
@@ -85,7 +90,7 @@ server {
         return 200 '{"v":1,"cols":{}}';
     }
 
-    # Self-hosted custom logo — works with NO internet access. Drop an image into the
+    # Self-hosted custom logo - works with NO internet access. Drop an image into the
     # nh_theme_data volume as /data/nh/logo.<ext> (via a bind-mount, `docker cp`, or the
     # admin settings panel's PUT to /_nh/data/logo.<ext>), then set the logo to
     # /_nh/logo.<ext>. It is served same-origin from the local volume, so the client never
@@ -105,7 +110,7 @@ server {
     # cover for five minutes after it was replaced, on every account except the one
     # that happened to upload it. Do not put max-age back on a mutable path.
     #
-    # Custom series covers (A1) — admin-uploaded images that replace the stacked-books
+    # Custom series covers (A1) - admin-uploaded images that replace the stacked-books
     # tile. Files live in the nh_theme_data volume as /data/nh/series-covers/<seriesId>.<ext>
     # (written via the admin DAV path below). Public read like the logo: a cover is not
     # secret, and cards need it without an Authorization header.
@@ -117,7 +122,7 @@ server {
     }
 
     # Admin-written series description overrides, served as plain text (public
-    # read, same reasoning as covers — the text is shown to every user anyway).
+    # read, same reasoning as covers - the text is shown to every user anyway).
     location ~ "^/_nh/series-desc/([A-Za-z0-9_-]{4,64}\.txt)$" {
         alias /data/nh/series-desc/$1;
         default_type "text/plain; charset=utf-8";
@@ -127,7 +132,7 @@ server {
     }
 
     # User profile photos (avatars), shown in the server ranking. Public read
-    # like series covers — an avatar is not secret and <img> tags carry no
+    # like series covers - an avatar is not secret and <img> tags carry no
     # Authorization header. Regex QUOTED (brace quantifier breaks nginx parse).
     location ~ "^/_nh/user-avatars/([A-Za-z0-9_-]{4,64}\.(?:png|jpe?g|webp|gif))$" {
         alias /data/nh/user-avatars/$1;
@@ -138,7 +143,7 @@ server {
 
     # Avatar write API (njs): POST raw image bytes (type sniffed from magic
     # bytes), DELETE = remove; ?forUser=<id> targets a user. ADMIN-ONLY by
-    # design (Pawel: users don't set their own) — gated by admincheck at the
+    # design (Pawel: users don't set their own) - gated by admincheck at the
     # nginx layer, because newer ABS JWTs have no `type` claim and admin-ness
     # canNOT be read from the token payload. Body must be buffered in MEMORY
     # (buffer >= max size) or njs r.requestBuffer is empty (temp-file bodies
@@ -153,7 +158,7 @@ server {
 
     # Which series have a custom cover / description (+ which users have an
     # avatar): njs lists the folders and returns { covers: {id: ext}, descs:
-    # {id: 1}, avatars: {userId: ext} } — one call, no per-card probes.
+    # {id: 1}, avatars: {userId: ext} } - one call, no per-card probes.
     location = /_nh/api/series-meta {
         auth_request /_nh/api/whoami;
         js_content nh_ratings.meta;
@@ -163,12 +168,12 @@ server {
     # POST writes the caller's own rating. Store: /data/nh/ratings.json.
     #
     # Auth: auth_request (NOT an njs subrequest). ABS's /api/me body includes the
-    # caller's ENTIRE media progress — ~90KB for an active listener — and njs
+    # caller's ENTIRE media progress - ~90KB for an active listener - and njs
     # subrequests buffer the response in memory, sized from Content-Length, so any
     # real account overflowed it ("too big subrequest response") and the request
     # died with an empty reply. auth_request only needs the status and DISCARDS
     # the body at any size (same mechanism as the /_nh/data/ admincheck, proven
-    # at scale). Identity then comes from the JWT payload in njs — safe to decode
+    # at scale). Identity then comes from the JWT payload in njs - safe to decode
     # unverified, because auth_request just had ABS validate that exact token.
     location = /_nh/api/ratings {
         auth_request /_nh/api/whoami;
@@ -179,7 +184,7 @@ server {
 
     # MODERATION path: same handler, but admin-gated by nginx so an admin can
     # remove SOMEONE ELSE's rating. It needs its own location because admin-ness
-    # canNOT be read from the token — newer ABS JWTs carry no `type` claim, so
+    # canNOT be read from the token - newer ABS JWTs carry no `type` claim, so
     # the payload check inside the handler silently refused every admin. Exactly
     # the same reasoning (and shape) as /_nh/api/avatar-admin above.
     location = /_nh/api/ratings-admin {
@@ -200,7 +205,7 @@ server {
         js_content nh_ratings.reports;
     }
 
-    # Started-date overrides (ABS refuses to store a client startedAt — see the
+    # Started-date overrides (ABS refuses to store a client startedAt - see the
     # njs note). Per-user, readable and writable only by the owner.
     location = /_nh/api/dates {
         auth_request /_nh/api/whoami;
@@ -232,7 +237,7 @@ server {
     # Shared listening summaries (A5). Each participating browser POSTs a summary
     # of its OWN /api/me/listening-stats; any authenticated user may GET the store
     # to render the family board. DELETE removes the caller's record (opt-out).
-    # Identity is the JWT's userId — the body can never name another user.
+    # Identity is the JWT's userId - the body can never name another user.
     location = /_nh/api/stats {
         auth_request /_nh/api/whoami;
         client_max_body_size 64k;
@@ -253,6 +258,24 @@ server {
         js_content nh_ratings.stats;
     }
 
+    # Social switches (#25): what this server shares between users at all.
+    # Reads resolve admin file > NH_SOCIAL env > built-ins (time on, content
+    # and who's-reading off). $nh_social_env carries the env var into njs.
+    location = /_nh/api/social {
+        auth_request /_nh/api/whoami;
+        js_content nh_ratings.social;
+    }
+
+    # Admin twin: saves the flags and excludes/includes specific users, same
+    # nginx admin gate as the other -admin routes.
+    location = /_nh/api/social-admin {
+        auth_request /_nh/admincheck;
+        set $nh_social_admin 1;
+        client_max_body_size 16k;
+        client_body_buffer_size 16k;
+        js_content nh_ratings.social;
+    }
+
     # Shared book progress (#23). Same contract as /_nh/api/stats: each browser
     # POSTs a summary of its OWN /api/me mediaProgress, any authenticated user
     # may GET (?item=<id> for the book page's tiny per-item view), DELETE is the
@@ -271,6 +294,32 @@ server {
         client_max_body_size 64k;
         client_body_buffer_size 64k;
         js_content nh_ratings.progress;
+    }
+
+    # Hardcover ratings sync (#26). The browser cannot call api.hardcover.app
+    # directly (CORS), so the theme POSTs GraphQL here and nginx relays it. The
+    # caller's ABS token gates the location (not an open relay); the user's own
+    # Hardcover token rides X-NH-HC and becomes the upstream Authorization.
+    # proxy_pass through a VARIABLE so the hostname resolves at request time -
+    # a literal one resolves at startup and would keep nginx from booting on a
+    # server with no internet. 127.0.0.11 is Docker's embedded DNS (compose
+    # networks); the public resolvers cover plain `docker run` bridges.
+    location = /_nh/hc {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 32k;
+        client_body_buffer_size 32k;
+        resolver 127.0.0.11 1.1.1.1 8.8.8.8 valid=300s ipv6=off;
+        resolver_timeout 5s;
+        set $nh_hc_upstream "${NH_HC_UPSTREAM}";
+        proxy_pass $nh_hc_upstream;
+        proxy_set_header Host api.hardcover.app;
+        proxy_ssl_server_name on;
+        # the ABS token must NOT leak upstream: Authorization is overridden
+        # with the Hardcover token, cookies are stripped
+        proxy_set_header Authorization $http_x_nh_hc;
+        proxy_set_header Cookie "";
+        proxy_set_header X-NH-HC "";
+        proxy_read_timeout 35s;
     }
 
     location = /_nh/api/whoami {

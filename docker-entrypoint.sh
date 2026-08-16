@@ -26,6 +26,12 @@ for var in NH_SHOW_LOGO_TEXT NH_COLORIZE_LOGO NH_SHOW_RECENT_SERIES NH_CUSTOM_SE
   esac
 done
 
+# NH_SOCIAL lands inside the nginx config verbatim; empty means "use defaults".
+case "$NH_SOCIAL" in
+  ''|true|false) ;;
+  *) echo "ERROR: NH_SOCIAL must be 'true', 'false' or unset (got '$NH_SOCIAL')" >&2; exit 1 ;;
+esac
+
 # UI-saved server defaults live here; mount a volume at /data/nh to keep them
 # across container recreations. Seed an empty config so the SSI include in the
 # page head always yields valid JS.

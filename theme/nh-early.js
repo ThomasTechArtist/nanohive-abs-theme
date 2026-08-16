@@ -1,4 +1,4 @@
-/* NanoHive ABS — Early Boot Shim  v1.8.0
+/* NanoHive ABS - Early Boot Shim  v1.8.0
    Runs inline in <head>, right after core.js. Applies the resolved theme
    (baked defaults merged with the user's saved overrides) before first paint,
    and paints the cached home cinematic background as soon as <body> exists,
@@ -37,7 +37,7 @@
   // one person's look to the next. This file runs before anything else, so it
   // resolves the id the same way enhancements.js does: straight out of the vuex
   // blob in localStorage. No id yet (logged out, first ever load) = the plain key.
-  // (Kept byte-identical in intent to nhSettingsUid() in enhancements.js — if one
+  // (Kept byte-identical in intent to nhSettingsUid() in enhancements.js - if one
   // changes, change both, or the pre-paint and the app disagree about who you are.)
   var settingsKey = 'nh-settings';
   try {
@@ -59,8 +59,8 @@
   try { saved = JSON.parse(localStorage.getItem(settingsKey) || '{}') || {}; } catch (e) {}
   // A pre-diff-era save (<= v1.9.1) dumped EVERY setting into the browser. This shim
   // used to DELETE it here, which is what made an update to 2.0 land on a stock-looking
-  // page for anyone coming from 1.9.x. It is converted instead — keeping whatever still
-  // differs from the defaults — by enhancements.js on this very load, so nothing needs
+  // page for anyone coming from 1.9.x. It is converted instead, keeping whatever still
+  // differs from the defaults, by enhancements.js on this very load, so nothing needs
   // deleting and nothing is lost. This file only READS settings, so using the legacy
   // values as they stand is right: the paint matches what the user had, and the next
   // load reads the converted form.
@@ -134,8 +134,8 @@
   // Tab icon, as early as possible. enhancements.js also owns this (and can
   // apply the accent tint, which needs a canvas), but by the time it runs the
   // browser has usually committed ABS's stock icon and a plain refresh kept
-  // showing it. Disabling the stock links and inserting ours here — still
-  // inside <head>, before first paint — is what makes the custom logo stick.
+  // showing it. Disabling the stock links and inserting ours here, still
+  // inside <head>, before first paint, is what makes the custom logo stick.
   try {
     if (logoUrl) {
       var head = document.head || document.documentElement;
