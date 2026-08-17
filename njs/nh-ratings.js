@@ -1,4 +1,4 @@
-/* NanoHive ABS - Server-wide Ratings API  v1.22.0  (nginx njs module)
+/* NanoHive ABS - Server-wide Ratings API  v1.23.0  (nginx njs module)
 
    A tiny JSON API that lets every user of this server rate books (stars +
    short review, Plex-style) and see everyone else's ratings. Runs entirely
@@ -99,15 +99,53 @@ function whoami(r) {
   }
 }
 
-function handleGet(r) {
+/* Names next to ratings are a SOCIAL feature now (#27-style follow-up):
+   the global `names` switch ships OFF and overrides everything; with it on,
+   admin per-user exclusions (social.json nameExcl) and each user's own
+   shareRatingName pref still hide individual names. Masking happens on READ -
+   the store keeps the real names, so flipping a switch back restores them.
+   The caller always sees their OWN name; the nginx-gated admin twin sees
+   every name, with masked rows flagged anon:1 instead of stripped. */
+function handleGet(r, user) {
   const store = readStore();
+  const isAdminGet = (r.variables && r.variables.nh_ratings_admin) === '1';
+  const eff = socialEff(r);
+  const hideAll = !eff.names;
+  const hidden = {};
+  if (!hideAll) {
+    const soc = readSocial();
+    (Array.isArray(soc.nameExcl) ? soc.nameExcl : []).forEach(function (id) { hidden[id] = 1; });
+    nhNameOptOuts().forEach(function (id) { hidden[id] = 1; });
+  }
+  const me = user ? user.id : '';
+  // shareRatings=false hides a user's ROWS from everyone else entirely
+  // (stars, review, the lot); admins keep them with a hidden:1 flag
+  const gone = {};
+  nhRatingOptOuts().forEach(function (id) { gone[id] = 1; });
+  const maskItem = function (rows) {
+    const out = {};
+    Object.keys(rows || {}).forEach(function (uid) {
+      const e = rows[uid];
+      if (uid !== me && gone[uid]) {
+        if (isAdminGet) out[uid] = Object.assign({}, e, { hidden: 1 });
+        return;
+      }
+      const masked = uid !== me && (hideAll || hidden[uid]);
+      if (!masked) { out[uid] = e; return; }
+      if (isAdminGet) { out[uid] = Object.assign({}, e, { anon: 1 }); return; }
+      out[uid] = Object.assign({}, e, { user: '' });
+    });
+    return out;
+  };
   const item = r.args && r.args.item;
   if (item) {
     const out = {};
-    out[item] = store.items[item] || {};
+    out[item] = maskItem(store.items[item] || {});
     return send(r, 200, { v: 1, items: out });
   }
-  send(r, 200, store);
+  const full = { v: store.v || 1, items: {} };
+  Object.keys(store.items || {}).forEach(function (id) { full.items[id] = maskItem(store.items[id]); });
+  send(r, 200, full);
 }
 
 /* QUARTER steps, not half. v2.0.1 added a "star rating steps" setting with a
@@ -231,7 +269,7 @@ async function handle(r) {
   const user = whoami(r);
   if (!user) return send(r, 401, { error: 'not authenticated' });
 
-  if (r.method === 'GET') return handleGet(r);
+  if (r.method === 'GET') return handleGet(r, user);
   if (r.method === 'POST') return await handlePost(r, user);
   r.headersOut['Allow'] = 'GET, POST';
   send(r, 405, { error: 'method not allowed' });
@@ -363,8 +401,11 @@ function avatar(r) {
 
    Store: /data/nh/social.json - only the keys an admin actually set. */
 const SOCIAL = '/data/nh/social.json';
-const SOCIAL_KEYS = ['time', 'content', 'whoReading'];
-const SOCIAL_DEFAULTS = { time: true, content: false, whoReading: false };
+const SOCIAL_KEYS = ['time', 'content', 'whoReading', 'names'];
+// names = usernames shown next to ratings/reviews. Same shape as the rest:
+// the GLOBAL switch ships OFF and always overrides the per-user state; the
+// per-user admin switches and each user's own toggle default to ON.
+const SOCIAL_DEFAULTS = { time: true, content: false, whoReading: false, names: false };
 
 function readSocial() {
   try {
@@ -419,6 +460,33 @@ function socialTombs() {
   });
   out.excluded = out.exclTime.concat(out.exclBooks.filter(function (id) { return out.exclTime.indexOf(id) < 0; }));
   out.optedOut = out.optTime.filter(function (id) { return out.excluded.indexOf(id) < 0; });
+  // names: admin exclusions live in social.json (ratings are keyed by item,
+  // not user, so there is no per-user record to tombstone); the user's own
+  // "no" is their shareRatingName pref
+  const soc = readSocial();
+  out.exclNames = Array.isArray(soc.nameExcl) ? soc.nameExcl.slice() : [];
+  out.optNames = nhNameOptOuts();
+  return out;
+}
+
+/* Users whose own toggle says "no name with my ratings" - read from the prefs
+   store (the default is ON, so only an explicit false counts). */
+function nhNameOptOuts() {
+  return nhPrefOptOuts('shareRatingName');
+}
+/* And the stronger one: users hiding their RATINGS from everyone else. */
+function nhRatingOptOuts() {
+  return nhPrefOptOuts('shareRatings');
+}
+function nhPrefOptOuts(key) {
+  const out = [];
+  try {
+    const users = (readPrefs().users) || {};
+    Object.keys(users).forEach(function (uid) {
+      const s = users[uid] && users[uid].settings;
+      if (s && s[key] === false) out.push(uid);
+    });
+  } catch (e) {}
   return out;
 }
 
@@ -451,10 +519,22 @@ function social(r) {
     try { writeSocial(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
   }
 
-  // kind: 'time' (stats/ranking), 'books' (progress + stats titles), absent = both
+  // kind: 'time' (stats/ranking), 'books' (progress + stats titles),
+  // 'names' (username next to ratings - social.json list), absent = both stores
   const exclude = body.exclude && String(body.exclude);
   const include = body.include && String(body.include);
-  const kind = body.kind === 'time' || body.kind === 'books' ? body.kind : null;
+  const kind = body.kind === 'time' || body.kind === 'books' || body.kind === 'names' ? body.kind : null;
+  if (kind === 'names' && (exclude || include)) {
+    const id = exclude || include;
+    if (!/^[A-Za-z0-9_-]{4,64}$/.test(id)) return send(r, 400, { error: 'invalid user id' });
+    const store = readSocial();
+    const list = Array.isArray(store.nameExcl) ? store.nameExcl : [];
+    if (exclude && list.indexOf(id) < 0) list.push(id);
+    if (include) { const i2 = list.indexOf(id); if (i2 >= 0) list.splice(i2, 1); }
+    store.nameExcl = list;
+    try { writeSocial(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
+    return send(r, 200, { v: 1, ok: true, eff: socialEff(r), cfg: readSocial(), tombs: socialTombs() });
+  }
   if (exclude) {
     if (!/^[A-Za-z0-9_-]{4,64}$/.test(exclude)) return send(r, 400, { error: 'invalid user id' });
     const name = String(body.user == null ? '' : body.user).slice(0, 60) || '?';

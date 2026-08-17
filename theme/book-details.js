@@ -1,4 +1,4 @@
-/* NanoHive ABS - Book Details Redesign  v1.45.0  (injected build) */
+/* NanoHive ABS - Book Details Redesign  v1.46.0  (injected build) */
 
 (function () {
   'use strict';
@@ -506,6 +506,7 @@
     .nh-rt-row:last-child { border-bottom: none; }
     .nh-rt-row-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
     .nh-rt-user { color: #f4eee2; font-weight: 600; font-size: 0.92rem; }
+    .nh-rt-priv { font-size: 0.9em; margin-left: 5px; vertical-align: -2px; color: var(--nh-muted-2, #9a9085); opacity: 0.85; }
     .nh-rt-date { color: #8a8075; font-size: 0.78rem; }
     .nh-rt-text { color: #d8cfc2; font-size: 0.92rem; line-height: 1.5; margin: 1px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
     .nh-rt-del { background: none; border: none; color: #8a8075; cursor: pointer; font-size: 0.76rem; text-decoration: underline; padding: 0; }
@@ -938,6 +939,13 @@
   };
   function nhRtT() { return NH_RT_T[(nhRtLang().split('-')[0] || 'en').toLowerCase()] || NH_RT_T.en; }
 
+  // "Anonymous" for masked rating names, in all 40 languages: bridged from
+  // enhancements.js (loads before this file and owns the full tables).
+  function nhRtAnonLabel() {
+    try { const v = window.__nhAnonLabel && window.__nhAnonLabel(); if (v) return v; } catch (e) {}
+    return (nhRtLang().split('-')[0] || 'en').toLowerCase() === 'pl' ? 'Anonim' : 'Anonymous';
+  }
+
   // Pluralize with Polish three-form support: [one, few, many]; English: [one, many].
   function nhRtWord(n, forms) {
     if (forms.length === 2) return n === 1 ? forms[0] : forms[1];
@@ -1031,7 +1039,10 @@
     if (nhRt.fetching) return;
     if (!nhRtToken()) { nhRt.lastStatus = 'no-token'; nhRtRetry(itemId); return; } // auth store not hydrated yet
     nhRt.fetching = true;
-    fetch('/_nh/api/ratings?item=' + encodeURIComponent(itemId), { headers: nhRtHeaders(), credentials: 'include' })
+    // admins read the nginx-gated twin: names privacy (#27 follow-up) masks
+    // the regular view, the twin returns everything with anon/hidden flags
+    const meAdm = nhRtMe();
+    fetch((meAdm && meAdm.admin ? '/_nh/api/ratings-admin' : '/_nh/api/ratings') + '?item=' + encodeURIComponent(itemId), { headers: nhRtHeaders(), credentials: 'include' })
       .then(r => {
         if (r.status === 404 || r.status === 405) { nhRt.gone = true; return null; } // no njs backend behind this proxy
         if (!r.ok) { nhRt.lastStatus = r.status; throw new Error(r.status); }
@@ -1247,7 +1258,15 @@
         top.className = 'nh-rt-row-top';
         const user = document.createElement('span');
         user.className = 'nh-rt-user';
-        user.textContent = e.user + (me && e.uid === me.id ? ' (' + T.you + ')' : '');
+        // names privacy: a masked row arrives with user '' (translated label
+        // bridged from the main tables); admin rows keep the name plus a mark
+        user.textContent = (e.user || nhRtAnonLabel()) + (me && e.uid === me.id ? ' (' + T.you + ')' : '');
+        if (e.anon || e.hidden) {
+          const priv = document.createElement('span');
+          priv.className = 'material-symbols nh-rt-priv';
+          priv.textContent = 'visibility_off';
+          user.appendChild(priv);
+        }
         top.appendChild(user);
         top.appendChild(nhRtStarsEl(e.stars));
         const num = document.createElement('span');
