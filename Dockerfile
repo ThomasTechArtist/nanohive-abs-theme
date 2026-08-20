@@ -38,6 +38,8 @@ RUN cd /src/abs-tract && git apply /tmp/abs-tract-ratings.patch && \
 
 FROM nginx:alpine
 
+RUN apk add --no-cache libc6-compat
+
 # Theme payload, served at /_nh/ and inlined into HTML via SSI
 COPY --from=themebuild /src/theme/ /usr/share/nginx/nh-theme/
 COPY --from=goodreadsbuild /out/nh-goodreads /usr/local/bin/nh-goodreads
