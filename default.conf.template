@@ -203,6 +203,13 @@ server {
         js_content nh_goodreads.handle;
     }
 
+    # Whole cached Goodreads map for the library filter/sort panel. Read-only
+    # and available to any signed-in ABS user, just like individual scores.
+    location = /_nh/api/goodreads-ratings {
+        auth_request /_nh/api/whoami;
+        js_content nh_goodreads.list;
+    }
+
     # Whole-store import/status endpoint. Only an ABS administrator can replace
     # the libraryItemId -> Goodreads mapping produced by the offline collector.
     location = /_nh/api/goodreads-ratings-admin {

@@ -6341,6 +6341,7 @@
   // users' ratings drift in; local saves patch it instantly via the
   // 'nh-rating-change' event book-details fires (no refetch).
   const nhRs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false };
+  const nhGrs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false };
   // Content signature, NOT a timestamp. The A8 view and the open panel key their
   // rebuild on this; keying on nhRs.at meant every 60s background refetch bumped
   // the signature with IDENTICAL data and the whole filtered shelf tore itself
@@ -6374,6 +6375,38 @@
       }
     }
     return nhRs.items;
+  }
+
+  function nhGrsItems() {
+    if (nhGrs.dead) return nhGrs.items;
+    const stale = Date.now() - nhGrs.at > 60000;
+    if ((!nhGrs.items || stale) && !nhGrs.fetching && nhGrs.tries < 5) {
+      const tok = nhSrToken();
+      if (tok) {
+        nhGrs.fetching = true;
+        nhGrs.tries++;
+        fetch('/_nh/api/goodreads-ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+          .then((r) => {
+            if (r.status === 404 || r.status === 405) { nhGrs.dead = true; return null; }
+            return r.ok ? r.json() : null;
+          })
+          .then((j) => {
+            nhGrs.fetching = false;
+            if (j && j.items) { nhGrs.items = j.items; nhGrs.at = Date.now(); nhGrs.sig = nhRsSig(j.items); nhGrs.tries = 0; }
+          })
+          .catch(() => { nhGrs.fetching = false; });
+      }
+    }
+    return nhGrs.items;
+  }
+
+  function nhGrsRating(itemId) {
+    const entry = nhGrs.items && itemId ? nhGrs.items[itemId] : null;
+    const rating = entry && Number(entry.rating);
+    const ratingsCount = entry && Number(entry.ratingsCount);
+    return Number.isFinite(rating) && rating >= 0 && rating <= 5
+      ? { avg: rating, n: Number.isFinite(ratingsCount) ? ratingsCount : 0 }
+      : null;
   }
 
   function nhRsAvg(itemId) {
@@ -7958,12 +7991,12 @@
   // rating quick-filters to that one person's stars (GitHub #23).
   const nhLf = { mode: 'items', sort: '', sorts: [], filter: '', filters: {}, who: '', sub: null, libId: null, items: null, itemsKey: '', fetching: false, view: null, viewSig: '', needReset: false, libTotal: null, libTotalKey: '', libTotalFetching: false };
   const NH_LF_FILTERS = ['rated', 'min4', 'min3', 'unrated'];
-  const NH_LF_SORT_DIMS = ['author', 'series', 'title', 'year', 'added', 'duration', 'narrator', 'rating'];
+  const NH_LF_SORT_DIMS = ['author', 'series', 'title', 'year', 'added', 'duration', 'narrator', 'rating', 'goodreads'];
   // v2.1: tag / publisher / series / format added so the new panel is a SUPERSET
   // of ABS's own filter menu. That matters because the panel replaces those
   // dropdowns rather than sitting next to them, anything ABS could filter by and
   // this could not would simply have become unreachable.
-  const NH_LF_FILTER_DIMS = ['genre', 'author', 'narrator', 'series', 'tag', 'publisher', 'language', 'decade', 'progress', 'format'];
+  const NH_LF_FILTER_DIMS = ['goodreads', 'genre', 'author', 'narrator', 'series', 'tag', 'publisher', 'language', 'decade', 'progress', 'format'];
   // The series LIST page has different objects (no media metadata of its own), so
   // it gets the dimensions that can be derived from its member books.
   const NH_LF_SERIES_SORT_DIMS = ['title', 'rating', 'books', 'progress'];
@@ -7998,8 +8031,9 @@
       author: 'lfAuthor', series: 'lfSeries', title: 'lfTitle', year: 'lfYear', added: 'lfAdded',
       duration: 'lfDuration', narrator: 'lfNarrator', rating: 'lfSort', genre: 'lfGenre',
       language: 'lfLanguage', decade: 'lfYear', progress: 'lfProgress',
-      tag: 'lfTag', publisher: 'lfPublisher', format: 'lfFormat', books: 'lfBooks',
+      tag: 'lfTag', publisher: 'lfPublisher', format: 'lfFormat', books: 'lfBooks', goodreads: 'lfGoodreads',
     }[d];
+    if (d === 'goodreads') return T[K] || PANEL_T.en[K] || 'Goodreads rating';
     return T[K] || PANEL_T.en[K] || d;
   }
   function nhLfMeta(li) { return (li.media && li.media.metadata) || {}; }
@@ -8071,6 +8105,12 @@
       else if (dim === 'decade') { const y = parseInt(md.publishedYear, 10); if (y) add(Math.floor(y / 10) * 10 + 's'); }
       else if (dim === 'progress') add(nhLfProgressOf(pg, li.id));
       else if (dim === 'format') nhLfFormats(li).forEach(add);
+      else if (dim === 'goodreads') {
+        const gr = nhGrsRating(li.id);
+        add(gr ? 'rated' : 'unrated');
+        if (gr && gr.avg >= 4) add('min4');
+        if (gr && gr.avg >= 3) add('min3');
+      }
     });
     let vals = [...cnt.entries()].map(([v, n]) => ({ v: v, n: n }));
     if (dim === 'progress') {
@@ -8094,6 +8134,11 @@
     if (dim === 'format') {
       const K = { audio: 'lfFmtAudio', ebook: 'lfFmtEbook', abridged: 'lfFmtAbridged', explicit: 'lfFmtExplicit', missing: 'lfFmtMissing', invalid: 'lfFmtInvalid' }[v];
       return (K && (T[K] || PANEL_T.en[K])) || v;
+    }
+    if (dim === 'goodreads') {
+      return v === 'rated' ? (T.lfGrRated || PANEL_T.en.lfGrRated || 'Has Goodreads rating')
+        : v === 'unrated' ? (T.lfGrUnrated || PANEL_T.en.lfGrUnrated || 'Missing Goodreads rating')
+        : v === 'min4' ? '4★+' : '3★+';
     }
     return v;
   }
@@ -8307,7 +8352,7 @@
       if (!btn.dataset.nhLfWarm) {
         btn.dataset.nhLfWarm = '1';
         btn.addEventListener('click', () => {
-          if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+          if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); nhGrsItems(); }
           // a fresh open always starts at the MAIN list, a submenu drill-down
           // must not survive the close. Vue's own toggle ran first (its
           // listener predates ours), so showMenu already holds the new state.
@@ -8404,7 +8449,7 @@
             const nOn = (nhLf.filters[dim] || []).length;
             ul.appendChild(nhLfMenuItem(ul, 'dim:' + dim, nhLfDimLabel(T, dim) + (nOn ? '  (' + nOn + ')' : ''), '›', () => {
               nhLf.sub = dim;
-              if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+              if (nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); nhGrsItems(); }
             }));
           });
         }
@@ -8418,7 +8463,7 @@
           const lvl = idx >= 0 ? nhLf.sorts[idx] : null;
           const mark = lvl ? (idx + 1) + (lvl.dir < 0 ? '↓' : '↑') : '';
           // rating starts DESCENDING (best first), everything else A→Z first
-          const def = d === 'rating' ? -1 : 1;
+          const def = (d === 'rating' || d === 'goodreads') ? -1 : 1;
           ul.appendChild(nhLfMenuItem(ul, 's:' + d, nhLfDimLabel(T, d), mark, () => {
             if (!lvl) nhLf.sorts.push({ d: d, dir: def });
             else if (lvl.dir === def) lvl.dir = -def;
@@ -8568,7 +8613,7 @@
         e.preventDefault();
         e.stopPropagation();
         nhFf.open = !nhFf.open;
-        if (nhFf.open && nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); }
+        if (nhFf.open && nhLf.libId) { nhLfEnsureItems(nhLf.libId); nhRsItems(); nhGrsItems(); }
         nhFfRender();
       });
       if (host && host.parentElement) host.parentElement.insertBefore(pill, host);
@@ -8793,7 +8838,7 @@
           b.textContent = nhLfDimLabel(T, d);
           b.addEventListener('click', () => {
             // rating and the other numeric axes start at "highest first"
-            const def = ['rating', 'added', 'progress', 'books'].indexOf(d) >= 0 ? -1 : 1;
+            const def = ['rating', 'goodreads', 'added', 'progress', 'books'].indexOf(d) >= 0 ? -1 : 1;
             nhLf.sorts.push({ d: d, dir: def });
             nhLfSyncSortSig();
             nhFf.addOpen = false;
@@ -8849,7 +8894,7 @@
       hd.type = 'button';
       hd.className = 'nh-ff-sec-h';
       // A search collapses nothing: if you typed, you want to see the matches.
-      const open = q ? true : (nhFf.openDims[key] !== undefined ? nhFf.openDims[key] : (key === 'rating' || key === 'who' || key === 'progress' || key === 'format'));
+      const open = q ? true : (nhFf.openDims[key] !== undefined ? nhFf.openDims[key] : (key === 'rating' || key === 'goodreads' || key === 'who' || key === 'progress' || key === 'format'));
       hd.innerHTML = '<span class="nh-ff-caret">' + (open ? '▾' : '▸') + '</span>';
       const ht = document.createElement('span');
       ht.textContent = title;
@@ -9102,7 +9147,7 @@
       nhFfHideNative(toolbar);
       // Redraw an OPEN panel only when the data behind it changes (the item list
       // arriving, ratings refreshing). Everything else is the cheap sync path.
-      const dataSig = ((nhLf.items || []).length) + '|' + nhRs.sig + '|' + nhLf.mode + '|' + (nhLf.libId || '');
+      const dataSig = ((nhLf.items || []).length) + '|' + nhRs.sig + '|' + nhGrs.sig + '|' + nhLf.mode + '|' + (nhLf.libId || '');
       if (nhFf.open && nhFf.dataSig !== dataSig) {
         nhFf.dataSig = dataSig;
         nhFfRender();
@@ -9222,12 +9267,12 @@
 
     // items list composed WITH the native filter/sort (server-side)
     const key = nhLfEnsureItems(libId).key;
-    if (!nhLf.items || !nhRsItems()) { cnt.textContent = '…'; return; } // native shelf stays until ready
+    if (!nhLf.items || !nhRsItems() || !nhGrsItems()) { cnt.textContent = '…'; return; } // native shelf stays until ready
     if (!vm || typeof vm.fetchEntites !== 'function' || typeof vm.resetEntities !== 'function') return;
 
     // Build the composed view (full minified item objects, the same shape the
     // shelf fetches itself, so it can render them natively).
-    const viewSig = key + '|' + nhLf.sort + '|' + nhLf.filter + '|' + nhLf.who + '|' + nhLfFxSig() + '|' + nhRs.sig;
+    const viewSig = key + '|' + nhLf.sort + '|' + nhLf.filter + '|' + nhLf.who + '|' + nhLfFxSig() + '|' + nhRs.sig + '|' + nhGrs.sig;
     if (nhLf.viewSig !== viewSig) {
       nhLf.viewSig = viewSig;
       // series rating = mean of its rated books' averages (same math as the
@@ -9242,7 +9287,8 @@
           return { e: li, t: li.name || '', avg: n ? sum / n : -1, n: n };
         }
         const r = nhRsAvgFor(li.id, nhLf.who);
-        return { e: li, t: ((li.media && li.media.metadata) || {}).title || '', avg: r ? r.avg : -1, n: r ? r.n : 0 };
+        const gr = nhGrsRating(li.id);
+        return { e: li, t: ((li.media && li.media.metadata) || {}).title || '', avg: r ? r.avg : -1, n: r ? r.n : 0, gr: gr ? gr.avg : -1, grn: gr ? gr.n : 0 };
       });
       // Stacked dimension filters: OR within a dimension, AND across dimensions
       // (and with the native filter, applied server-side in the items fetch).
@@ -9268,6 +9314,9 @@
           if (k === 'decade') { const y = parseInt(md.publishedYear, 10); return !!y && vals.indexOf(Math.floor(y / 10) * 10 + 's') >= 0; }
           if (k === 'progress') return vals.indexOf(nhLfProgressOf(pg, x.e.id)) >= 0;
           if (k === 'format') return nhLfFormats(x.e).some((f) => vals.indexOf(f) >= 0);
+          if (k === 'goodreads') {
+            return vals.some((v) => v === 'rated' ? x.gr >= 0 : v === 'unrated' ? x.gr < 0 : v === 'min4' ? x.gr >= 4 : v === 'min3' ? x.gr >= 3 : false);
+          }
           return true;
         }));
       }
@@ -9308,6 +9357,7 @@
             duration: (x.e.media && x.e.media.duration) || 0,
             narrator: String(md.narratorName || '').toLowerCase() || '￿',
             rating: x.avg,
+            goodreads: x.gr,
           };
         });
         // Takes the LEVEL, not just the dimension name, because a level can carry

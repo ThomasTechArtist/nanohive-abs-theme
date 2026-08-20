@@ -108,6 +108,17 @@ function handle(r) {
   send(r, 200, entry);
 }
 
+// One authenticated, read-only snapshot for library sorting/filtering.  The
+// browser needs a single map, not thousands of per-card requests.
+function list(r) {
+  if (r.method !== 'GET') {
+    r.headersOut.Allow = 'GET';
+    return send(r, 405, { error: 'method not allowed' });
+  }
+  const store = readStore();
+  send(r, 200, { v: store.v || 1, updatedAt: store.updatedAt || null, items: store.items || {} });
+}
+
 /* Admin-only replacement endpoint. nginx performs the admin check.  A complete
    replacement keeps imports deterministic and makes stale/deleted ABS IDs fall
    out on the next sync. */
@@ -194,4 +205,4 @@ async function resolve(r) {
   send(r, 200, entry);
 }
 
-export default { handle, admin, resolve };
+export default { handle, list, admin, resolve };
