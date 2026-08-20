@@ -469,6 +469,13 @@
     #nh-ratings { margin: -26px 0 40px; max-width: 95%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; position: relative; z-index: 10; }
     #nh-ratings .nh-rt-main { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 34px; }
     #nh-ratings .nh-rt-avg { color: var(--nh-amber, #e0c27a); font-size: 0.95rem; }
+    /* Goodreads community score prototype. This deliberately does not reuse
+       NanoHive's interactive star controls: it is a separate, read-only signal. */
+    .nh-goodreads-summary { display: flex; align-items: center; gap: 5px; margin-top: 9px; width: max-content; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 0.95rem; line-height: 1.2; cursor: default; user-select: text; }
+    .nh-goodreads-star { color: #e8a23e; font-size: 1.05rem; line-height: 1; }
+    .nh-goodreads-score { color: #f4eee2; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .nh-goodreads-separator, .nh-goodreads-count { color: #9a9085; }
+    .nh-goodreads-count { font-variant-numeric: tabular-nums; }
     .nh-rt-stars { position: relative; display: inline-block; font-size: 1.05rem; line-height: 1; letter-spacing: 2px; color: rgba(255,255,255,0.22); white-space: nowrap; user-select: none; }
     .nh-rt-stars .nh-rt-fill { position: absolute; top: 0; left: 0; height: 100%; overflow: hidden; white-space: nowrap; color: var(--nh-amber, #e0c27a); pointer-events: none; }
     #nh-rt-picker { cursor: pointer; font-size: 2.1rem; letter-spacing: 3px; }
@@ -1167,6 +1174,29 @@
     }
     if (!mine) main.appendChild(status);
     section.appendChild(main);
+
+    // Phase-one prototype: prove the visual placement before adding the
+    // Goodreads data store and API. This row is intentionally non-interactive.
+    const goodreads = document.createElement('div');
+    goodreads.className = 'nh-goodreads-summary';
+    goodreads.setAttribute('aria-label', 'Goodreads community rating 3.98 from 407 ratings');
+    goodreads.title = 'Goodreads community rating';
+    const goodreadsStar = document.createElement('span');
+    goodreadsStar.className = 'nh-goodreads-star';
+    goodreadsStar.setAttribute('aria-hidden', 'true');
+    goodreadsStar.textContent = '★';
+    const goodreadsScore = document.createElement('span');
+    goodreadsScore.className = 'nh-goodreads-score';
+    goodreadsScore.textContent = '3.98';
+    const goodreadsSeparator = document.createElement('span');
+    goodreadsSeparator.className = 'nh-goodreads-separator';
+    goodreadsSeparator.setAttribute('aria-hidden', 'true');
+    goodreadsSeparator.textContent = '·';
+    const goodreadsCount = document.createElement('span');
+    goodreadsCount.className = 'nh-goodreads-count';
+    goodreadsCount.textContent = new Intl.NumberFormat().format(407);
+    goodreads.append(goodreadsStar, goodreadsScore, goodreadsSeparator, goodreadsCount);
+    section.appendChild(goodreads);
 
     // --- "Your rating:" line ---
     if (me && mine) {
