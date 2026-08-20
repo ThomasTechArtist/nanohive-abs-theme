@@ -48,6 +48,26 @@ function tokenScore(left, right) {
   return Math.round((2 * common / (aa.length + bb.length)) * 100);
 }
 
+function titleVariants(value) {
+  const original = String(value || '').trim();
+  const variants = [original];
+  original.split(/\s+[\-–—]\s+|:\s+/).forEach(function (part) {
+    part = part.trim();
+    if (part.length >= 3 && variants.indexOf(part) === -1) variants.push(part);
+  });
+  const withoutRank = original.replace(/^\s*#?\d+\s*[.\-–—:]\s*/, '').trim();
+  if (withoutRank && variants.indexOf(withoutRank) === -1) variants.push(withoutRank);
+  return variants;
+}
+
+function titleScore(left, right) {
+  let best = 0;
+  titleVariants(left).forEach(function (a) {
+    titleVariants(right).forEach(function (b) { best = Math.max(best, tokenScore(a, b)); });
+  });
+  return best;
+}
+
 function selectMatch(request, matches) {
   let best = null, bestConfidence = 0;
   (matches || []).forEach(function (candidate) {
@@ -55,7 +75,7 @@ function selectMatch(request, matches) {
     const expectedIsbn = String(request.isbn || '').replace(/\D/g, '');
     const resultIsbn = String(candidate.isbn || '').replace(/\D/g, '');
     const isbnMatch = expectedIsbn && resultIsbn && expectedIsbn === resultIsbn;
-    const title = tokenScore(request.title, candidate.title);
+    const title = titleScore(request.title, candidate.title);
     const author = tokenScore(request.author, candidate.author);
     const confidence = isbnMatch ? 100 : Math.round(title * 0.72 + author * 0.28);
     if (confidence > bestConfidence) { best = candidate; bestConfidence = confidence; }
