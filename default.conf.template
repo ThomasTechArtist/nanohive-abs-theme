@@ -19,6 +19,7 @@ map $http_x_forwarded_proto $nh_fwd_proto {
 # (load_module line added in the Dockerfile).
 js_path "/etc/nginx/njs/";
 js_import nh_ratings from nh-ratings.js;
+js_import nh_goodreads from nh-goodreads.js;
 
 # The theme is INLINED into the HTML shell, so a browser that heuristically caches
 # the shell keeps running an OLD theme build after a redeploy (stale until a hard
@@ -193,6 +194,22 @@ server {
         client_max_body_size 64k;
         client_body_buffer_size 64k;
         js_content nh_ratings.handle;
+    }
+
+    # Read-only Goodreads community score, stored separately from NanoHive's
+    # personal/server ratings. Any signed-in ABS user may read one item.
+    location = /_nh/api/goodreads-rating {
+        auth_request /_nh/api/whoami;
+        js_content nh_goodreads.handle;
+    }
+
+    # Whole-store import/status endpoint. Only an ABS administrator can replace
+    # the libraryItemId -> Goodreads mapping produced by the offline collector.
+    location = /_nh/api/goodreads-ratings-admin {
+        auth_request /_nh/admincheck;
+        client_max_body_size 4m;
+        client_body_buffer_size 4m;
+        js_content nh_goodreads.admin;
     }
 
     # Problem reports. Any signed-in user may POST one from a book page; the

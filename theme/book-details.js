@@ -471,7 +471,8 @@
     #nh-ratings .nh-rt-avg { color: var(--nh-amber, #e0c27a); font-size: 0.95rem; }
     /* Goodreads community score prototype. This deliberately does not reuse
        NanoHive's interactive star controls: it is a separate, read-only signal. */
-    .nh-goodreads-summary { display: flex; align-items: center; gap: 5px; margin-top: 9px; width: max-content; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 0.95rem; line-height: 1.2; cursor: default; user-select: text; }
+    #nh-goodreads-rating { margin-top: 9px; }
+    .nh-goodreads-summary { display: flex; align-items: center; gap: 5px; width: max-content; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 0.95rem; line-height: 1.2; cursor: default; user-select: text; }
     .nh-goodreads-star { color: #e8a23e; font-size: 1.05rem; line-height: 1; }
     .nh-goodreads-score { color: #f4eee2; font-weight: 600; font-variant-numeric: tabular-nums; }
     .nh-goodreads-separator, .nh-goodreads-count { color: #9a9085; }
@@ -1175,29 +1176,6 @@
     if (!mine) main.appendChild(status);
     section.appendChild(main);
 
-    // Phase-one prototype: prove the visual placement before adding the
-    // Goodreads data store and API. This row is intentionally non-interactive.
-    const goodreads = document.createElement('div');
-    goodreads.className = 'nh-goodreads-summary';
-    goodreads.setAttribute('aria-label', 'Goodreads community rating 3.98 from 407 ratings');
-    goodreads.title = 'Goodreads community rating';
-    const goodreadsStar = document.createElement('span');
-    goodreadsStar.className = 'nh-goodreads-star';
-    goodreadsStar.setAttribute('aria-hidden', 'true');
-    goodreadsStar.textContent = '★';
-    const goodreadsScore = document.createElement('span');
-    goodreadsScore.className = 'nh-goodreads-score';
-    goodreadsScore.textContent = '3.98';
-    const goodreadsSeparator = document.createElement('span');
-    goodreadsSeparator.className = 'nh-goodreads-separator';
-    goodreadsSeparator.setAttribute('aria-hidden', 'true');
-    goodreadsSeparator.textContent = '·';
-    const goodreadsCount = document.createElement('span');
-    goodreadsCount.className = 'nh-goodreads-count';
-    goodreadsCount.textContent = new Intl.NumberFormat().format(407);
-    goodreads.append(goodreadsStar, goodreadsScore, goodreadsSeparator, goodreadsCount);
-    section.appendChild(goodreads);
-
     // --- "Your rating:" line ---
     if (me && mine) {
       const yr = document.createElement('div');
@@ -1331,6 +1309,79 @@
       overlay.appendChild(box);
       document.body.appendChild(overlay);
     }
+  }
+
+  // Goodreads community data is deliberately independent from NanoHive's own
+  // interactive ratings. It is fetched once per item and hidden on a 404.
+  const nhGr = { itemId: null, data: null, fetching: false, absent: false };
+
+  function nhGrRender() {
+    let host = document.getElementById('nh-goodreads-rating');
+    if (!nhGr.data) { if (host) host.remove(); return; }
+    const ratings = document.getElementById('nh-ratings');
+    const btnRow = document.querySelector('#item-page-wrapper .flex.items-center.justify-center.md\\:justify-start.pt-4')
+      || document.querySelector('#item-page-wrapper [class*="pt-4 flex"]');
+    if (!ratings && !btnRow) return;
+    if (!host) {
+      host = document.createElement('div');
+      host.id = 'nh-goodreads-rating';
+    }
+    if (ratings) {
+      if (ratings.nextElementSibling !== host) ratings.insertAdjacentElement('afterend', host);
+    } else if (btnRow.nextElementSibling !== host) {
+      btnRow.insertAdjacentElement('afterend', host);
+    }
+    host.textContent = '';
+    const score = Number(nhGr.data.rating);
+    const count = Number(nhGr.data.ratingsCount);
+    host.setAttribute('aria-label', 'Goodreads community rating ' + score.toFixed(2) + ' from ' + new Intl.NumberFormat().format(count) + ' ratings');
+    host.title = 'Goodreads community rating';
+    const row = document.createElement('div');
+    row.className = 'nh-goodreads-summary';
+    const star = document.createElement('span');
+    star.className = 'nh-goodreads-star'; star.setAttribute('aria-hidden', 'true'); star.textContent = '★';
+    const value = document.createElement('span');
+    value.className = 'nh-goodreads-score'; value.textContent = score.toFixed(2);
+    const sep = document.createElement('span');
+    sep.className = 'nh-goodreads-separator'; sep.setAttribute('aria-hidden', 'true'); sep.textContent = '·';
+    const total = document.createElement('span');
+    total.className = 'nh-goodreads-count'; total.textContent = new Intl.NumberFormat().format(count);
+    row.append(star, value, sep, total);
+    host.appendChild(row);
+  }
+
+  function nhGrMaintain() {
+    const m = window.location.pathname.match(/\/item\/([^/?#]+)/);
+    const itemId = m ? m[1] : null;
+    if (!itemId) {
+      const old = document.getElementById('nh-goodreads-rating');
+      if (old) old.remove();
+      nhGr.itemId = null; nhGr.data = null; nhGr.absent = false; nhGr.fetching = false;
+      return;
+    }
+    if (nhGr.itemId !== itemId) {
+      const old = document.getElementById('nh-goodreads-rating');
+      if (old) old.remove();
+      nhGr.itemId = itemId; nhGr.data = null; nhGr.absent = false; nhGr.fetching = true;
+      fetch('/_nh/api/goodreads-rating?item=' + encodeURIComponent(itemId), { headers: nhRtHeaders(), credentials: 'include' })
+        .then(function (response) {
+          if (response.status === 404) return null;
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function (data) {
+          if (nhGr.itemId !== itemId) return;
+          nhGr.fetching = false; nhGr.absent = !data; nhGr.data = data;
+          nhGrRender();
+        })
+        .catch(function () {
+          if (nhGr.itemId !== itemId) return;
+          nhGr.fetching = false; nhGr.absent = true; nhGr.data = null;
+          nhGrRender();
+        });
+      return;
+    }
+    if (nhGr.data && !document.getElementById('nh-goodreads-rating')) nhGrRender();
   }
 
   function nhRtMaintain() {
@@ -1675,6 +1726,8 @@
 
       // 5. Community ratings section (server-wide stars + reviews)
       try { nhRtMaintain(); } catch (e) {}
+      // 6. Goodreads community score (read-only, separate data store)
+      try { nhGrMaintain(); } catch (e) {}
   }
 
   // Reactive scheduler (mirrors enhancements.js): run within ~80ms of DOM changes so

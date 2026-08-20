@@ -35,6 +35,7 @@ COPY default.conf.template /etc/nginx/templates/default.conf.template
 # Ratings API (njs). nginx:alpine ships the njs module but does not load it;
 # prepend the load_module directive to the main config.
 COPY njs/nh-ratings.js /etc/nginx/njs/nh-ratings.js
+COPY njs/nh-goodreads.js /etc/nginx/njs/nh-goodreads.js
 RUN sed -i '1i load_module modules/ngx_http_js_module.so;' /etc/nginx/nginx.conf
 
 # Env-validation guard, runs before substitution (05- prefix)
