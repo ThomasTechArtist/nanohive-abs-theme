@@ -156,17 +156,22 @@ async function resolve(r) {
   const store = readStore();
   if (store.items[item]) return send(r, 200, store.items[item]);
 
-  const query = encodeURIComponent(title) + (author ? '&author=' + encodeURIComponent(author) : '');
-  let response, payload;
+  let selected = null;
+  const searches = titleVariants(title);
   try {
-    response = await r.subrequest('/_nh/internal/goodreads/search?query=' + query, { method: 'GET' });
-    if (response.status < 200 || response.status >= 300) return send(r, 502, { error: 'Goodreads matcher returned HTTP ' + response.status });
-    payload = JSON.parse(response.responseText || '{}');
+    for (let index = 0; index < searches.length; index += 1) {
+      const query = encodeURIComponent(searches[index]) + (author ? '&author=' + encodeURIComponent(author) : '');
+      const response = await r.subrequest('/_nh/internal/goodreads/search?query=' + query, { method: 'GET' });
+      if (response.status < 200 || response.status >= 300) continue;
+      const payload = JSON.parse(response.responseText || '{}');
+      const attempt = selectMatch({ title: title, author: author, isbn: request.isbn }, payload.matches);
+      if (attempt && (!selected || attempt.confidence > selected.confidence)) selected = attempt;
+      if (selected && selected.confidence >= 95) break;
+    }
   } catch (e) {
     return send(r, 502, { error: 'Goodreads matcher unavailable' });
   }
 
-  const selected = selectMatch({ title: title, author: author, isbn: request.isbn }, payload.matches);
   if (!selected || selected.confidence < 85) {
     return send(r, 404, { error: 'no confident Goodreads match', confidence: selected ? selected.confidence : 0 });
   }
