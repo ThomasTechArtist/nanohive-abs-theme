@@ -218,6 +218,9 @@ server {
         auth_request /_nh/api/whoami;
         client_max_body_size 16k;
         client_body_buffer_size 16k;
+        # Goodreads search result sets are commonly 20-100KB. njs must hold the
+        # complete internal response before it can score and cache a match.
+        subrequest_output_buffer_size 512k;
         js_content nh_goodreads.resolve;
     }
 
