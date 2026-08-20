@@ -169,6 +169,7 @@ async function resolve(r) {
       if (selected && selected.confidence >= 95) break;
     }
   } catch (e) {
+    r.error('Goodreads resolve search failed: ' + String(e));
     return send(r, 502, { error: 'Goodreads matcher unavailable' });
   }
 
@@ -186,7 +187,10 @@ async function resolve(r) {
   entry.confidence = selected.confidence;
   store.items[item] = entry;
   store.updatedAt = new Date().toISOString();
-  try { writeStore(store); } catch (e) { return send(r, 500, { error: 'write failed' }); }
+  try { writeStore(store); } catch (e) {
+    r.error('Goodreads cache write failed for ' + item + ': ' + String(e));
+    return send(r, 500, { error: 'write failed' });
+  }
   send(r, 200, entry);
 }
 
