@@ -225,6 +225,13 @@ server {
         internal;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
+        # This is a server-side JSON subrequest. Do not forward the browser's
+        # compression or the outer POST body headers: njs must receive plain
+        # JSON text for responseText/JSON.parse.
+        proxy_set_header Accept-Encoding "";
+        proxy_set_header Content-Length "";
+        proxy_set_header Content-Type "";
+        proxy_pass_request_body off;
         proxy_pass http://127.0.0.1:5555/goodreads/;
     }
 
