@@ -93,7 +93,59 @@ function cleanEntry(value) {
   if (value.goodreadsId != null) entry.goodreadsId = String(value.goodreadsId).slice(0, 80);
   if (value.url != null && /^https:\/\/www\.goodreads\.com\//.test(String(value.url))) entry.url = String(value.url).slice(0, 500);
   if (value.matchedAt != null) entry.matchedAt = String(value.matchedAt).slice(0, 40);
+  if (value.metadata && typeof value.metadata === 'object') entry.metadata = cleanMetadata(value.metadata);
+  if (value.confidence != null && Number.isFinite(Number(value.confidence))) entry.confidence = Math.max(0, Math.min(100, Math.round(Number(value.confidence))));
   return entry;
+}
+
+function plainText(value) {
+  return String(value || '')
+    .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+    .replace(/<\s*\/\s*p\s*>/gi, '\n\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+function strings(value, maxItems, maxLen) {
+  const source = Array.isArray(value) ? value : (value == null ? [] : [value]);
+  const out = [];
+  source.slice(0, maxItems).forEach(function (part) {
+    const text = String(part && typeof part === 'object' ? (part.name || '') : part || '').trim().slice(0, maxLen);
+    if (text && out.indexOf(text) === -1) out.push(text);
+  });
+  return out;
+}
+
+function cleanMetadata(value) {
+  const md = {};
+  ['title', 'subtitle', 'publisher', 'isbn', 'asin', 'language'].forEach(function (key) {
+    if (value[key] != null && String(value[key]).trim()) md[key] = String(value[key]).trim().slice(0, key === 'title' ? 500 : 300);
+  });
+  const year = parseInt(value.publishedYear, 10);
+  if (year >= 1000 && year <= 3000) md.publishedYear = String(year);
+  const desc = plainText(value.description).slice(0, 30000);
+  if (desc) md.description = desc;
+  const authors = strings(value.authors || value.author, 20, 200);
+  if (authors.length) md.authors = authors;
+  const narrators = strings(value.narrators || value.narrator, 20, 200);
+  if (narrators.length) md.narrators = narrators;
+  const genres = strings(value.genres, 30, 120);
+  if (genres.length) md.genres = genres;
+  const tags = strings(value.tags, 30, 120);
+  if (tags.length) md.tags = tags;
+  if (Array.isArray(value.series)) {
+    md.series = value.series.slice(0, 10).map(function (series) {
+      if (!series) return null;
+      if (typeof series === 'string') return { name: series.slice(0, 300), sequence: null };
+      const name = String(series.name || '').trim().slice(0, 300);
+      return name ? { name: name, sequence: series.sequence == null ? null : String(series.sequence).slice(0, 40) } : null;
+    }).filter(Boolean);
+    if (!md.series.length) delete md.series;
+  }
+  ['explicit', 'abridged'].forEach(function (key) { if (typeof value[key] === 'boolean') md[key] = value[key]; });
+  return md;
 }
 
 function handle(r) {
@@ -165,7 +217,7 @@ async function resolve(r) {
   if (!/^[A-Za-z0-9_-]{4,100}$/.test(item) || !title) return send(r, 400, { error: 'item and title are required' });
 
   const store = readStore();
-  if (store.items[item]) return send(r, 200, store.items[item]);
+  if (store.items[item] && !request.force) return send(r, 200, store.items[item]);
 
   let selected = null;
   const searches = titleVariants(title);
@@ -193,9 +245,17 @@ async function resolve(r) {
     ratingsCount: value.goodreadsRatingsCount,
     goodreadsId: value.goodreadsId,
     url: value.goodreadsUrl,
-    matchedAt: new Date().toISOString()
+    matchedAt: new Date().toISOString(),
+    confidence: selected.confidence,
+    metadata: {
+      title: value.title, subtitle: value.subtitle, author: value.author,
+      publishedYear: value.publishedYear, series: value.series,
+      description: value.description, genres: value.genres, tags: value.tags,
+      narrator: value.narrator, isbn: value.isbn, asin: value.asin,
+      publisher: value.publisher, language: value.language,
+      explicit: value.explicit, abridged: value.abridged
+    }
   });
-  entry.confidence = selected.confidence;
   store.items[item] = entry;
   store.updatedAt = new Date().toISOString();
   try { writeStore(store); } catch (e) {

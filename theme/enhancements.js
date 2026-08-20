@@ -6409,6 +6409,145 @@
       : null;
   }
 
+  // Goodreads library enrichment is deliberately opt-in. Ratings are cached
+  // independently; ABS metadata is never touched unless the admin enables the
+  // master switch and starts the queue. By default only empty fields are filled.
+  const NH_GQ_FIELDS = ['title', 'subtitle', 'authors', 'publishedYear', 'series', 'description', 'genres', 'tags', 'isbn', 'publisher', 'language'];
+  const nhGq = { open: false, running: false, stop: false, queue: [], total: 0, done: 0, matched: 0, updated: 0, failed: 0, current: '', timer: null };
+  function nhGqSettings() {
+    const fallback = { metadata: false, replace: false, fields: {} };
+    NH_GQ_FIELDS.forEach(function (f) { fallback.fields[f] = true; });
+    try {
+      const saved = JSON.parse(localStorage.getItem('nh-goodreads-enrichment-v1') || 'null');
+      if (saved && typeof saved === 'object') {
+        fallback.metadata = !!saved.metadata; fallback.replace = !!saved.replace;
+        if (saved.fields) NH_GQ_FIELDS.forEach(function (f) { if (saved.fields[f] !== undefined) fallback.fields[f] = !!saved.fields[f]; });
+      }
+    } catch (e) {}
+    return fallback;
+  }
+  let nhGqCfg = nhGqSettings();
+  function nhGqSave() { try { localStorage.setItem('nh-goodreads-enrichment-v1', JSON.stringify(nhGqCfg)); } catch (e) {} }
+  function nhGqMd(li) { return (li && li.media && li.media.metadata) || {}; }
+  function nhGqMissing(md, field) {
+    if (field === 'authors') return !(md.authors && md.authors.length) && !String(md.authorName || '').trim();
+    if (field === 'series') return !(md.series && (Array.isArray(md.series) ? md.series.length : md.series.name));
+    if (field === 'tags') return true; // tags live beside metadata; merged safely below
+    const value = md[field];
+    return value == null || value === '' || (Array.isArray(value) && !value.length);
+  }
+  function nhGqPatch(li, source) {
+    if (!nhGqCfg.metadata || !source) return null;
+    const current = nhGqMd(li), metadata = {}, payload = { metadata: metadata };
+    NH_GQ_FIELDS.forEach(function (field) {
+      if (!nhGqCfg.fields[field]) return;
+      if (field === 'tags' && source.tags == null && source.genres != null) source.tags = source.genres;
+      if (source[field] == null) return;
+      if (!nhGqCfg.replace && !nhGqMissing(current, field)) return;
+      if (field === 'authors') metadata.authors = source.authors.map(function (name) { return { name: name }; });
+      else if (field === 'series') metadata.series = source.series;
+      else if (field === 'tags') {
+        const old = (li.media && li.media.tags) || [];
+        payload.tags = Array.from(new Set(old.concat(source.tags || source.genres || [])));
+      } else metadata[field] = source[field];
+    });
+    if (!Object.keys(metadata).length) delete payload.metadata;
+    return Object.keys(payload).length ? payload : null;
+  }
+  function nhGqResolve(li, force) {
+    const md = nhGqMd(li);
+    return fetch('/_nh/api/goodreads-resolve', {
+      method: 'POST', credentials: 'include',
+      headers: { Authorization: 'Bearer ' + nhSrToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item: li.id, title: md.title || '', author: md.authorName || ((md.authors || []).map(function (a) { return a.name || a; }).join(', ')), isbn: md.isbn || '', force: !!force })
+    }).then(function (r) {
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    });
+  }
+  function nhGqUpdateAbs(li, entry) {
+    const payload = nhGqPatch(li, entry && entry.metadata);
+    if (!payload) return Promise.resolve(false);
+    return fetch('/api/items/' + encodeURIComponent(li.id) + '/media', {
+      method: 'PATCH', credentials: 'include',
+      headers: { Authorization: 'Bearer ' + nhSrToken(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(function (r) { if (!r.ok) throw new Error('ABS HTTP ' + r.status); return true; });
+  }
+  function nhGqCandidates() {
+    const cached = nhGrs.items || {};
+    return (nhLf.items || []).filter(function (li) {
+      if (!li || !li.id || nhLf.mode === 'series') return false;
+      const hit = cached[li.id];
+      return !hit || (nhGqCfg.metadata && !hit.metadata);
+    });
+  }
+  function nhGqRefresh() {
+    const modal = document.getElementById('nh-gq-modal');
+    if (modal) nhGqRender();
+    const b = document.getElementById('nh-gq-btn');
+    if (b) b.textContent = nhGq.running ? ('Goodreads ' + nhGq.done + '/' + nhGq.total) : 'Goodreads queue';
+  }
+  function nhGqNext() {
+    if (!nhGq.running || nhGq.stop || !nhGq.queue.length) {
+      nhGq.running = false; nhGq.current = ''; nhGqRefresh(); return;
+    }
+    const li = nhGq.queue.shift(), old = nhGrs.items && nhGrs.items[li.id];
+    nhGq.current = nhGqMd(li).title || li.id; nhGqRefresh();
+    nhGqResolve(li, !!(nhGqCfg.metadata && (!old || !old.metadata)))
+      .then(function (entry) {
+        if (!entry) { nhGq.failed += 1; return false; }
+        nhGq.matched += 1;
+        nhGrs.items = nhGrs.items || {}; nhGrs.items[li.id] = entry; nhGrs.sig = nhRsSig(nhGrs.items);
+        return nhGqUpdateAbs(li, entry).then(function (changed) { if (changed) nhGq.updated += 1; return changed; });
+      })
+      .catch(function () { nhGq.failed += 1; })
+      .then(function () {
+        nhGq.done += 1; nhGqRefresh();
+        // Gentle pacing: abs-tract/Goodreads is not a bulk API. One lookup every
+        // four seconds makes progress without causing the 429/connection storms
+        // the old metadata tool experienced.
+        nhGq.timer = setTimeout(nhGqNext, 4000);
+      });
+  }
+  function nhGqStart() {
+    if (nhGq.running) return;
+    nhGq.queue = nhGqCandidates(); nhGq.total = nhGq.queue.length; nhGq.done = 0;
+    nhGq.matched = 0; nhGq.updated = 0; nhGq.failed = 0; nhGq.stop = false;
+    nhGq.running = !!nhGq.queue.length; nhGqRefresh(); if (nhGq.running) nhGqNext();
+  }
+  function nhGqStop() { nhGq.stop = true; nhGq.running = false; if (nhGq.timer) clearTimeout(nhGq.timer); nhGq.timer = null; nhGqRefresh(); }
+  function nhGqRender() {
+    if (!document.getElementById('nh-gq-style')) {
+      const style = document.createElement('style'); style.id = 'nh-gq-style';
+      style.textContent = '#nh-gq-btn{border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.18));border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.05);color:var(--nh-text-2,#d8cfc2);font-weight:600;cursor:pointer}#nh-gq-modal{position:fixed;inset:0;z-index:2147483200;font-family:var(--nh-sans,system-ui)}.nh-gq-shade{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px)}.nh-gq-box{position:relative;margin:5vh auto;width:min(680px,92vw);max-height:90vh;overflow:auto;box-sizing:border-box;padding:24px 26px;border-radius:18px;background:var(--nh-raised,#221e1a);border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.16));color:var(--nh-text-1,#f4eee2);box-shadow:0 28px 90px rgba(0,0,0,.65)}.nh-gq-box h2{font:700 1.7rem/1.2 var(--nh-serif,Georgia);margin:0 38px 6px 0}.nh-gq-x{position:absolute;right:16px;top:12px;border:0;background:none;color:inherit;font-size:28px;cursor:pointer}.nh-gq-lead,.nh-gq-note,.nh-gq-unavailable{color:var(--nh-muted,#a99f91);line-height:1.45}.nh-gq-progress{display:grid;gap:4px;margin:18px 0;padding:14px;border-radius:12px;background:rgba(255,255,255,.05)}.nh-gq-progress span{font-size:.88rem;color:var(--nh-muted,#a99f91)}.nh-gq-master,.nh-gq-replace{display:flex;gap:9px;align-items:center;font-weight:650;margin:16px 0 4px}.nh-gq-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:14px 0;padding:14px;border:1px solid var(--nh-hairline,rgba(255,255,255,.1));border-radius:12px}.nh-gq-fields label{display:flex;gap:8px;align-items:center}.nh-gq-unavailable{font-size:.84rem}.nh-gq-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}.nh-gq-actions button{padding:9px 18px;border-radius:10px;border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.18));background:rgba(255,255,255,.06);color:inherit;font-weight:650;cursor:pointer}.nh-gq-actions #nh-gq-start{background:var(--nh-amber,#e0c27a);color:#17130e}.nh-gq-actions button:disabled{opacity:.4;cursor:default}@media(max-width:600px){.nh-gq-fields{grid-template-columns:1fr}}';
+      document.head.appendChild(style);
+    }
+    let modal = document.getElementById('nh-gq-modal');
+    if (!nhGq.open) { if (modal) modal.remove(); return; }
+    if (!modal) { modal = document.createElement('div'); modal.id = 'nh-gq-modal'; document.body.appendChild(modal); }
+    const remaining = nhGqCandidates().length;
+    modal.innerHTML = '<div class="nh-gq-shade"></div><section class="nh-gq-box" role="dialog" aria-modal="true">' +
+      '<button class="nh-gq-x" type="button">×</button><h2>Goodreads enrichment</h2>' +
+      '<p class="nh-gq-lead">Populate community ratings gradually. Metadata enrichment is optional and off by default.</p>' +
+      '<div class="nh-gq-progress"><strong>' + (nhGq.running ? ('Processing ' + nhGq.done + ' of ' + nhGq.total) : (remaining + ' books need a Goodreads lookup')) + '</strong>' +
+      (nhGq.current ? '<span>Now: ' + nhGq.current.replace(/[&<>]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;'})[c]; }) + '</span>' : '') +
+      (nhGq.done ? '<span>' + nhGq.matched + ' matched · ' + nhGq.updated + ' metadata updates · ' + nhGq.failed + ' unmatched/errors</span>' : '') + '</div>' +
+      '<label class="nh-gq-master"><input id="nh-gq-meta" type="checkbox" ' + (nhGqCfg.metadata ? 'checked' : '') + '> Also fill ABS metadata from Goodreads</label>' +
+      '<p class="nh-gq-note">When off, only ratings are collected. Existing ABS values are protected unless replacement is enabled.</p>' +
+      '<div class="nh-gq-fields">' + NH_GQ_FIELDS.map(function (f) { const names = {publishedYear:'Publish year', authors:'Authors', series:'Series', description:'Description', genres:'Genres', tags:'Tags from genres', isbn:'ISBN', publisher:'Publisher', language:'Language', title:'Title', subtitle:'Subtitle'}; return '<label><input data-gq-field="' + f + '" type="checkbox" ' + (nhGqCfg.fields[f] ? 'checked' : '') + ' ' + (!nhGqCfg.metadata ? 'disabled' : '') + '> ' + names[f] + '</label>'; }).join('') + '</div>' +
+      '<label class="nh-gq-replace"><input id="nh-gq-replace" type="checkbox" ' + (nhGqCfg.replace ? 'checked' : '') + ' ' + (!nhGqCfg.metadata ? 'disabled' : '') + '> Replace existing values (use cautiously)</label>' +
+      '<p class="nh-gq-unavailable">Goodreads does not supply reliable Narrator, ASIN, Explicit, or Abridged values, so NanoHive preserves those ABS fields.</p>' +
+      '<div class="nh-gq-actions"><button id="nh-gq-start" type="button" ' + (nhGq.running ? 'disabled' : '') + '>Start queue</button><button id="nh-gq-stop" type="button" ' + (!nhGq.running ? 'disabled' : '') + '>Pause</button></div></section>';
+    modal.querySelector('.nh-gq-x').onclick = function () { nhGq.open = false; nhGqRender(); };
+    modal.querySelector('.nh-gq-shade').onclick = function () { nhGq.open = false; nhGqRender(); };
+    modal.querySelector('#nh-gq-meta').onchange = function (e) { nhGqCfg.metadata = e.target.checked; nhGqSave(); nhGqRender(); };
+    modal.querySelector('#nh-gq-replace').onchange = function (e) { nhGqCfg.replace = e.target.checked; nhGqSave(); };
+    modal.querySelectorAll('[data-gq-field]').forEach(function (cb) { cb.onchange = function () { nhGqCfg.fields[cb.dataset.gqField] = cb.checked; nhGqSave(); }; });
+    modal.querySelector('#nh-gq-start').onclick = nhGqStart; modal.querySelector('#nh-gq-stop').onclick = nhGqStop;
+  }
+
   function nhRsAvg(itemId) {
     const rs = nhRs.items && itemId ? nhRs.items[itemId] : null;
     if (!rs) return null;
@@ -8631,6 +8770,17 @@
         (n || levels ? '<span class="nh-ff-pip">' + (n + levels) + '</span>' : '');
       pill.querySelector('.nh-ff-btn-lbl').textContent = nhFfT('mfButton');
     }
+    // Admin-only bulk enrichment control. Kept separate from sorting so running
+    // or pausing the queue never changes the current library view.
+    let gq = toolbar.querySelector('#nh-gq-btn');
+    if (isUserAdmin() && nhLf.mode === 'items') {
+      if (!gq) {
+        gq = document.createElement('button'); gq.type = 'button'; gq.id = 'nh-gq-btn';
+        gq.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); nhGrsItems(); nhGq.open = true; nhGqRender(); });
+        if (pill.parentElement) pill.parentElement.insertBefore(gq, pill);
+      }
+      gq.textContent = nhGq.running ? ('Goodreads ' + nhGq.done + '/' + nhGq.total) : 'Goodreads queue';
+    } else if (gq) gq.remove();
     return pill;
   }
 

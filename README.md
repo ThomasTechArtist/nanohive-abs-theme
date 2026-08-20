@@ -103,6 +103,15 @@ rating-file copy is required.
 The Goodreads score is read-only and remains separate from NanoHive's personal
 star ratings. See `THIRD_PARTY_NOTICES.md` for attribution.
 
+Library administrators also get a **Goodreads queue** beside **Filter & sort**.
+It processes uncached books sequentially (one lookup every four seconds), can be
+paused, and skips ratings already stored in the cache. An optional master switch
+can fill selected blank ABS metadata fields from the confident Goodreads match.
+Metadata writes are off by default; existing values are preserved unless the
+administrator separately enables replacement. Goodreads does not reliably
+provide narrator, ASIN, explicit, or abridged data, so those audiobook-specific
+fields are never cleared or guessed by the queue.
+
 ### TrueNAS SCALE
 
 Add it as a second app next to ABS (Apps → Discover → Custom App → Install via YAML):
