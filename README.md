@@ -91,6 +91,18 @@ Point your browser (or reverse proxy / tunnel) at 8080 instead of ABS. There's a
 - Dashboard icon URL for Unraid/Portainer:
   `https://raw.githubusercontent.com/rodzalendo/nanohive-abs-theme/main/docs/nanohive-logo.png`
 
+### Goodreads community ratings
+
+This fork bundles a pinned, attributed build of `abs-tract` inside the NanoHive
+container. When a signed-in user opens a book that has no cached community
+rating, NanoHive searches Goodreads using the visible title and author, accepts
+only a confident match, and stores the rating under that Audiobookshelf item ID
+in `/data/nh/goodreads-ratings.json`. No separate abs-tract container or manual
+rating-file copy is required.
+
+The Goodreads score is read-only and remains separate from NanoHive's personal
+star ratings. See `THIRD_PARTY_NOTICES.md` for attribution.
+
 ### TrueNAS SCALE
 
 Add it as a second app next to ABS (Apps → Discover → Custom App → Install via YAML):

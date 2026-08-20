@@ -1350,6 +1350,36 @@
     host.appendChild(row);
   }
 
+  function nhGrPageIdentity() {
+    const root = document.getElementById('item-page-wrapper');
+    if (!root) return null;
+    const heading = root.querySelector('h1');
+    const title = heading ? heading.textContent.trim() : '';
+    let author = '';
+    Array.from(root.querySelectorAll('p')).some(function (paragraph) {
+      const text = paragraph.textContent.trim();
+      if (!/^by\s+/i.test(text)) return false;
+      author = text.replace(/^by\s+/i, '').trim();
+      return true;
+    });
+    return title ? { title: title, author: author } : null;
+  }
+
+  function nhGrResolve(itemId) {
+    const identity = nhGrPageIdentity();
+    if (!identity) return Promise.resolve(null);
+    return fetch('/_nh/api/goodreads-resolve', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, nhRtHeaders()),
+      credentials: 'include',
+      body: JSON.stringify({ item: itemId, title: identity.title, author: identity.author })
+    }).then(function (response) {
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    });
+  }
+
   function nhGrMaintain() {
     const m = window.location.pathname.match(/\/item\/([^/?#]+)/);
     const itemId = m ? m[1] : null;
@@ -1365,7 +1395,7 @@
       nhGr.itemId = itemId; nhGr.data = null; nhGr.absent = false; nhGr.fetching = true;
       fetch('/_nh/api/goodreads-rating?item=' + encodeURIComponent(itemId), { headers: nhRtHeaders(), credentials: 'include' })
         .then(function (response) {
-          if (response.status === 404) return null;
+          if (response.status === 404) return nhGrResolve(itemId);
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json();
         })

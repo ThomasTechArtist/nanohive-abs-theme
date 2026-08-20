@@ -212,6 +212,22 @@ server {
         js_content nh_goodreads.admin;
     }
 
+    # Resolve one ABS item through the bundled Goodreads matcher and cache the
+    # verified result in /data/nh. The matcher itself is never exposed directly.
+    location = /_nh/api/goodreads-resolve {
+        auth_request /_nh/api/whoami;
+        client_max_body_size 16k;
+        client_body_buffer_size 16k;
+        js_content nh_goodreads.resolve;
+    }
+
+    location /_nh/internal/goodreads/ {
+        internal;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_pass http://127.0.0.1:5555/goodreads/;
+    }
+
     # Problem reports. Any signed-in user may POST one from a book page; the
     # queue itself carries other people's names, so READING and CLEARING it are
     # admin-only and go through the gated twin below.

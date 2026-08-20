@@ -24,10 +24,24 @@ RUN if [ "$NH_MINIFY" = "true" ]; then \
       done; \
     else echo "NH_MINIFY=false - shipping readable sources"; fi
 
+# --- stage 2: internal Goodreads metadata service ---------------------------
+# Pin abs-tract to the revision validated by NanoHive. The small patch exposes
+# the Goodreads work rating fields that Audiobookshelf's metadata schema omits.
+FROM golang:1.23-alpine AS goodreadsbuild
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git clone https://github.com/ahobsonsayers/abs-tract.git && \
+    cd abs-tract && git checkout 10be524a5ae436476e2c3a8cb0f0a7e6b95525b3
+COPY integrations/abs-tract-ratings.patch /tmp/abs-tract-ratings.patch
+RUN cd /src/abs-tract && git apply /tmp/abs-tract-ratings.patch && \
+    go mod download && go build -trimpath -o /out/nh-goodreads .
+
 FROM nginx:alpine
 
 # Theme payload, served at /_nh/ and inlined into HTML via SSI
 COPY --from=themebuild /src/theme/ /usr/share/nginx/nh-theme/
+COPY --from=goodreadsbuild /out/nh-goodreads /usr/local/bin/nh-goodreads
+COPY licenses/abs-tract-LICENSE /usr/share/licenses/abs-tract/LICENSE
 
 # Config template processed by the image's built-in envsubst step
 COPY default.conf.template /etc/nginx/templates/default.conf.template
@@ -40,7 +54,8 @@ RUN sed -i '1i load_module modules/ngx_http_js_module.so;' /etc/nginx/nginx.conf
 
 # Env-validation guard, runs before substitution (05- prefix)
 COPY docker-entrypoint.sh /docker-entrypoint.d/05-check-env.sh
-RUN chmod +x /docker-entrypoint.d/05-check-env.sh
+COPY docker-start-goodreads.sh /docker-entrypoint.d/06-start-goodreads.sh
+RUN chmod +x /docker-entrypoint.d/05-check-env.sh /docker-entrypoint.d/06-start-goodreads.sh
 
 # Restrict substitution to OUR vars so nginx's own $host/$http_upgrade survive.
 # Every NH_* var below must match this filter or it will be left literal in the
