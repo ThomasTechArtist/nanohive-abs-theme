@@ -103,7 +103,7 @@ rating-file copy is required.
 The Goodreads score is read-only and remains separate from NanoHive's personal
 star ratings. See `THIRD_PARTY_NOTICES.md` for attribution.
 
-Library administrators also get a **Goodreads queue** beside **Filter & sort**.
+Library administrators get a **Goodreads enrichment** card under **Theme Customizations → Features**.
 It processes uncached books sequentially (one lookup every four seconds), can be
 paused, and skips ratings already stored in the cache. An optional master switch
 can fill selected blank ABS metadata fields from the confident Goodreads match.

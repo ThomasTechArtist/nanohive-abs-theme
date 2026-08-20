@@ -1672,6 +1672,15 @@
           <div class="nh-field" id="nh-tog-modernfilters"></div>
         </section>
 
+        <section class="nh-card" id="nh-gq-settings-card">
+          <h2 class="nh-card-title">Goodreads enrichment</h2>
+          <p class="nh-hint" style="margin-top:0;">Collect missing Goodreads community ratings and, if you choose, fill selected Audiobookshelf metadata fields.</p>
+          <div class="nh-field">
+            <button type="button" id="nh-gq-settings-open" class="nh-upload-btn">Open Goodreads queue</button>
+            <span class="nh-rt-status" id="nh-gq-settings-status"></span>
+          </div>
+        </section>
+
       </div>
     `;
 
@@ -1945,6 +1954,15 @@
     panel.querySelector('#nh-tog-seriescards').appendChild(createToggle(T.seriesCards || PANEL_T.en.seriesCards, 'customSeriesCards'));
     panel.querySelector('#nh-tog-seriesprogress').appendChild(createToggle(T.sprLabel || PANEL_T.en.sprLabel, 'seriesProgressBadge'));
     panel.querySelector('#nh-tog-modernfilters').appendChild(createToggle(T.mfLabel || PANEL_T.en.mfLabel, 'modernFilters'));
+    (function bindGoodreadsQueueCard() {
+      const card = panel.querySelector('#nh-gq-settings-card');
+      if (!card) return;
+      if (!isUserAdmin()) { card.remove(); return; }
+      const open = card.querySelector('#nh-gq-settings-open');
+      const status = card.querySelector('#nh-gq-settings-status');
+      if (status) status.textContent = nhGq.running ? (nhGq.done + ' of ' + nhGq.total + ' processed') : 'Administrator tool';
+      if (open) open.addEventListener('click', function () { nhGqOpen(); });
+    })();
     panel.querySelector('#nh-tog-herocarousel').appendChild(createToggle(T.heroCarousel || PANEL_T.en.heroCarousel, 'showHeroCarousel'));
     panel.querySelector('#nh-cr-label').textContent = T.crMode || PANEL_T.en.crMode;
     (function () {
@@ -2391,7 +2409,7 @@
         ['look', ['#nh-in-name', '#nh-theme-buttons']],
         ['home', ['#nh-in-carousel', '#nh-togs-rail', '#nh-sel-startpage']],
         ['book', ['#nh-tog-ratings', '#nh-booksites', '#nh-sel-seriescover', '#nh-hc-key']],
-        ['feat', ['#nh-tog-gsearch', '#nh-tog-familystats', '#nh-tog-autoplay', '#nh-tog-modernfilters']],
+        ['feat', ['#nh-tog-gsearch', '#nh-tog-familystats', '#nh-tog-autoplay', '#nh-tog-modernfilters', '#nh-gq-settings-open']],
       ];
       NH_TAB_GROUPS.forEach((g) => {
         g[1].forEach((sel) => {
@@ -6341,7 +6359,7 @@
   // users' ratings drift in; local saves patch it instantly via the
   // 'nh-rating-change' event book-details fires (no refetch).
   const nhRs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false };
-  const nhGrs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false };
+  const nhGrs = { items: null, at: 0, sig: '', fetching: false, tries: 0, dead: false, promise: null };
   // Content signature, NOT a timestamp. The A8 view and the open panel key their
   // rebuild on this; keying on nhRs.at meant every 60s background refetch bumped
   // the signature with IDENTICAL data and the whole filtered shelf tore itself
@@ -6385,7 +6403,7 @@
       if (tok) {
         nhGrs.fetching = true;
         nhGrs.tries++;
-        fetch('/_nh/api/goodreads-ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
+        nhGrs.promise = fetch('/_nh/api/goodreads-ratings', { headers: { Authorization: 'Bearer ' + tok }, credentials: 'include' })
           .then((r) => {
             if (r.status === 404 || r.status === 405) { nhGrs.dead = true; return null; }
             return r.ok ? r.json() : null;
@@ -6394,7 +6412,8 @@
             nhGrs.fetching = false;
             if (j && j.items) { nhGrs.items = j.items; nhGrs.at = Date.now(); nhGrs.sig = nhRsSig(j.items); nhGrs.tries = 0; }
           })
-          .catch(() => { nhGrs.fetching = false; });
+          .catch(() => { nhGrs.fetching = false; })
+          .finally(() => { nhGrs.promise = null; });
       }
     }
     return nhGrs.items;
@@ -6413,7 +6432,7 @@
   // independently; ABS metadata is never touched unless the admin enables the
   // master switch and starts the queue. By default only empty fields are filled.
   const NH_GQ_FIELDS = ['title', 'subtitle', 'authors', 'publishedYear', 'series', 'description', 'genres', 'tags', 'isbn', 'publisher', 'language'];
-  const nhGq = { open: false, running: false, stop: false, queue: [], total: 0, done: 0, matched: 0, updated: 0, failed: 0, current: '', timer: null };
+  const nhGq = { open: false, running: false, stop: false, queue: [], total: 0, done: 0, matched: 0, updated: 0, failed: 0, current: '', timer: null, items: null, loading: false, loadPromise: null };
   function nhGqSettings() {
     const fallback = { metadata: false, replace: false, fields: {} };
     NH_GQ_FIELDS.forEach(function (f) { fallback.fields[f] = true; });
@@ -6477,17 +6496,56 @@
   }
   function nhGqCandidates() {
     const cached = nhGrs.items || {};
-    return (nhLf.items || []).filter(function (li) {
-      if (!li || !li.id || nhLf.mode === 'series') return false;
+    return (nhGq.items || nhLf.items || []).filter(function (li) {
+      if (!li || !li.id) return false;
       const hit = cached[li.id];
       return !hit || (nhGqCfg.metadata && !hit.metadata);
     });
   }
+  function nhGqLoadItems() {
+    if (nhGq.items) return Promise.resolve(nhGq.items);
+    if (nhGq.loadPromise) return nhGq.loadPromise;
+    const tok = nhSrToken();
+    if (!tok) return Promise.reject(new Error('No Audiobookshelf session'));
+    nhGq.loading = true; nhGqRefresh();
+    nhGq.loadPromise = nhGsLibs().then(function (libs) {
+      const bookLibs = (libs || []).filter(function (l) { return !l.mt || l.mt === 'book'; });
+      return Promise.all(bookLibs.map(function (l) {
+        return fetch('/api/libraries/' + l.id + '/items?limit=0&sort=media.metadata.title', {
+          headers: { Authorization: 'Bearer ' + tok }, credentials: 'include'
+        }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+      }));
+    }).then(function (responses) {
+      const seen = {}, items = [];
+      (responses || []).forEach(function (j) {
+        ((j && j.results) || []).forEach(function (li) {
+          if (li && li.id && !seen[li.id]) { seen[li.id] = 1; items.push(li); }
+        });
+      });
+      nhGq.items = items; return items;
+    }).finally(function () { nhGq.loading = false; nhGq.loadPromise = null; nhGqRefresh(); });
+    return nhGq.loadPromise;
+  }
+  function nhGqOpen() {
+    const b = document.getElementById('nh-gq-settings-open');
+    if (b) { b.disabled = true; b.textContent = 'Loading libraries…'; }
+    nhGqLoadItems().then(function () {
+      nhGrsItems();
+      return nhGrs.promise || Promise.resolve();
+    }).then(function () {
+      nhGq.open = true; nhGqRender();
+    }).catch(function () {
+      const s = document.getElementById('nh-gq-settings-status');
+      if (s) s.textContent = 'Could not load the audiobook libraries';
+    }).finally(function () { if (b) b.disabled = false; nhGqRefresh(); });
+  }
   function nhGqRefresh() {
     const modal = document.getElementById('nh-gq-modal');
     if (modal) nhGqRender();
-    const b = document.getElementById('nh-gq-btn');
-    if (b) b.textContent = nhGq.running ? ('Goodreads ' + nhGq.done + '/' + nhGq.total) : 'Goodreads queue';
+    const b = document.getElementById('nh-gq-settings-open');
+    if (b) b.textContent = nhGq.loading ? 'Loading libraries…' : (nhGq.running ? ('Goodreads ' + nhGq.done + '/' + nhGq.total) : 'Open Goodreads queue');
+    const s = document.getElementById('nh-gq-settings-status');
+    if (s) s.textContent = nhGq.loading ? 'Reading Audiobookshelf…' : (nhGq.running ? (nhGq.done + ' of ' + nhGq.total + ' processed') : (nhGq.items ? (nhGqCandidates().length + ' books currently need checking') : 'Administrator tool'));
   }
   function nhGqNext() {
     if (!nhGq.running || nhGq.stop || !nhGq.queue.length) {
@@ -6521,7 +6579,7 @@
   function nhGqRender() {
     if (!document.getElementById('nh-gq-style')) {
       const style = document.createElement('style'); style.id = 'nh-gq-style';
-      style.textContent = '#nh-gq-btn{border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.18));border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.05);color:var(--nh-text-2,#d8cfc2);font-weight:600;cursor:pointer}#nh-gq-modal{position:fixed;inset:0;z-index:2147483200;font-family:var(--nh-sans,system-ui)}.nh-gq-shade{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px)}.nh-gq-box{position:relative;margin:5vh auto;width:min(680px,92vw);max-height:90vh;overflow:auto;box-sizing:border-box;padding:24px 26px;border-radius:18px;background:var(--nh-raised,#221e1a);border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.16));color:var(--nh-text-1,#f4eee2);box-shadow:0 28px 90px rgba(0,0,0,.65)}.nh-gq-box h2{font:700 1.7rem/1.2 var(--nh-serif,Georgia);margin:0 38px 6px 0}.nh-gq-x{position:absolute;right:16px;top:12px;border:0;background:none;color:inherit;font-size:28px;cursor:pointer}.nh-gq-lead,.nh-gq-note,.nh-gq-unavailable{color:var(--nh-muted,#a99f91);line-height:1.45}.nh-gq-progress{display:grid;gap:4px;margin:18px 0;padding:14px;border-radius:12px;background:rgba(255,255,255,.05)}.nh-gq-progress span{font-size:.88rem;color:var(--nh-muted,#a99f91)}.nh-gq-master,.nh-gq-replace{display:flex;gap:9px;align-items:center;font-weight:650;margin:16px 0 4px}.nh-gq-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:14px 0;padding:14px;border:1px solid var(--nh-hairline,rgba(255,255,255,.1));border-radius:12px}.nh-gq-fields label{display:flex;gap:8px;align-items:center}.nh-gq-unavailable{font-size:.84rem}.nh-gq-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}.nh-gq-actions button{padding:9px 18px;border-radius:10px;border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.18));background:rgba(255,255,255,.06);color:inherit;font-weight:650;cursor:pointer}.nh-gq-actions #nh-gq-start{background:var(--nh-amber,#e0c27a);color:#17130e}.nh-gq-actions button:disabled{opacity:.4;cursor:default}@media(max-width:600px){.nh-gq-fields{grid-template-columns:1fr}}';
+      style.textContent = '#nh-gq-modal{position:fixed;inset:0;z-index:2147483200;font-family:var(--nh-sans,system-ui)}.nh-gq-shade{position:absolute;inset:0;background:rgba(0,0,0,.72);backdrop-filter:blur(4px)}.nh-gq-box{position:relative;margin:5vh auto;width:min(680px,92vw);max-height:90vh;overflow:auto;box-sizing:border-box;padding:24px 26px;border-radius:18px;background:var(--nh-raised,#221e1a);border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.16));color:var(--nh-text-1,#f4eee2);box-shadow:0 28px 90px rgba(0,0,0,.65)}.nh-gq-box h2{font:700 1.7rem/1.2 var(--nh-serif,Georgia);margin:0 38px 6px 0}.nh-gq-x{position:absolute;right:16px;top:12px;border:0;background:none;color:inherit;font-size:28px;cursor:pointer}.nh-gq-lead,.nh-gq-note,.nh-gq-unavailable{color:var(--nh-muted,#a99f91);line-height:1.45}.nh-gq-progress{display:grid;gap:4px;margin:18px 0;padding:14px;border-radius:12px;background:rgba(255,255,255,.05)}.nh-gq-progress span{font-size:.88rem;color:var(--nh-muted,#a99f91)}.nh-gq-master,.nh-gq-replace{display:flex;gap:9px;align-items:center;font-weight:650;margin:16px 0 4px}.nh-gq-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 18px;margin:14px 0;padding:14px;border:1px solid var(--nh-hairline,rgba(255,255,255,.1));border-radius:12px}.nh-gq-fields label{display:flex;gap:8px;align-items:center}.nh-gq-unavailable{font-size:.84rem}.nh-gq-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}.nh-gq-actions button{padding:9px 18px;border-radius:10px;border:1px solid var(--nh-hairline-lit,rgba(255,255,255,.18));background:rgba(255,255,255,.06);color:inherit;font-weight:650;cursor:pointer}.nh-gq-actions #nh-gq-start{background:var(--nh-amber,#e0c27a);color:#17130e}.nh-gq-actions button:disabled{opacity:.4;cursor:default}@media(max-width:600px){.nh-gq-fields{grid-template-columns:1fr}}';
       document.head.appendChild(style);
     }
     let modal = document.getElementById('nh-gq-modal');
@@ -8770,17 +8828,6 @@
         (n || levels ? '<span class="nh-ff-pip">' + (n + levels) + '</span>' : '');
       pill.querySelector('.nh-ff-btn-lbl').textContent = nhFfT('mfButton');
     }
-    // Admin-only bulk enrichment control. Kept separate from sorting so running
-    // or pausing the queue never changes the current library view.
-    let gq = toolbar.querySelector('#nh-gq-btn');
-    if (isUserAdmin() && nhLf.mode === 'items') {
-      if (!gq) {
-        gq = document.createElement('button'); gq.type = 'button'; gq.id = 'nh-gq-btn';
-        gq.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); nhGrsItems(); nhGq.open = true; nhGqRender(); });
-        if (pill.parentElement) pill.parentElement.insertBefore(gq, pill);
-      }
-      gq.textContent = nhGq.running ? ('Goodreads ' + nhGq.done + '/' + nhGq.total) : 'Goodreads queue';
-    } else if (gq) gq.remove();
     return pill;
   }
 
